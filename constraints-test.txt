@@ -1,0 +1,6 @@
+# ------------------------
+# constraints/constraints-test.txt
+# ------------------------
+# P0: Avoid pkg_resources deprecation pathway suggested by warning text.
+# Pin below 81 for test/CI determinism.
+setuptools==80.10.2

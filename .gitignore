@@ -1,0 +1,36 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.pytest_tmp/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtualenvs / tooling
+.venv/
+venv/
+ENV/
+.env
+
+# Project-local runtime artifacts
+.tmp/
+.opencode/
+.serena/
+logs/
+*.log
+out/
+debug_artifacts/
+graphs/
+catboost_info/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Data (keep source datasets out unless explicitly needed)
+# data/

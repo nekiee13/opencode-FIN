@@ -1,0 +1,193 @@
+# ------------------------
+# compat\Constants.py
+# ------------------------
+"""
+Backward-compatibility Constants bridge for FIN (Refactor Phase 1).
+
+This module preserves the legacy Constants.py interface (names used across the
+existing codebase) while sourcing *paths* from the new path stabilization layer:
+
+    src.config.paths
+
+Key invariants:
+- Import-time side effects are avoided (no directory creation on import).
+- No hardcoded absolute paths.
+- Legacy scripts can continue to `import Constants as C` during migration.
+
+Notes
+-----
+- APP_ROOT_DIR in the legacy project was set at runtime by app3G.py. In FIN, we
+  treat APP_ROOT_DIR as a derived value from src.config.paths.APP_ROOT.
+- If an entrypoint needs directories to exist, it must call
+  `src.config.paths.ensure_directories()` explicitly.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+# --- Application Metadata ---
+APP_VERSION = "2.1-refactor-phase-1"
+
+# --- Dynamic Paths (sourced from src.config.paths) ---
+try:
+    from src.config import paths as _paths
+except Exception as e:  # pragma: no cover
+    # Fail fast with a clear message; Constants is widely imported.
+    raise RuntimeError(
+        "Failed to import src.config.paths. "
+        "Ensure FIN is executed with project root on sys.path (recommended: run from FIN root), "
+        "or that the package layer is discoverable. Under migration, this is a hard requirement. "
+        f"Original error: {e}"
+    ) from e
+
+
+# Legacy name preserved; now derived from stabilization layer.
+APP_ROOT_DIR: str = str(_paths.APP_ROOT)
+
+# Legacy folder constants preserved; now FIN-relative.
+# In TS these were hardcoded to F:\\xPy\\TS\\DATA and F:\\xPy\\TS\\Graphs.
+DATA_FOLDER: str = str(_paths.DATA_RAW_DIR)
+GRAPHS_FOLDER: str = str(_paths.GRAPHS_DIR)
+
+# Optional/commonly used additional folders (non-breaking additions).
+OUTPUT_FOLDER: str = str(_paths.OUTPUT_DIR)
+LOGS_FOLDER: str = str(_paths.LOGS_DIR)
+CONFIG_FOLDER: str = str(_paths.CONFIG_DIR)
+EXO_REGRESSORS_CSV: str = str(_paths.EXO_CONFIG_PATH)
+
+# ----------------------------------------------------------------------
+# PCE-NARX external worker (NumPy 2.x isolated interpreter)
+# ----------------------------------------------------------------------
+#
+# Purpose:
+# - FIN-core runtime may run under NumPy<2.
+# - PCE-NARX stack (chaospy/numpoly) may require NumPy>=2.
+# - External worker execution isolates PCE into a separate interpreter.
+#
+# Resolution order (implemented in src/models/compat_api.py):
+# 1) FIN_PCE_PY_EXE environment variable
+# 2) This constant (PCE_WORKER_PY_EXE) if set and exists
+# 3) Known default candidates (e.g., F:\vEnv\FIN_PCE\python.exe)
+#
+# Recommended value example (machine-specific):
+#   r"F:\vEnv\FIN_PCE\python.exe"
+#
+# Default is empty to avoid embedding machine-specific paths in repo defaults.
+PCE_WORKER_PY_EXE: str = ""
+
+
+# --- Ticker and Indicator Lists ---
+TICKERS = ["TNX", "AAPL", "QQQ", "VIX", "GSPC", "DJI"]
+INDICATORS_0_100 = [
+    "RSI (14)",
+    "Stochastic %K",
+    "STOCH_%D",
+    "Williams %R",
+    "Ultimate Oscillator",
+]
+
+
+# --- General Forecasting Parameters ---
+FH = 3  # Forecast Horizon in business days
+
+
+# --- VAR Model Parameters ---
+VAR_MAX_LAGS = 15  # Max lags to check for the VAR model
+
+
+# --- LSTM Model Parameters ---
+LSTM_LOOKBACK = 28
+LSTM_EPOCHS = 120
+LSTM_TRAIN_WINDOW = 500
+LSTM_QUANTILES = [0.1, 0.5, 0.9]
+
+
+# --- Random Walk Model Parameters ---
+RW_DRIFT_ENABLED = True
+
+
+# --- ARIMA Model Parameters ---
+ARIMA_MAX_P = 5
+ARIMA_MAX_Q = 5
+ARIMA_MAX_D = 2
+ARIMA_SEASONAL = False
+
+
+# --- ETS Model Parameters ---
+ETS_TREND = "add"
+ETS_SEASONAL = None
+ETS_SEASONAL_PERIODS = None
+
+
+# --- Regime & Extrema Overlay Parameters ---
+SHOW_PEAKS_TROUGHS = True
+SHOW_REGIMES = True
+REGIME_METHOD = "rbf"
+PELT_PENALTY = 1
+
+# Legacy tuning retained
+PEAK_PROM = 0.08
+PEAK_DIST = 5
+PEAK_WIDTH = 2
+
+
+# --- Compatibility: provide Path objects where useful (non-breaking additions) ---
+# Some refactored modules may prefer Path types; legacy code can ignore these.
+APP_ROOT_PATH: Path = _paths.APP_ROOT
+DATA_PATH: Path = _paths.DATA_RAW_DIR
+GRAPHS_PATH: Path = _paths.GRAPHS_DIR
+OUTPUT_PATH: Path = _paths.OUTPUT_DIR
+LOGS_PATH: Path = _paths.LOGS_DIR
+CONFIG_PATH: Path = _paths.CONFIG_DIR
+EXO_CONFIG_PATH: Path = _paths.EXO_CONFIG_PATH
+
+
+__all__ = [
+    # Metadata
+    "APP_VERSION",
+    # Legacy path names
+    "APP_ROOT_DIR",
+    "DATA_FOLDER",
+    "GRAPHS_FOLDER",
+    # Additional folders
+    "OUTPUT_FOLDER",
+    "LOGS_FOLDER",
+    "CONFIG_FOLDER",
+    "EXO_REGRESSORS_CSV",
+    # PCE worker
+    "PCE_WORKER_PY_EXE",
+    # Lists
+    "TICKERS",
+    "INDICATORS_0_100",
+    # Parameters
+    "FH",
+    "VAR_MAX_LAGS",
+    "LSTM_LOOKBACK",
+    "LSTM_EPOCHS",
+    "LSTM_TRAIN_WINDOW",
+    "LSTM_QUANTILES",
+    "RW_DRIFT_ENABLED",
+    "ARIMA_MAX_P",
+    "ARIMA_MAX_Q",
+    "ARIMA_MAX_D",
+    "ARIMA_SEASONAL",
+    "ETS_TREND",
+    "ETS_SEASONAL",
+    "ETS_SEASONAL_PERIODS",
+    "SHOW_PEAKS_TROUGHS",
+    "SHOW_REGIMES",
+    "REGIME_METHOD",
+    "PELT_PENALTY",
+    "PEAK_PROM",
+    "PEAK_DIST",
+    "PEAK_WIDTH",
+    # Path objects
+    "APP_ROOT_PATH",
+    "DATA_PATH",
+    "GRAPHS_PATH",
+    "OUTPUT_PATH",
+    "LOGS_PATH",
+    "CONFIG_PATH",
+    "EXO_CONFIG_PATH",
+]
