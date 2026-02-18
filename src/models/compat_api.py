@@ -21,7 +21,7 @@ Important invariants
 - This module must be import-safe in minimal environments.
   Therefore, legacy/optional modules (e.g., compat.ExoConfig, compat.PCEModel)
   are imported locally inside the functions that actually use them.
-- Optional heavy dependencies (tensorflow, sklearn, pmdarima, statsmodels, arch)
+- Optional heavy dependencies (torch, tensorflow-legacy, sklearn, pmdarima, statsmodels, arch)
   remain imported lazily inside the corresponding functions.
 
 Notes
@@ -34,7 +34,7 @@ Debug/Temp policy (Phase-1 addendum)
 - FIN_KEEP_TEMP=1 disables deletion of temp artifacts created/handled here.
 - FIN_DEBUG_DIR, if set, is used as a stable debug artifact root; otherwise:
   <repo_root>/debug_artifacts is used.
-- External workers (TI/PyCaret) still create their temp CSV in OS temp; however:
+- External workers (TI/TorchForecast) still create their temp CSV in OS temp; however:
   when FIN_DEBUG_DIR is enabled, the returned CSV is copied into debug artifacts.
 """
 
@@ -136,7 +136,9 @@ def _copy_to_debug(src_path: str, *, tag: str) -> Optional[str]:
             return None
 
         # Always allow copying when FIN_DEBUG_DIR is set OR FIN_KEEP_TEMP is enabled.
-        if not (_truthy_env("FIN_KEEP_TEMP") or os.environ.get("FIN_DEBUG_DIR", "").strip()):
+        if not (
+            _truthy_env("FIN_KEEP_TEMP") or os.environ.get("FIN_DEBUG_DIR", "").strip()
+        ):
             return None
 
         dst_dir = _ensure_dir(_debug_root_dir() / tag)
@@ -258,14 +260,19 @@ def run_external_script(
             log.error("stderr: %s", (process.stderr or "").strip())
             return None
 
-        stdout_lines = [line for line in (process.stdout or "").strip().split("\n") if line.strip()]
+        stdout_lines = [
+            line for line in (process.stdout or "").strip().split("\n") if line.strip()
+        ]
         extracted_path: Optional[str] = None
 
         for line in reversed(stdout_lines):
             candidate = line.strip().strip('"').strip("'")
             if candidate.lower().endswith(".csv") and os.path.exists(candidate):
                 extracted_path = candidate
-                log.info("Successfully extracted and validated temp file path: %s", extracted_path)
+                log.info(
+                    "Successfully extracted and validated temp file path: %s",
+                    extracted_path,
+                )
                 break
 
         if not extracted_path:
@@ -307,7 +314,11 @@ def run_external_script(
                     os.remove(temp_file_path)
                     log.info("Cleaned up temporary file: %s", temp_file_path)
                 except OSError as remove_err:
-                    log.warning("Could not remove temporary file %s: %s", temp_file_path, remove_err)
+                    log.warning(
+                        "Could not remove temporary file %s: %s",
+                        temp_file_path,
+                        remove_err,
+                    )
 
 
 def run_external_ti_calculator(
@@ -335,11 +346,11 @@ def run_external_ti_calculator(
     return enriched_df
 
 
-def run_external_pycaret(
+def run_external_torch_forecasting(
     ticker: str,
     progress_callback=None,
 ) -> Optional["DataFrame"]:
-    """Run PyCaret worker."""
+    """Run torch-forecasting worker."""
     return run_external_script("app3GPC.py", ticker, 600, progress_callback)
 
 
@@ -452,7 +463,9 @@ def _run_pce_worker(
         )
 
         if proc.stderr:
-            log.info("PCE worker stderr (tail): %s", (proc.stderr or "").strip()[-2000:])
+            log.info(
+                "PCE worker stderr (tail): %s", (proc.stderr or "").strip()[-2000:]
+            )
 
         if not os.path.exists(out_json):
             log.error("PCE worker produced no output JSON. rc=%s", proc.returncode)
@@ -466,7 +479,11 @@ def _run_pce_worker(
             return None
 
         if str(result.get("status")) != "OK":
-            log.warning("PCE worker status=%s error=%s", result.get("status"), result.get("error"))
+            log.warning(
+                "PCE worker status=%s error=%s",
+                result.get("status"),
+                result.get("error"),
+            )
             return None
 
         forecast_csv = str(result.get("forecast_csv") or "")
@@ -501,34 +518,6 @@ def _run_pce_worker(
 
 
 # ======================================================================
-# LSTM helpers (lazy tensorflow import)
-# ======================================================================
-
-
-def _quantile_loss(tf_mod, q: float, y_true, y_pred):
-    e = y_true - y_pred
-    return tf_mod.keras.backend.mean(
-        tf_mod.keras.backend.maximum(q * e, (q - 1.0) * e),
-        axis=-1,
-    )
-
-
-def _create_lstm_model(tf_mod, input_shape: Tuple[int, int], quantile: float):
-    model = tf_mod.keras.Sequential(
-        [
-            tf_mod.keras.layers.LSTM(units=64, return_sequences=True, input_shape=input_shape),
-            tf_mod.keras.layers.LSTM(units=32),
-            tf_mod.keras.layers.Dense(units=1),
-        ]
-    )
-    model.compile(
-        optimizer="adam",
-        loss=lambda y, p: _quantile_loss(tf_mod, quantile, y, p),
-    )
-    return model
-
-
-# ======================================================================
 # Exogenous matrix builder (shared by ARIMAX, GARCH, LSTM, PCE)
 # ======================================================================
 
@@ -548,10 +537,16 @@ def build_exog_matrices(
     # Local import to keep module import-safe.
     from compat import ExoConfig  # type: ignore
 
-    regressors: List[str] = ExoConfig.get_enabled_regressors(exo_config, model_name, ticker)
+    regressors: List[str] = ExoConfig.get_enabled_regressors(
+        exo_config, model_name, ticker
+    )
 
     if not regressors:
-        log.info("No enabled exogenous regressors for model=%s, ticker=%s.", model_name, ticker)
+        log.info(
+            "No enabled exogenous regressors for model=%s, ticker=%s.",
+            model_name,
+            ticker,
+        )
         return None, None
 
     valid_regs: List[str] = []
@@ -559,7 +554,12 @@ def build_exog_matrices(
         if reg in enriched_data.columns:
             valid_regs.append(reg)
         else:
-            log.warning("Regressor '%s' for %s/%s not found in enriched_data. Skipping.", reg, model_name, ticker)
+            log.warning(
+                "Regressor '%s' for %s/%s not found in enriched_data. Skipping.",
+                reg,
+                model_name,
+                ticker,
+            )
 
     if not valid_regs:
         log.warning(
@@ -575,7 +575,11 @@ def build_exog_matrices(
     X_train_df = cast("DataFrame", X_train_df.dropna(how="all"))
 
     if X_train_df.empty:
-        log.warning("X_train for %s/%s is empty after aligning with target_index.", model_name, ticker)
+        log.warning(
+            "X_train for %s/%s is empty after aligning with target_index.",
+            model_name,
+            ticker,
+        )
         return None, None
 
     horizon: int = int(len(future_dates))
@@ -669,7 +673,7 @@ def build_exog_matrices(
 
 
 # ======================================================================
-# LSTM with ExoConfig (lazy tensorflow + lazy sklearn)
+# LSTM with ExoConfig (delegates to canonical torch LSTM)
 # ======================================================================
 
 
@@ -679,8 +683,6 @@ def predict_lstm(
     exo_config: Optional[Any] = None,
     progress_callback=None,
 ) -> Optional["DataFrame"]:
-    if not opt.HAS_TENSORFLOW:
-        return None
     if pd is None or np is None:
         return None
     if enriched_data is None or "Close" not in enriched_data.columns:
@@ -689,8 +691,11 @@ def predict_lstm(
     # Local import: keeps module import-safe.
     from pandas.tseries.frequencies import to_offset
 
-    import tensorflow as tf  # type: ignore
-    from sklearn.preprocessing import MinMaxScaler  # type: ignore
+    try:
+        from src.models.lstm import predict_lstm_quantiles  # type: ignore
+    except Exception as e:
+        log.warning("LSTM: failed to import canonical torch LSTM model: %s", e)
+        return None
 
     close_numeric = pd.to_numeric(enriched_data["Close"], errors="coerce")
     y_series = cast("Series", cast("Series", close_numeric).dropna())
@@ -713,82 +718,52 @@ def predict_lstm(
             "LSTM", ticker, enriched_data, target_index, future_dates, exo_config
         )
 
-    scaler_y = MinMaxScaler(feature_range=(0, 1))
-    y_scaled = scaler_y.fit_transform(y_series.values.reshape(-1, 1))
+    # Legacy constants are [q_low, q_mid, q_high]. Canonical API expects (q_low, q_high).
+    q_lo = 0.10
+    q_hi = 0.90
+    try:
+        qvals = [float(q) for q in list(getattr(C, "LSTM_QUANTILES", []))]
+        if len(qvals) >= 2:
+            qvals_sorted = sorted(qvals)
+            q_lo = float(qvals_sorted[0])
+            q_hi = float(qvals_sorted[-1])
+    except Exception:
+        q_lo, q_hi = 0.10, 0.90
 
-    if X_train_exog is not None and not X_train_exog.empty:
-        X_train_exog = cast("DataFrame", X_train_exog.reindex(index=target_index).ffill().fillna(0.0))
-        scaler_x = MinMaxScaler(feature_range=(0, 1))
-        x_scaled = scaler_x.fit_transform(X_train_exog.values)
-
-        data_scaled = np.hstack([y_scaled, x_scaled])
-
-        if X_future_exog is not None and not X_future_exog.empty:
-            x_future_scaled = scaler_x.transform(X_future_exog.values)
-        else:
-            log.warning("LSTM: Exog configured but no future values. Repeating last row.")
-            last_exog = x_scaled[-1:]
-            x_future_scaled = np.tile(last_exog, (C.FH, 1))
-    else:
-        data_scaled = y_scaled
-        x_future_scaled = None
-
-    lookback = C.LSTM_LOOKBACK
-    if len(data_scaled) < lookback + 10:
-        log.warning("LSTM: Insufficient data length %d for lookback %d.", len(data_scaled), lookback)
+    try:
+        res = predict_lstm_quantiles(
+            enriched_data,
+            ticker=ticker,
+            target_col="Close",
+            fh=int(C.FH),
+            exog_train=X_train_exog,
+            exog_future=X_future_exog,
+            quantiles=(q_lo, q_hi),
+            lookback=int(getattr(C, "LSTM_LOOKBACK", 60)),
+            epochs=int(getattr(C, "LSTM_EPOCHS", 60)),
+            batch_size=32,
+            lstm_units=64,
+            dense_units=32,
+            dropout=0.10,
+            learning_rate=1e-3,
+            min_samples=max(120, int(getattr(C, "LSTM_LOOKBACK", 60)) + 25),
+            seed=42,
+            verbose=0,
+        )
+    except Exception as e:
+        log.warning("LSTM: canonical model failed for %s: %s", ticker, e, exc_info=True)
         return None
 
-    X_train_list: List["NDArray[Any]"] = []
-    y_train_list: List[float] = []
-    for i in range(lookback, len(data_scaled)):
-        X_train_list.append(data_scaled[i - lookback : i])
-        y_train_list.append(float(data_scaled[i, 0]))
+    if res is None or res.pred_df is None or res.pred_df.empty:
+        return None
 
-    X_train_arr = np.array(X_train_list)
-    y_train_arr = np.array(y_train_list)
-    n_features = data_scaled.shape[1]
-    input_shape = (lookback, n_features)
+    out_df = cast("DataFrame", res.pred_df.copy())
 
-    all_quantile_preds: List["NDArray[Any]"] = []
+    # Keep legacy shape expectations (exact horizon where possible).
+    if len(out_df) >= int(C.FH):
+        out_df = cast("DataFrame", out_df.iloc[: int(C.FH)].copy())
 
-    for q in C.LSTM_QUANTILES:
-        log.info("Training LSTM (q=%s) for %s...", q, ticker)
-        model = _create_lstm_model(tf, input_shape, float(q))
-        model.fit(
-            X_train_arr,
-            y_train_arr,
-            epochs=C.LSTM_EPOCHS,
-            batch_size=32,
-            verbose=0,  # type: ignore
-        )
-
-        curr_seq = data_scaled[-lookback:].reshape(1, lookback, n_features)
-        preds_scaled: List[float] = []
-
-        for h in range(C.FH):
-            pred_y_scaled = float(model.predict(curr_seq, verbose=0)[0, 0])  # type: ignore
-            preds_scaled.append(pred_y_scaled)
-
-            next_vec_list: List[float] = [pred_y_scaled]
-            if x_future_scaled is not None:
-                next_exog_vals = x_future_scaled[h]
-                next_vec_list.extend(float(v) for v in next_exog_vals)
-
-            next_vec = np.array(next_vec_list, dtype=float).reshape(1, 1, n_features)
-            curr_seq = np.concatenate([curr_seq[:, 1:, :], next_vec], axis=1)
-
-        preds_real = scaler_y.inverse_transform(np.array(preds_scaled, dtype=float).reshape(-1, 1)).flatten()
-        all_quantile_preds.append(preds_real)
-
-    results_df = pd.DataFrame(
-        {
-            "LSTM_Lower": all_quantile_preds[0],
-            "LSTM_Pred": all_quantile_preds[1],
-            "LSTM_Upper": all_quantile_preds[2],
-        },
-        index=future_dates,
-    )
-    return cast("DataFrame", results_df)
+    return out_df
 
 
 # ======================================================================
@@ -808,7 +783,9 @@ def predict_random_walk(
     # Local import: keeps module import-safe.
     from pandas.tseries.frequencies import to_offset
 
-    close_series = cast("Series", pd.to_numeric(enriched_data["Close"], errors="coerce")).dropna()
+    close_series = cast(
+        "Series", pd.to_numeric(enriched_data["Close"], errors="coerce")
+    ).dropna()
 
     if close_series.empty:
         log.warning("Random Walk: 'Close' prices are empty after dropping NaNs.")
@@ -837,7 +814,9 @@ def predict_arima(
     ticker: str,
     exo_config: Optional[Any] = None,
     progress_callback=None,
-) -> Tuple[Optional["DataFrame"], Optional[Tuple[int, int, int]], Optional["NDArray[Any]"]]:
+) -> Tuple[
+    Optional["DataFrame"], Optional[Tuple[int, int, int]], Optional["NDArray[Any]"]
+]:
     if pd is None or np is None:
         return None, None, None
 
@@ -857,8 +836,12 @@ def predict_arima(
         arima_data = cast("DataFrame", arima_data.asfreq("B").ffill())
         arima_data = arima_data.dropna(subset=["Close"])
 
-        if arima_data.empty or len(arima_data) < (C.ARIMA_MAX_P + C.ARIMA_MAX_Q + C.ARIMA_MAX_D + 1):
-            log.warning("ARIMAX: Insufficient data (%d rows) after cleaning.", len(arima_data))
+        if arima_data.empty or len(arima_data) < (
+            C.ARIMA_MAX_P + C.ARIMA_MAX_Q + C.ARIMA_MAX_D + 1
+        ):
+            log.warning(
+                "ARIMAX: Insufficient data (%d rows) after cleaning.", len(arima_data)
+            )
             return None, None, None
 
         y_train = cast("Series", arima_data["Close"])
@@ -923,9 +906,13 @@ def predict_arima(
             return None, None, None
 
         if X_future_arr is not None:
-            predictions, conf_int = auto_model.predict(n_periods=C.FH, X=X_future_arr, return_conf_int=True)
+            predictions, conf_int = auto_model.predict(
+                n_periods=C.FH, X=X_future_arr, return_conf_int=True
+            )
         else:
-            predictions, conf_int = auto_model.predict(n_periods=C.FH, X=None, return_conf_int=True)
+            predictions, conf_int = auto_model.predict(
+                n_periods=C.FH, X=None, return_conf_int=True
+            )
 
         model_order = auto_model.order
         residuals = cast("NDArray[Any]", auto_model.resid())
@@ -994,11 +981,15 @@ def predict_arch_model(
             )
 
         if X_train_df is not None and not X_train_df.empty:
-            X_train_aligned = cast("DataFrame", X_train_df.reindex(index=returns.index).dropna(how="any"))
+            X_train_aligned = cast(
+                "DataFrame", X_train_df.reindex(index=returns.index).dropna(how="any")
+            )
             if not X_train_aligned.empty:
                 common_index = X_train_aligned.index
                 returns_aligned = returns.reindex(common_index).dropna()
-                X_train_aligned = cast("DataFrame", X_train_aligned.reindex(index=returns_aligned.index))
+                X_train_aligned = cast(
+                    "DataFrame", X_train_aligned.reindex(index=returns_aligned.index)
+                )
 
                 if returns_aligned.empty or X_train_aligned.empty:
                     log.warning(
@@ -1008,7 +999,9 @@ def predict_arch_model(
                     X_train_df = None
                 else:
                     returns = returns_aligned
-                    x_train_arr = cast("NDArray[Any]", np.asarray(X_train_aligned, dtype=float))
+                    x_train_arr = cast(
+                        "NDArray[Any]", np.asarray(X_train_aligned, dtype=float)
+                    )
             else:
                 log.warning(
                     "GARCH: X_train became empty after aligning with returns. "
@@ -1042,7 +1035,11 @@ def predict_arch_model(
 
         res = am.fit(update_freq=5, disp="off")
 
-        if X_future_df is not None and not X_future_df.empty and x_train_arr is not None:
+        if (
+            X_future_df is not None
+            and not X_future_df.empty
+            and x_train_arr is not None
+        ):
             num_steps, num_regs = X_future_df.shape
             if num_steps != C.FH:
                 x_future_arr = None
@@ -1066,14 +1063,26 @@ def predict_arch_model(
         variance_forecast = forecasts.variance.iloc[0].values
 
         last_price = float(enriched_data["Close"].iloc[-1])
-        price_forecast: List[float] = [last_price * (1.0 + float(mean_forecast[0]) / 100.0)]
+        price_forecast: List[float] = [
+            last_price * (1.0 + float(mean_forecast[0]) / 100.0)
+        ]
         for i in range(1, C.FH):
-            price_forecast.append(price_forecast[i - 1] * (1.0 + float(mean_forecast[i]) / 100.0))
+            price_forecast.append(
+                price_forecast[i - 1] * (1.0 + float(mean_forecast[i]) / 100.0)
+            )
 
-        price_forecast_df = pd.DataFrame({"GARCH_Pred": price_forecast}, index=future_dates)
-        volatility_forecast_df = pd.DataFrame({"Volatility_Forecast": variance_forecast}, index=future_dates)
+        price_forecast_df = pd.DataFrame(
+            {"GARCH_Pred": price_forecast}, index=future_dates
+        )
+        volatility_forecast_df = pd.DataFrame(
+            {"Volatility_Forecast": variance_forecast}, index=future_dates
+        )
 
-        return cast("DataFrame", price_forecast_df), cast("DataFrame", volatility_forecast_df), res
+        return (
+            cast("DataFrame", price_forecast_df),
+            cast("DataFrame", volatility_forecast_df),
+            res,
+        )
 
     except Exception as e:
         log.error("Error during GARCH model fitting: %s", e, exc_info=True)
@@ -1114,7 +1123,9 @@ def predict_var(
         var_data = var_data.dropna(how="any").asfreq("B").ffill().dropna(how="any")
 
         if var_data.empty or len(var_data) < C.VAR_MAX_LAGS + 5:
-            log.warning("VAR: Insufficient data (%d rows) after cleaning.", len(var_data))
+            log.warning(
+                "VAR: Insufficient data (%d rows) after cleaning.", len(var_data)
+            )
             return None
 
         differenced = var_data.diff().dropna()
@@ -1134,7 +1145,9 @@ def predict_var(
         if len(differenced) < lag_order:
             return None
 
-        forecasted_diffs = results.forecast(y=differenced.values[-lag_order:], steps=C.FH)
+        forecasted_diffs = results.forecast(
+            y=differenced.values[-lag_order:], steps=C.FH
+        )
 
         last_values = var_data.iloc[-1]
         future_dates = pd.date_range(
@@ -1142,7 +1155,9 @@ def predict_var(
             periods=C.FH,
             freq="B",
         )
-        df_forecast = pd.DataFrame(forecasted_diffs, index=future_dates, columns=var_data.columns)
+        df_forecast = pd.DataFrame(
+            forecasted_diffs, index=future_dates, columns=var_data.columns
+        )
         df_forecast = last_values.add(df_forecast.cumsum())
         return cast("DataFrame", pd.DataFrame({"VAR_Pred": df_forecast["Close"]}))
 
@@ -1168,7 +1183,9 @@ def predict_exp_smoothing(
     # Local import: keeps module import-safe.
     from pandas.tseries.frequencies import to_offset  # noqa: F401
 
-    ets_series = cast("Series", pd.to_numeric(enriched_data["Close"], errors="coerce")).dropna()
+    ets_series = cast(
+        "Series", pd.to_numeric(enriched_data["Close"], errors="coerce")
+    ).dropna()
     ets_series = ets_series.asfreq("B").ffill().dropna()
 
     if ets_series.empty:
@@ -1210,7 +1227,9 @@ def predict_pce_narx(
     # Local import: keeps module import-safe.
     from pandas.tseries.frequencies import to_offset
 
-    y_series = cast("Series", pd.to_numeric(enriched_data["Close"], errors="coerce")).dropna()
+    y_series = cast(
+        "Series", pd.to_numeric(enriched_data["Close"], errors="coerce")
+    ).dropna()
     if y_series.empty:
         return None
 
@@ -1244,7 +1263,9 @@ def predict_pce_narx(
         if out is not None and not getattr(out, "empty", True):
             return cast("DataFrame", out)
     except Exception as e_src:
-        log.info("src.models.pce_narx unavailable (%s). Trying compat.PCEModel...", e_src)
+        log.info(
+            "src.models.pce_narx unavailable (%s). Trying compat.PCEModel...", e_src
+        )
 
     # Legacy compat shim (same-env). In FIN-core, this is expected to be unavailable due to NumPy<2.
     try:
@@ -1259,7 +1280,9 @@ def predict_pce_narx(
         if out2 is not None and not getattr(out2, "empty", True):
             return cast("DataFrame", out2)
     except Exception as e:
-        log.info("compat.PCEModel path failed (%s). Falling back to external PCE worker.", e)
+        log.info(
+            "compat.PCEModel path failed (%s). Falling back to external PCE worker.", e
+        )
 
     # External worker fallback (required runtime capability under NumPy-2 venv)
     try:
@@ -1280,7 +1303,7 @@ def predict_pce_narx(
 __all__ = [
     "run_external_script",
     "run_external_ti_calculator",
-    "run_external_pycaret",
+    "run_external_torch_forecasting",
     "build_exog_matrices",
     "predict_lstm",
     "predict_random_walk",

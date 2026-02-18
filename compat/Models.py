@@ -26,7 +26,7 @@ from src.models.compat_api import (  # noqa: F401
     predict_pce_narx,
     predict_random_walk,
     predict_var,
-    run_external_pycaret,
+    run_external_torch_forecasting,
     run_external_script,
     run_external_ti_calculator,
 )
@@ -34,7 +34,7 @@ from src.models.compat_api import (  # noqa: F401
 __all__ = [
     "run_external_script",
     "run_external_ti_calculator",
-    "run_external_pycaret",
+    "run_external_torch_forecasting",
     "build_exog_matrices",
     "predict_lstm",
     "predict_random_walk",

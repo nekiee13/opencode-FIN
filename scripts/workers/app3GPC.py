@@ -1,8 +1,8 @@
 # ------------------------
-# scripts\workers\app3GPC.py
+# scripts/workers/app3GPC.py
 # ------------------------
 """
-FIN PyCaret Forecasting Worker (subprocess)
+FIN Torch Forecasting Worker (subprocess)
 
 Contract with main orchestrator (Models.run_external_script)
 -----------------------------------------------------------
@@ -17,15 +17,14 @@ FIN integration goals
 - No hardcoded absolute paths
 - Use FIN path layer (src.config.paths) and FIN loader (src.data.loading.fetch_data)
 - Robust sys.path bootstrap when executed from scripts/workers
-- Keep output schema compatible with legacy plotting/aggregation:
+- Keep output schema compatible with table/plot consumers:
     index = future business dates (B)
-    columns = PyCaret_Pred, PyCaret_Lower, PyCaret_Upper
+    columns = TorchForecast_Pred, TorchForecast_Lower, TorchForecast_Upper
 
 Notes
 -----
-- PyCaret is an optional dependency. If missing, the worker fails fast (on normal runs).
-- Help mode (--help) must succeed even if PyCaret is missing.
-- Business-day frequency is enforced for the series passed to PyCaret.
+- pytorch-forecasting is an optional dependency.
+- Help mode (--help) succeeds even if pytorch-forecasting is missing.
 """
 
 from __future__ import annotations
@@ -37,24 +36,23 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
 
 
 # ----------------------------
-# Environment tuning (quiet PyCaret)
+# Environment tuning
 # ----------------------------
 
-os.environ.setdefault("PYCARET_CUSTOM_LOGGING_LEVEL", "CRITICAL")
-os.environ.setdefault("LIGHTGBM_VERBOSE", "-1")
 warnings.filterwarnings("ignore")
 
 
 # ----------------------------
 # Diagnostics helpers
 # ----------------------------
+
 
 def eprint(*args, **kwargs) -> None:
     print(*args, file=sys.stderr, **kwargs)
@@ -64,16 +62,12 @@ def eprint(*args, **kwargs) -> None:
 # sys.path bootstrap (so src.* works when run from scripts/workers)
 # ----------------------------
 
+
 def _bootstrap_sys_path() -> Path:
-    """
-    Resolve FIN root from scripts/workers and ensure:
-      - FIN root on sys.path => import src.*
-      - (optional) compat on sys.path if needed later
-    """
     this_file = Path(__file__).resolve()
     workers_dir = this_file.parent
     scripts_dir = workers_dir.parent
-    app_root = scripts_dir.parent  # FIN root
+    app_root = scripts_dir.parent
 
     if str(app_root) not in sys.path:
         sys.path.insert(0, str(app_root))
@@ -115,49 +109,36 @@ except Exception as e:
 
 DEFAULT_TICKER = "AAPL"
 TARGET_COLUMN = "Close"
-
-# Prefer runtime override via environment, else default to 3
 FORECAST_HORIZON = int(os.environ.get("FIN_FH", "3"))
-
-# Prediction interval coverage (0.90 => 90% PI). Override via env if desired.
-PREDICTION_COVERAGE = float(os.environ.get("FIN_PYCARET_COVERAGE", "0.9"))
+PREDICTION_COVERAGE = float(os.environ.get("FIN_TF_COVERAGE", "0.90"))
 
 
 # ----------------------------
 # CLI
 # ----------------------------
 
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    """
-    Legacy contract: python app3GPC.py <TICKER>
-    Also supports:  python app3GPC.py --ticker <TICKER>
-    """
     p = argparse.ArgumentParser(
         prog="app3GPC.py",
-        description="FIN PyCaret forecasting worker (writes temp CSV path to stdout; diagnostics on stderr).",
+        description="FIN torch-forecasting worker (writes temp CSV path to stdout; diagnostics on stderr).",
     )
-
-    # Backward-compatible positional ticker:
     p.add_argument(
         "ticker",
         nargs="?",
         default=None,
         help="Ticker symbol (legacy positional). Example: AAPL",
     )
-
-    # Optional explicit flag (does not break legacy):
     p.add_argument(
         "--ticker",
         dest="ticker_flag",
         default=None,
         help="Ticker symbol (explicit form). If provided, overrides positional ticker.",
     )
-
     return p.parse_args(argv)
 
 
 def _resolve_ticker(args: argparse.Namespace) -> str:
-    # Flag form overrides positional to be explicit and deterministic.
     if getattr(args, "ticker_flag", None):
         return str(args.ticker_flag)
     if getattr(args, "ticker", None):
@@ -166,227 +147,207 @@ def _resolve_ticker(args: argparse.Namespace) -> str:
 
 
 # ----------------------------
-# Optional dependency import (PyCaret) — deferred so --help works without PyCaret
+# Optional dependency import (pytorch-forecasting)
 # ----------------------------
 
-def _import_pycaret() -> "type[object]":
+
+def _import_torch_forecasting() -> Tuple[Any, Any]:
     try:
-        from pycaret.time_series import TSForecastingExperiment  # type: ignore
-        return TSForecastingExperiment
+        from pytorch_forecasting import Baseline, TimeSeriesDataSet  # type: ignore
+
+        return Baseline, TimeSeriesDataSet
     except Exception as e:
-        eprint("PyCaret is not available in this environment.")
-        eprint("Install/enable it (example): pip install pycaret")
+        eprint("pytorch-forecasting is not available in this environment.")
+        eprint("Install (example): pip install pytorch-forecasting")
         eprint(f"Import error: {e}")
         raise
 
 
 # ----------------------------
-# Data prep (FIN canonical)
+# Data prep
 # ----------------------------
 
+
 def fetch_minimal_data(ticker: str) -> Optional[pd.DataFrame]:
-    """
-    Load and minimally prepare a target series for PyCaret:
-      - Use FIN canonical loader on data/raw/{TICKER}_data.csv
-      - Select Close
-      - Force business-day frequency and forward-fill
-      - Validate minimum length
-    Returns DataFrame with DatetimeIndex and one column TARGET_COLUMN.
-    """
     try:
-        eprint(f"PyCaret worker: resolving FIN raw CSV for {ticker}...")
+        eprint(f"TorchForecast worker: resolving FIN raw CSV for {ticker}...")
         raw_path = paths.DATA_RAW_DIR / f"{ticker.replace('^', '')}_data.csv"
-        eprint(f"PyCaret worker: expected path: {raw_path}")
+        eprint(f"TorchForecast worker: expected path: {raw_path}")
 
         df_full = fetch_data(ticker, csv_path=raw_path)
         if df_full is None or df_full.empty:
-            eprint("PyCaret worker: fetch_data() returned no data.")
+            eprint("TorchForecast worker: fetch_data() returned no data.")
             return None
 
         if TARGET_COLUMN not in df_full.columns:
-            eprint(f"PyCaret worker: required column '{TARGET_COLUMN}' not found. Columns={list(df_full.columns)}")
+            eprint(
+                f"TorchForecast worker: required column '{TARGET_COLUMN}' not found. "
+                f"Columns={list(df_full.columns)}"
+            )
             return None
 
         data_df = cast(pd.DataFrame, df_full[[TARGET_COLUMN]].copy())
         data_df[TARGET_COLUMN] = pd.to_numeric(data_df[TARGET_COLUMN], errors="coerce")
         data_df = cast(pd.DataFrame, data_df.dropna(subset=[TARGET_COLUMN]))
-
-        if data_df.empty:
-            eprint("PyCaret worker: Close series empty after numeric coercion/dropna.")
-            return None
-
-        # Force business-day frequency (PyCaret TS expects regular freq for many models)
         data_df = cast(pd.DataFrame, data_df.asfreq("B", method="ffill"))
 
-        min_required_len = (3 * int(FORECAST_HORIZON)) + 15
+        min_required_len = (3 * int(FORECAST_HORIZON)) + 20
         if len(data_df) < min_required_len:
             eprint(
-                f"PyCaret worker: insufficient data length ({len(data_df)}). "
+                f"TorchForecast worker: insufficient data length ({len(data_df)}). "
                 f"Need at least {min_required_len}."
             )
             return None
 
         return data_df
-
     except Exception as e:
-        eprint(f"PyCaret worker: error while loading/processing data for {ticker}: {e}")
+        eprint(f"TorchForecast worker: data prep failed for {ticker}: {e}")
         traceback.print_exc(file=sys.stderr)
         return None
 
 
-# ----------------------------
-# Forecasting
-# ----------------------------
+def _future_bdays(last_date: pd.Timestamp, fh: int) -> pd.DatetimeIndex:
+    return pd.date_range(
+        start=last_date + pd.offsets.BDay(1), periods=int(fh), freq="B"
+    )
 
-def run_pycaret_forecast(
-    TSForecastingExperiment: type,  # injected to avoid import-time dependency
+
+def _safe_sigma(series: pd.Series) -> float:
+    d = cast(pd.Series, pd.to_numeric(series, errors="coerce")).diff().dropna()
+    sigma = float(np.nanstd(d.to_numpy(dtype=float), ddof=1)) if len(d) > 2 else 0.0
+    if not np.isfinite(sigma) or sigma <= 0.0:
+        last = float(cast(Any, series.iloc[-1]))
+        sigma = max(abs(last) * 0.01, 1e-6)
+    return sigma
+
+
+def run_torch_forecast(
+    Baseline: Any,
+    TimeSeriesDataSet: Any,
     data: pd.DataFrame,
     target_column: str = TARGET_COLUMN,
     fh: int = FORECAST_HORIZON,
 ) -> Optional[pd.DataFrame]:
-    """
-    Run PyCaret TS experiment and return DataFrame with:
-      - PyCaret_Pred
-      - PyCaret_Lower
-      - PyCaret_Upper
-    Index: forecast horizon business dates (as returned by PyCaret).
-    """
     if data is None or data.empty:
-        eprint("PyCaret worker: cannot run forecast on empty data.")
         return None
 
-    eprint("\n--- Starting PyCaret Forecasting Process ---")
+    y = cast(pd.Series, pd.to_numeric(data[target_column], errors="coerce")).dropna()
+    if y.empty:
+        return None
+
+    fh_i = int(fh)
+    last_dt = cast(pd.Timestamp, pd.Timestamp(cast(Any, y.index.max())))
+    future_idx = _future_bdays(last_dt, fh_i)
+
     try:
-        exp = TSForecastingExperiment()
-        exp.setup(
-            data=data,
-            target=target_column,
-            fh=int(fh),
-            fold=3,
-            session_id=123,
-            numeric_imputation_target="ffill",
-            verbose=False,
+        ts = pd.DataFrame({"Date": y.index, "y": y.to_numpy(dtype=float)})
+        ts["Date"] = pd.to_datetime(ts["Date"], errors="coerce")
+        ts = cast(pd.DataFrame, ts.dropna(subset=["Date", "y"]))
+        ts = cast(pd.DataFrame, ts.sort_values("Date"))
+        ts["group_id"] = "GLOBAL"
+        ts["time_idx"] = np.arange(len(ts), dtype=int)
+
+        max_pred = fh_i
+        max_enc = max(12, min(90, int(len(ts) - max_pred)))
+        if max_enc <= 0 or len(ts) < (max_pred + 12):
+            raise RuntimeError("insufficient rows for TimeSeriesDataSet baseline")
+
+        training = TimeSeriesDataSet(
+            ts,
+            time_idx="time_idx",
+            target="y",
+            group_ids=["group_id"],
+            max_encoder_length=max_enc,
+            max_prediction_length=max_pred,
+            time_varying_unknown_reals=["y"],
+            allow_missing_timesteps=True,
         )
+        predict_ds = TimeSeriesDataSet.from_dataset(
+            training,
+            ts,
+            predict=True,
+            stop_randomization=True,
+        )
+        predict_dl = predict_ds.to_dataloader(train=False, batch_size=1, num_workers=0)
 
-        best_model = exp.compare_models(sort="MAE", verbose=False, n_select=1)
-        if best_model is None:
-            eprint("PyCaret worker: compare_models returned None.")
-            return None
+        baseline = Baseline()
+        pred_raw = baseline.predict(predict_dl)
+        if hasattr(pred_raw, "detach"):
+            arr = np.asarray(pred_raw.detach().cpu().numpy(), dtype=float)
+        else:
+            arr = np.asarray(pred_raw, dtype=float)
 
-        final_model = exp.finalize_model(best_model)
+        point = arr.reshape(-1)
+        if point.size == 0:
+            raise RuntimeError("empty forecast from Baseline.predict")
 
-        # Attempt prediction intervals, fall back to point forecast.
-        try:
-            eprint(f"Attempting to predict with intervals (coverage={PREDICTION_COVERAGE})...")
-            predictions = exp.predict_model(
-                final_model,
-                return_pred_int=True,
-                alpha=1.0 - float(PREDICTION_COVERAGE),
-            )
-            eprint("Prediction with intervals successful.")
-        except Exception as e_int:
-            eprint(
-                "Warning: could not get prediction intervals. "
-                "The selected model may not support them."
-            )
-            eprint(f"Interval error: {e_int}")
-            eprint("Falling back to point forecast...")
-            predictions = exp.predict_model(final_model)
-            eprint("Point forecast successful.")
-
-        if predictions is None or predictions.empty:
-            eprint("PyCaret worker: predict_model returned empty DataFrame.")
-            return None
-
-        # Normalize expected output columns
-        preds = predictions.copy()
-        rename_map = {"y_pred": "PyCaret_Pred"}
-
-        # PyCaret interval column names vary by version; handle common patterns.
-        cov = str(PREDICTION_COVERAGE)
-        candidates_lower = [
-            f"y_pred_lower_{cov}",
-            f"y_pred_lower_{PREDICTION_COVERAGE}",
-            "y_pred_lower",
-        ]
-        candidates_upper = [
-            f"y_pred_upper_{cov}",
-            f"y_pred_upper_{PREDICTION_COVERAGE}",
-            "y_pred_upper",
-        ]
-
-        lower_found = next((c for c in candidates_lower if c in preds.columns), None)
-        upper_found = next((c for c in candidates_upper if c in preds.columns), None)
-
-        if lower_found:
-            rename_map[lower_found] = "PyCaret_Lower"
-        if upper_found:
-            rename_map[upper_found] = "PyCaret_Upper"
-
-        preds.rename(columns=rename_map, inplace=True)
-
-        # Ensure all 3 columns exist
-        output_cols = ["PyCaret_Pred", "PyCaret_Lower", "PyCaret_Upper"]
-        for col in output_cols:
-            if col not in preds.columns:
-                preds[col] = np.nan
-
-        output_df = cast(pd.DataFrame, preds[output_cols].copy())
-
-        # Enforce numeric dtype where possible
-        for col in output_cols:
-            output_df[col] = pd.to_numeric(output_df[col], errors="coerce")
-
-        eprint(f"Prepared output DataFrame. Shape: {output_df.shape}")
-        return output_df
+        if point.size < fh_i:
+            pad = np.full((fh_i - point.size,), point[-1], dtype=float)
+            point = np.concatenate([point, pad])
+        point = point[:fh_i]
 
     except Exception as e:
-        eprint(f"PyCaret worker: unhandled forecasting error: {e}")
-        traceback.print_exc(file=sys.stderr)
-        return None
+        eprint(
+            "TorchForecast worker: pytorch-forecasting path failed; "
+            f"falling back to naive repeat. Error: {e}"
+        )
+        point = np.full((fh_i,), float(y.iloc[-1]), dtype=float)
+
+    sigma = _safe_sigma(y)
+    z = 1.645 if 0.5 < float(PREDICTION_COVERAGE) < 0.999 else 1.645
+    lower = point - z * sigma
+    upper = point + z * sigma
+
+    return pd.DataFrame(
+        {
+            "TorchForecast_Pred": point,
+            "TorchForecast_Lower": lower,
+            "TorchForecast_Upper": upper,
+        },
+        index=future_idx,
+    )
 
 
 # ----------------------------
-# Main entrypoint (worker protocol)
+# Main entrypoint
 # ----------------------------
+
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     ticker_arg = _resolve_ticker(args)
 
-    # Normal run begins here (help mode will already have exited via argparse)
-    eprint(f"--- Starting PyCaret worker for ticker: {ticker_arg} ---")
+    eprint(f"--- Starting TorchForecast worker for ticker: {ticker_arg} ---")
     eprint(f"FIN root: {paths.APP_ROOT}")
     eprint(f"Raw dir:  {paths.DATA_RAW_DIR}")
     eprint(f"FH:       {FORECAST_HORIZON}")
 
-    # Import optional dependency only after parsing args (so --help works without pycaret)
     try:
-        TSForecastingExperiment = _import_pycaret()
+        Baseline, TimeSeriesDataSet = _import_torch_forecasting()
     except Exception:
         return 1
 
-    stock_data_for_pycaret = fetch_minimal_data(ticker_arg)
-    if stock_data_for_pycaret is None:
-        eprint("PyCaret worker: data preparation failed.")
+    stock_data = fetch_minimal_data(ticker_arg)
+    if stock_data is None:
+        eprint("TorchForecast worker: data preparation failed.")
         return 1
 
-    forecast_results_df = run_pycaret_forecast(TSForecastingExperiment, stock_data_for_pycaret)
-    if forecast_results_df is None or forecast_results_df.empty:
-        eprint("PyCaret worker: forecasting failed or returned no results.")
+    forecast_df = run_torch_forecast(Baseline, TimeSeriesDataSet, stock_data)
+    if forecast_df is None or forecast_df.empty:
+        eprint("TorchForecast worker: forecasting failed or returned no results.")
         return 1
 
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8") as temp_f:
-            forecast_results_df.to_csv(temp_f, index=True, date_format="%Y-%m-%d")
-            # Communication channel back to main app: print the temp file path to stdout
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".csv", delete=False, encoding="utf-8"
+        ) as temp_f:
+            forecast_df.to_csv(temp_f, index=True, date_format="%Y-%m-%d")
             print(temp_f.name, flush=True)
 
-        eprint("--- PyCaret worker: results saved; temp path sent to stdout. ---")
+        eprint("--- TorchForecast worker: results saved; temp path sent to stdout. ---")
         return 0
-
     except Exception as write_err:
-        eprint(f"PyCaret worker: error writing results to temp file: {write_err}")
+        eprint(f"TorchForecast worker: error writing results to temp file: {write_err}")
         traceback.print_exc(file=sys.stderr)
         return 1
 

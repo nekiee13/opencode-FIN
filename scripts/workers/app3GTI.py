@@ -8,7 +8,7 @@ Contract with main orchestrator (Models.run_external_script)
 -----------------------------------------------------------
 - Invoked as:  python app3GTI.py <TICKER>
 - Loads raw OHLCV from FIN layout: data/raw/{TICKER}_data.csv (via src.data.loading.fetch_data)
-- Adds technical indicators (pandas_ta) + classic pivots
+- Adds technical indicators (TA-Lib) + classic pivots
 - Enforces business-day frequency (asfreq('B') with ffill/bfill on OHLC)
 - Writes enriched DataFrame to a temporary CSV file
 - Prints the temp CSV file path to STDOUT (single line)
@@ -26,8 +26,8 @@ Design notes
 
 Optional dependency
 -------------------
-- pandas_ta must be installed in the environment used to execute this worker.
-- Help mode (--help) must succeed even if pandas_ta is missing.
+- TA-Lib must be installed in the environment used to execute this worker.
+- Help mode (--help) must succeed even if TA-Lib is missing.
 """
 
 from __future__ import annotations
@@ -51,6 +51,7 @@ warnings.filterwarnings("ignore")
 # Diagnostics helpers
 # ----------------------------
 
+
 def eprint(*args, **kwargs) -> None:
     print(*args, file=sys.stderr, **kwargs)
 
@@ -58,6 +59,7 @@ def eprint(*args, **kwargs) -> None:
 # ----------------------------
 # sys.path bootstrap (so src.* works when run from scripts/workers)
 # ----------------------------
+
 
 def _bootstrap_sys_path() -> Path:
     this_file = Path(__file__).resolve()
@@ -111,6 +113,7 @@ TARGET_COLUMN = "Close"
 # CLI
 # ----------------------------
 
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     """
     Legacy contract: python app3GTI.py <TICKER>
@@ -146,15 +149,16 @@ def _resolve_ticker(args: argparse.Namespace) -> str:
 
 
 # ----------------------------
-# Optional dependency: pandas_ta — deferred so --help works without pandas_ta
+# Optional dependency: TA-Lib - deferred so --help works without talib
 # ----------------------------
 
-def _require_pandas_ta() -> None:
+
+def _require_talib() -> None:
     try:
-        import pandas_ta as ta  # noqa: F401
+        import talib  # noqa: F401
     except Exception as e:
-        eprint("pandas_ta is not available in this environment.")
-        eprint("Install (example): pip install pandas_ta")
+        eprint("TA-Lib is not available in this environment.")
+        eprint("Install (example): pip install TA-Lib")
         eprint(f"Import error: {e}")
         raise
 
@@ -162,6 +166,7 @@ def _require_pandas_ta() -> None:
 # ----------------------------
 # Helper: Business-day regularization
 # ----------------------------
+
 
 def ensure_business_day_ohlc(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     """
@@ -176,7 +181,9 @@ def ensure_business_day_ohlc(df: pd.DataFrame) -> Optional[pd.DataFrame]:
 
     required = ["Open", "High", "Low", "Close"]
     if not all(c in df.columns for c in required):
-        eprint(f"TI worker: missing OHLC columns before asfreq: required={required}, cols={list(df.columns)}")
+        eprint(
+            f"TI worker: missing OHLC columns before asfreq: required={required}, cols={list(df.columns)}"
+        )
         return None
 
     try:
@@ -188,7 +195,9 @@ def ensure_business_day_ohlc(df: pd.DataFrame) -> Optional[pd.DataFrame]:
         before = len(df_b)
         df_b = cast(pd.DataFrame, df_b.dropna(subset=required, how="any"))
         if df_b.empty and before > 0:
-            eprint("TI worker: data became empty after business-day regularization and OHLC NaN drop.")
+            eprint(
+                "TI worker: data became empty after business-day regularization and OHLC NaN drop."
+            )
             return None
 
         # If Volume exists and is entirely NaN, drop it (legacy behavior)
@@ -207,6 +216,7 @@ def ensure_business_day_ohlc(df: pd.DataFrame) -> Optional[pd.DataFrame]:
 # ----------------------------
 # Classic pivot points
 # ----------------------------
+
 
 def calculate_classic_pivot_points(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -249,9 +259,10 @@ def calculate_classic_pivot_points(df: pd.DataFrame) -> pd.DataFrame:
 # Indicators
 # ----------------------------
 
+
 def add_technical_indicators(df: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
     """
-    Computes TA indicators using pandas_ta and returns enriched dataframe.
+    Computes TA indicators using TA-Lib and returns enriched dataframe.
 
     Keeps legacy naming (after rename pass):
       MA5, MA10, MA20, MA50, MA200,
@@ -271,7 +282,9 @@ def add_technical_indicators(df: pd.DataFrame, ticker: str) -> Optional[pd.DataF
 
     required = ["Open", "High", "Low", "Close"]
     if not all(c in df.columns for c in required):
-        eprint(f"TI worker: missing OHLC required for TA: {required}. cols={list(df.columns)}")
+        eprint(
+            f"TI worker: missing OHLC required for TA: {required}. cols={list(df.columns)}"
+        )
         return None
 
     # Ensure numeric OHLC
@@ -283,92 +296,112 @@ def add_technical_indicators(df: pd.DataFrame, ticker: str) -> Optional[pd.DataF
         return None
 
     try:
+        import talib  # type: ignore
+
         enriched = df.copy()
 
-        # Build list of series/dfs to concat (mirrors legacy behavior)
-        ta_series: List[Union[pd.Series, pd.DataFrame]] = []
+        close = pd.to_numeric(enriched["Close"], errors="coerce").to_numpy(dtype=float)
+        high = pd.to_numeric(enriched["High"], errors="coerce").to_numpy(dtype=float)
+        low = pd.to_numeric(enriched["Low"], errors="coerce").to_numpy(dtype=float)
 
-        # SMAs
-        for length in [5, 10, 20, 50, 200]:
-            s = enriched.ta.sma(length=length, append=False)
-            if isinstance(s, pd.Series):
-                ta_series.append(s)
+        # Trend / moving averages
+        enriched["MA5"] = talib.SMA(close, timeperiod=5)
+        enriched["MA10"] = talib.SMA(close, timeperiod=10)
+        enriched["MA20"] = talib.SMA(close, timeperiod=20)
+        enriched["MA50"] = talib.SMA(close, timeperiod=50)
+        enriched["MA200"] = talib.SMA(close, timeperiod=200)
 
-        ta_series.append(enriched.ta.rsi(length=14, append=False))
-        ta_series.append(enriched.ta.stoch(k=14, d=3, smooth_k=3, append=False))
-        ta_series.append(enriched.ta.stochrsi(length=14, rsi_length=14, k=3, d=3, append=False))
-        ta_series.append(enriched.ta.macd(fast=12, slow=26, signal=9, append=False))
-        ta_series.append(enriched.ta.adx(length=14, append=False))
-        ta_series.append(enriched.ta.cci(length=14, append=False))
-        ta_series.append(enriched.ta.roc(length=10, append=False))
-        ta_series.append(enriched.ta.atr(length=14, append=False))
-        ta_series.append(enriched.ta.uo(fast=7, medium=14, slow=28, append=False))
-        ta_series.append(enriched.ta.willr(length=14, append=False))
+        # Oscillators and momentum
+        enriched["RSI (14)"] = talib.RSI(close, timeperiod=14)
 
-        # Elder Ray Index (Bull/Bear power components)
-        eri_df = enriched.ta.eri(length=13, append=False)
-        if isinstance(eri_df, pd.DataFrame) and "BULLP_13" in eri_df.columns and "BEARP_13" in eri_df.columns:
-            bbp = (eri_df["BULLP_13"] + eri_df["BEARP_13"])
-            bbp.name = "BullBearPower"
-            ta_series.append(bbp)
+        stoch_k, stoch_d = talib.STOCH(
+            high,
+            low,
+            close,
+            fastk_period=14,
+            slowk_period=3,
+            slowk_matype=0,
+            slowd_period=3,
+            slowd_matype=0,
+        )
+        enriched["Stochastic %K"] = stoch_k
+        enriched["STOCH_%D"] = stoch_d
 
-        # Flatten to a list of Series
-        flattened: List[pd.Series] = []
-        for item in ta_series:
-            if isinstance(item, pd.Series):
-                flattened.append(item)
-            elif isinstance(item, pd.DataFrame):
-                for c in item.columns:
-                    flattened.append(cast(pd.Series, item[c]))
+        stochrsi_k, stochrsi_d = talib.STOCHRSI(
+            close,
+            timeperiod=14,
+            fastk_period=3,
+            fastd_period=3,
+            fastd_matype=0,
+        )
+        enriched["STOCHRSI_%K"] = stochrsi_k
+        enriched["STOCHRSI_%D"] = stochrsi_d
 
-        if flattened:
-            enriched = cast(pd.DataFrame, pd.concat([enriched] + flattened, axis=1))
+        macd, macd_signal, macd_hist = talib.MACD(
+            close,
+            fastperiod=12,
+            slowperiod=26,
+            signalperiod=9,
+        )
+        enriched["MACD"] = macd
+        enriched["MACD_Signal"] = macd_signal
+        enriched["MACD_Hist"] = macd_hist
 
-        # Rename TA outputs to legacy-friendly names
-        rename_map = {
-            "SMA_5": "MA5",
-            "SMA_10": "MA10",
-            "SMA_20": "MA20",
-            "SMA_50": "MA50",
-            "SMA_200": "MA200",
-            "RSI_14": "RSI (14)",
-            "STOCHk_14_3_3": "Stochastic %K",
-            "STOCHd_14_3_3": "STOCH_%D",
-            "STOCHRSIk_14_14_3_3": "STOCHRSI_%K",
-            "STOCHRSId_14_14_3_3": "STOCHRSI_%D",
-            "MACD_12_26_9": "MACD",
-            "MACDh_12_26_9": "MACD_Hist",
-            "MACDs_12_26_9": "MACD_Signal",
-            "ADX_14": "ADX (14)",
-            "DMP_14": "ADX_DMP",
-            "DMN_14": "ADX_DMN",
-            "CCI_14_0.015": "CCI (14)",
-            "ROC_10": "ROC (10)",
-            "ATRr_14": "ATR (14)",
-            "UO_7_14_28": "Ultimate Oscillator",
-            "WILLR_14": "Williams %R",
-            "BullBearPower": "BullBear Power",
-        }
-        enriched.rename(columns=rename_map, inplace=True, errors="ignore")
+        enriched["ADX (14)"] = talib.ADX(high, low, close, timeperiod=14)
+        enriched["ADX_DMP"] = talib.PLUS_DI(high, low, close, timeperiod=14)
+        enriched["ADX_DMN"] = talib.MINUS_DI(high, low, close, timeperiod=14)
+
+        enriched["CCI (14)"] = talib.CCI(high, low, close, timeperiod=14)
+        enriched["ROC (10)"] = talib.ROC(close, timeperiod=10)
+        enriched["ATR (14)"] = talib.ATR(high, low, close, timeperiod=14)
+        enriched["Ultimate Oscillator"] = talib.ULTOSC(
+            high,
+            low,
+            close,
+            timeperiod1=7,
+            timeperiod2=14,
+            timeperiod3=28,
+        )
+        enriched["Williams %R"] = talib.WILLR(high, low, close, timeperiod=14)
+
+        # BullBear Power (elder-ray aggregate): (High-EMA13) + (Low-EMA13)
+        ema13 = talib.EMA(close, timeperiod=13)
+        enriched["BullBear Power"] = (high - ema13) + (low - ema13)
 
         # Pivot points
         enriched = calculate_classic_pivot_points(enriched)
 
         # Post-cleaning: drop rows with NaNs in essential model-readiness columns (legacy logic)
         essential_cols = [
-            "Close", "Open", "High", "Low",
-            "ATR (14)", "RSI (14)", "Stochastic %K", "STOCH_%D",
-            "ADX (14)", "CCI (14)", "ROC (10)", "Ultimate Oscillator",
-            "Williams %R", "BullBear Power", "MA50", "MA200",
+            "Close",
+            "Open",
+            "High",
+            "Low",
+            "ATR (14)",
+            "RSI (14)",
+            "Stochastic %K",
+            "STOCH_%D",
+            "ADX (14)",
+            "CCI (14)",
+            "ROC (10)",
+            "Ultimate Oscillator",
+            "Williams %R",
+            "BullBear Power",
+            "MA50",
+            "MA200",
         ]
         existing_essential = [c for c in essential_cols if c in enriched.columns]
 
         before = len(enriched)
         if existing_essential:
-            enriched = cast(pd.DataFrame, enriched.dropna(subset=existing_essential, how="any"))
+            enriched = cast(
+                pd.DataFrame, enriched.dropna(subset=existing_essential, how="any")
+            )
             dropped = before - len(enriched)
             if dropped > 0:
-                eprint(f"TI worker: dropped {dropped} rows with NaNs in {len(existing_essential)} essential columns.")
+                eprint(
+                    f"TI worker: dropped {dropped} rows with NaNs in {len(existing_essential)} essential columns."
+                )
         else:
             enriched = cast(pd.DataFrame, enriched.dropna(subset=["Close"], how="any"))
 
@@ -396,6 +429,7 @@ def add_technical_indicators(df: pd.DataFrame, ticker: str) -> Optional[pd.DataF
 # Main entrypoint (worker protocol)
 # ----------------------------
 
+
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     ticker = _resolve_ticker(args)
@@ -405,9 +439,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     eprint(f"FIN root: {paths.APP_ROOT}")
     eprint(f"Raw dir:  {paths.DATA_RAW_DIR}")
 
-    # Require optional dependency only after parsing args (so --help works without pandas_ta)
+    # Require optional dependency only after parsing args (so --help works without TA-Lib)
     try:
-        _require_pandas_ta()
+        _require_talib()
     except Exception:
         return 1
 
@@ -427,13 +461,17 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     enriched = add_technical_indicators(raw_df_b, ticker)
     if enriched is None or enriched.empty:
-        eprint("TI worker: failed to calculate indicators or data became empty. Aborting.")
+        eprint(
+            "TI worker: failed to calculate indicators or data became empty. Aborting."
+        )
         return 1
 
     # Write temp file and print path to stdout
     temp_path: Optional[str] = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8") as tmp:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".csv", delete=False, encoding="utf-8"
+        ) as tmp:
             temp_path = tmp.name
             enriched.to_csv(tmp, index=True, date_format="%Y-%m-%d")
 
@@ -448,7 +486,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             try:
                 os.remove(temp_path)
             except OSError as rm_err:
-                eprint(f"TI worker: warning - could not remove temp file {temp_path}: {rm_err}")
+                eprint(
+                    f"TI worker: warning - could not remove temp file {temp_path}: {rm_err}"
+                )
         return 1
 
 

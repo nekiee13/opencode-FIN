@@ -22,6 +22,7 @@ DEFAULT_TARGET_COL = "Close"
 # Small utilities (Constants-aware, but safe if Constants is absent)
 # ----------------------------------------------------------------------
 
+
 def _discover_fh() -> int:
     try:
         import Constants as C  # type: ignore
@@ -142,6 +143,7 @@ def _coerce_pred_df(obj: Any, *, default_col: str) -> Optional[pd.DataFrame]:
 # Forecast result structures
 # ----------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ForecastArtifact:
     """
@@ -151,6 +153,7 @@ class ForecastArtifact:
       - pred_df: DataFrame indexed by future dates (DatetimeIndex)
       - pred_col: name of the point forecast column inside pred_df
     """
+
     pred_df: pd.DataFrame
     pred_col: str
 
@@ -185,6 +188,7 @@ class ForecastBundle:
     """
     A bundle of optional forecasts for a ticker.
     """
+
     ticker: str
     fh: int
     forecasts: Dict[str, ForecastArtifact]  # model_name -> artifact
@@ -194,6 +198,7 @@ class ForecastBundle:
 # ----------------------------------------------------------------------
 # Model adapters (import-local to keep optional deps safe)
 # ----------------------------------------------------------------------
+
 
 def run_ets(
     df: pd.DataFrame,
@@ -219,7 +224,9 @@ def run_ets(
 
     return ForecastArtifact(
         pred_df=cast(pd.DataFrame, out_df),
-        pred_col="ETS_Pred" if "ETS_Pred" in out_df.columns else cast(str, out_df.columns[0]),
+        pred_col="ETS_Pred"
+        if "ETS_Pred" in out_df.columns
+        else cast(str, out_df.columns[0]),
         model="ETS",
         lower_col="ETS_Lower" if "ETS_Lower" in out_df.columns else None,
         upper_col="ETS_Upper" if "ETS_Upper" in out_df.columns else None,
@@ -322,7 +329,11 @@ def run_arimax(
     # Normalize any return type into a DataFrame
     if isinstance(r, pd.DataFrame):
         out_df = cast(pd.DataFrame, r.copy())
-        pred_col = "ARIMAX_Pred" if "ARIMAX_Pred" in out_df.columns else cast(str, out_df.columns[0])
+        pred_col = (
+            "ARIMAX_Pred"
+            if "ARIMAX_Pred" in out_df.columns
+            else cast(str, out_df.columns[0])
+        )
         return ForecastArtifact(
             pred_df=cast(pd.DataFrame, out_df),
             pred_col=pred_col,
@@ -350,7 +361,11 @@ def run_arimax(
     if out_df is None:
         return None
 
-    pred_col = str(pred_col_obj) if str(pred_col_obj) in out_df.columns else cast(str, out_df.columns[0])
+    pred_col = (
+        str(pred_col_obj)
+        if str(pred_col_obj) in out_df.columns
+        else cast(str, out_df.columns[0])
+    )
     lower_col = cast(Optional[str], getattr(r, "lower_col", None))
     upper_col = cast(Optional[str], getattr(r, "upper_col", None))
     meta_obj = getattr(r, "meta", {})
@@ -395,7 +410,11 @@ def run_random_walk(
     last = float(y.iloc[-1])
 
     diffs = np.diff(y.to_numpy(dtype=float))
-    sigma = float(np.std(diffs, ddof=1)) if diffs.size > 2 else float(np.std(y.to_numpy(dtype=float), ddof=1) * 0.05)
+    sigma = (
+        float(np.std(diffs, ddof=1))
+        if diffs.size > 2
+        else float(np.std(y.to_numpy(dtype=float), ddof=1) * 0.05)
+    )
     if not np.isfinite(sigma) or sigma <= 0.0:
         sigma = max(abs(last) * 0.01, 1e-6)
 
@@ -441,6 +460,7 @@ def run_pce_narx(
 
     try:
         from src.models.pce_narx import predict_pce_narx as _p  # type: ignore
+
         predict_pce_narx = _p
     except Exception:
         predict_pce_narx = None
@@ -448,6 +468,7 @@ def run_pce_narx(
     if predict_pce_narx is None:
         try:
             import PCEModel  # type: ignore
+
             predict_pce_narx = getattr(PCEModel, "predict_pce_narx", None)
         except Exception:
             predict_pce_narx = None
@@ -472,7 +493,9 @@ def run_pce_narx(
     if out_df is None:
         return None
 
-    pred_col = "PCE_Pred" if "PCE_Pred" in out_df.columns else cast(str, out_df.columns[0])
+    pred_col = (
+        "PCE_Pred" if "PCE_Pred" in out_df.columns else cast(str, out_df.columns[0])
+    )
 
     return ForecastArtifact(
         pred_df=cast(pd.DataFrame, out_df.copy()),
@@ -516,7 +539,9 @@ def compute_forecasts(
     df_b = _as_bday(df)
 
     if "ARIMAX" in allow:
-        a = run_arimax(df_b, ticker=ticker, exog_train=exog_train, exog_future=exog_future, fh=fh_i)
+        a = run_arimax(
+            df_b, ticker=ticker, exog_train=exog_train, exog_future=exog_future, fh=fh_i
+        )
         if a is not None:
             forecasts["ARIMAX"] = a
         else:
@@ -530,7 +555,9 @@ def compute_forecasts(
             warnings_list.append("ETS unavailable or failed.")
 
     if "PCE" in allow:
-        p = run_pce_narx(df_b, ticker=ticker, exog_train=exog_train, exog_future=exog_future)
+        p = run_pce_narx(
+            df_b, ticker=ticker, exog_train=exog_train, exog_future=exog_future
+        )
         if p is not None:
             if len(p.pred_df) >= fh_i:
                 p_df = cast(pd.DataFrame, p.pred_df.iloc[:fh_i].copy())
@@ -543,7 +570,9 @@ def compute_forecasts(
                     meta=p.meta,
                 )
             else:
-                warnings_list.append(f"PCE produced FH={len(p.pred_df)} < requested FH={fh_i}; omitted.")
+                warnings_list.append(
+                    f"PCE produced FH={len(p.pred_df)} < requested FH={fh_i}; omitted."
+                )
         else:
             warnings_list.append("PCE unavailable or failed.")
 
@@ -554,7 +583,9 @@ def compute_forecasts(
         else:
             warnings_list.append("RW unavailable or failed (unexpected).")
 
-    return ForecastBundle(ticker=ticker, fh=fh_i, forecasts=forecasts, warnings=warnings_list)
+    return ForecastBundle(
+        ticker=ticker, fh=fh_i, forecasts=forecasts, warnings=warnings_list
+    )
 
 
 def select_forecast_path(
@@ -568,7 +599,9 @@ def select_forecast_path(
     Raises RuntimeError if bundle has no forecasts.
     """
     if bundle is None or not bundle.forecasts:
-        raise RuntimeError(f"{getattr(bundle, 'ticker', '')}: no forecasts available to select from.")
+        raise RuntimeError(
+            f"{getattr(bundle, 'ticker', '')}: no forecasts available to select from."
+        )
 
     for m in model_priority:
         key = str(m).upper()
@@ -597,7 +630,9 @@ def make_fh_table_row(
     ser = cast(pd.Series, df[artifact.pred_col]).iloc[:fh]
 
     if len(ser) != fh:
-        raise RuntimeError(f"{ticker}: expected FH={fh}, got {len(ser)} from {artifact.model}/{artifact.pred_col}")
+        raise RuntimeError(
+            f"{ticker}: expected FH={fh}, got {len(ser)} from {artifact.model}/{artifact.pred_col}"
+        )
 
     dt_idx = _ensure_datetime_index(cast(pd.Index, ser.index))
 
@@ -627,6 +662,7 @@ def make_fh_table_row(
 # Capability summary (LAZY IMPORT to satisfy Phase-1 import safety)
 # ----------------------------------------------------------------------
 
+
 def capabilities_summary() -> Dict[str, Any]:
     """
     Convenience: expose capability flags relevant to the facade.
@@ -643,16 +679,18 @@ def capabilities_summary() -> Dict[str, Any]:
             "HAS_PANDAS": bool(getattr(_cap, "HAS_PANDAS", False)),
             "HAS_STATSMODELS": bool(getattr(_cap, "HAS_STATSMODELS", False)),
             "HAS_ARCH": bool(getattr(_cap, "HAS_ARCH", False)),
+            "HAS_TORCH": bool(getattr(_cap, "HAS_TORCH", False)),
             "HAS_TENSORFLOW": bool(getattr(_cap, "HAS_TENSORFLOW", False)),
             "HAS_TDA": bool(getattr(_cap, "HAS_TDA", False)),
             "CAPABILITIES": dict(getattr(_cap, "CAPABILITIES", {})),
         }
     except Exception:
         return {
-            "HAS_NUMPY": True,   # numpy is required by this module itself
+            "HAS_NUMPY": True,  # numpy is required by this module itself
             "HAS_PANDAS": True,  # pandas is required by this module itself
             "HAS_STATSMODELS": False,
             "HAS_ARCH": False,
+            "HAS_TORCH": False,
             "HAS_TENSORFLOW": False,
             "HAS_TDA": False,
             "CAPABILITIES": {},

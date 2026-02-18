@@ -26,6 +26,7 @@ from tabulate import tabulate
 # Early path bootstrap (before importing legacy modules)
 # ----------------------------
 
+
 def _bootstrap_sys_path() -> Path:
     """
     Ensure imports work for:
@@ -76,10 +77,13 @@ except Exception as e:
 # Logging (must be set up before other imports log)
 # ----------------------------
 
+
 def _configure_logging() -> logging.Logger:
     paths.ensure_directories()  # explicit side-effect allowed in entrypoint
 
-    log_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
+    log_format = (
+        "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
+    )
     date_format = "%Y-%m-%d %H:%M:%S"
 
     log_file = paths.LOGS_DIR / "Logs.log"
@@ -109,13 +113,13 @@ warnings.filterwarnings("ignore")
 # Lazy legacy module handles (only import when needed)
 # ----------------------------
 
-C = None          # Constants
-compat = None     # compat package bridge
-Models = None     # Models facade
-GUI = None        # GUI module
-Pivots = None     # pivots module
+C = None  # Constants
+compat = None  # compat package bridge
+Models = None  # Models facade
+GUI = None  # GUI module
+Pivots = None  # pivots module
 ExoConfig = None  # exogenous config module
-EXO_CONFIG = None # loaded config
+EXO_CONFIG = None  # loaded config
 
 
 def _import_legacy_modules() -> None:
@@ -177,13 +181,31 @@ def _load_exo_config_once() -> None:
 # GPU setup (TensorFlow optional)
 # ----------------------------
 
+
 def setup_gpu() -> None:
-    """Initializes GPU for TensorFlow if available."""
+    """Initializes GPU visibility logs for optional DL backends."""
     assert compat is not None, "compat not imported"
+    if getattr(compat, "HAS_TORCH", False):
+        torch_mod = getattr(compat, "torch", None)
+        if torch_mod is not None:
+            try:
+                if bool(torch_mod.cuda.is_available()):
+                    n_gpu = int(torch_mod.cuda.device_count())
+                    names = [
+                        str(torch_mod.cuda.get_device_name(i)) for i in range(n_gpu)
+                    ]
+                    log.info("PyTorch: GPU available (%d): %s", n_gpu, names)
+                else:
+                    log.info("PyTorch: GPU not available. Using CPU.")
+            except Exception as e:
+                log.warning("PyTorch: GPU probe failed: %s. Proceeding.", e)
+
     if getattr(compat, "HAS_TENSORFLOW", False):
         tf_mod = getattr(compat, "tf", None)
         if tf_mod is None:
-            log.warning("TensorFlow flag true but compat.tf is None. Proceeding on CPU.")
+            log.warning(
+                "TensorFlow flag true but compat.tf is None. Proceeding on CPU."
+            )
             return
 
         gpus = tf_mod.config.list_physical_devices("GPU")
@@ -193,7 +215,10 @@ def setup_gpu() -> None:
                     tf_mod.config.experimental.set_memory_growth(gpu, True)
                 log.info("TensorFlow: GPU available and configured: %s", gpus)
             except RuntimeError as e:
-                log.warning("TensorFlow: GPU memory growth setup failed: %s. Proceeding on CPU.", e)
+                log.warning(
+                    "TensorFlow: GPU memory growth setup failed: %s. Proceeding on CPU.",
+                    e,
+                )
         else:
             log.info("TensorFlow: GPU not available. Using CPU.")
 
@@ -201,6 +226,7 @@ def setup_gpu() -> None:
 # ----------------------------
 # Plot helpers (Pylance-safe)
 # ----------------------------
+
 
 def _as_datetime_index(idx: pd.Index) -> pd.DatetimeIndex:
     """
@@ -273,6 +299,7 @@ def _to_float_array(obj: Any) -> np.ndarray:
 # Plotting
 # ----------------------------
 
+
 def create_plot(plot_args: Dict[str, Any]) -> None:
     """Generates and saves the final analysis plot with all features and styling."""
     fig = None
@@ -290,21 +317,69 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         assert compat is not None, "compat not imported"
 
         model_styles = {
-            "PyCaret": {"color": "#333333", "marker": "x", "linestyle": "--", "label": "PyCaret"},
-            "ARIMAX":  {"color": "#8A2BE2", "marker": "s", "linestyle": "--", "label": "ARIMAX", "ms": 5, "fill_color": "#E6E6FA"},
-            "PCE":     {"color": "#228B22", "marker": "o", "linestyle": "--", "label": "PCE-NARX", "ms": 5, "fill_color": "#E0FFE0"},
-            "LSTM":    {"color": "#FF8C00", "marker": "o", "linestyle": ":",  "label": "LSTM", "ms": 5, "fill_color": "#FFF5E1"},
-            "GARCH":   {"color": "#DC143C", "marker": "^", "linestyle": ":",  "label": "GARCH", "ms": 5},
-            "VAR":     {"color": "#008B8B", "marker": "D", "linestyle": "-.", "label": "VAR", "ms": 4},
-            "ETS":     {"color": "#00BFFF", "marker": "+", "linestyle": ":",  "label": "ETS", "mew": 2},
-            "RW":      {"color": "gray",    "marker": None, "linestyle": "-.", "label": "RW"},
+            "TorchForecast": {
+                "color": "#333333",
+                "marker": "x",
+                "linestyle": "--",
+                "label": "TorchForecast",
+            },
+            "ARIMAX": {
+                "color": "#8A2BE2",
+                "marker": "s",
+                "linestyle": "--",
+                "label": "ARIMAX",
+                "ms": 5,
+                "fill_color": "#E6E6FA",
+            },
+            "PCE": {
+                "color": "#228B22",
+                "marker": "o",
+                "linestyle": "--",
+                "label": "PCE-NARX",
+                "ms": 5,
+                "fill_color": "#E0FFE0",
+            },
+            "LSTM": {
+                "color": "#FF8C00",
+                "marker": "o",
+                "linestyle": ":",
+                "label": "LSTM",
+                "ms": 5,
+                "fill_color": "#FFF5E1",
+            },
+            "GARCH": {
+                "color": "#DC143C",
+                "marker": "^",
+                "linestyle": ":",
+                "label": "GARCH",
+                "ms": 5,
+            },
+            "VAR": {
+                "color": "#008B8B",
+                "marker": "D",
+                "linestyle": "-.",
+                "label": "VAR",
+                "ms": 4,
+            },
+            "ETS": {
+                "color": "#00BFFF",
+                "marker": "+",
+                "linestyle": ":",
+                "label": "ETS",
+                "mew": 2,
+            },
+            "RW": {"color": "gray", "marker": None, "linestyle": "-.", "label": "RW"},
         }
 
         indicator_styles = {
             "RSI (14)": {"color": "green", "linestyle": "-", "linewidth": 1.5},
             "Stochastic %K": {"color": "purple", "linestyle": "--", "linewidth": 1.5},
             "Williams %R": {"color": "red", "linestyle": ":", "linewidth": 1.5},
-            "Ultimate Oscillator": {"color": "blue", "linestyle": "-.", "linewidth": 1.0},
+            "Ultimate Oscillator": {
+                "color": "blue",
+                "linestyle": "-.",
+                "linewidth": 1.0,
+            },
             "STOCH_%D": {"color": "gray", "linestyle": ":", "linewidth": 1.0},
         }
         default_indicator_style = {"linestyle": ":", "alpha": 0.7}
@@ -329,7 +404,9 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
 
         offset_map = {"1m": pd.DateOffset(months=1), "3m": pd.DateOffset(months=3)}
         last_dt = _safe_timestamp(_as_datetime_index(data.index)[-1])
-        start_date = _safe_timestamp(last_dt) - offset_map.get(period, pd.DateOffset(months=3))
+        start_date = _safe_timestamp(last_dt) - offset_map.get(
+            period, pd.DateOffset(months=3)
+        )
         plot_data = data.loc[start_date:].copy()
 
         if "Close" not in plot_data.columns or plot_data.empty:
@@ -341,15 +418,28 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         close_series = cast(pd.Series, close_numeric).dropna()
 
         if close_series.empty:
-            log.warning("Plot: Close series became empty after numeric coercion/dropna.")
+            log.warning(
+                "Plot: Close series became empty after numeric coercion/dropna."
+            )
             return
 
         # Re-align plot_data to Close series index after dropna
         plot_data = plot_data.reindex(close_series.index)
 
-        ax1.plot(close_series.index, close_series, label="Close Price", lw=2.5, zorder=10)
+        ax1.plot(
+            close_series.index, close_series, label="Close Price", lw=2.5, zorder=10
+        )
 
-        model_plot_order = ["PyCaret", "ARIMAX", "PCE", "LSTM", "GARCH", "VAR", "ETS", "RW"]
+        model_plot_order = [
+            "TorchForecast",
+            "ARIMAX",
+            "PCE",
+            "LSTM",
+            "GARCH",
+            "VAR",
+            "ETS",
+            "RW",
+        ]
         forecast_dates: Optional[pd.Index] = None
 
         for name in model_plot_order:
@@ -382,7 +472,11 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                 upper_arr = _to_float_array(preds[upper_col])
                 x_fill = _date2num_index(preds.index)
 
-                ok = np.isfinite(lower_arr) & np.isfinite(upper_arr) & np.isfinite(x_fill)
+                ok = (
+                    np.isfinite(lower_arr)
+                    & np.isfinite(upper_arr)
+                    & np.isfinite(x_fill)
+                )
                 if np.any(ok):
                     cast(Any, ax1).fill_between(
                         x_fill[ok],
@@ -410,14 +504,37 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                 width=int(C.PEAK_WIDTH),
             )
 
-            ax1.plot(close_series.index[peaks], close_series.iloc[peaks], "v", color="red", ms=8, label="Peaks", zorder=12)
-            ax1.plot(close_series.index[troughs], close_series.iloc[troughs], "^", color="green", ms=8, label="Troughs", zorder=12)
+            ax1.plot(
+                close_series.index[peaks],
+                close_series.iloc[peaks],
+                "v",
+                color="red",
+                ms=8,
+                label="Peaks",
+                zorder=12,
+            )
+            ax1.plot(
+                close_series.index[troughs],
+                close_series.iloc[troughs],
+                "^",
+                color="green",
+                ms=8,
+                label="Troughs",
+                zorder=12,
+            )
 
-        if pivot_data and "Classic" in pivot_data and forecast_dates is not None and len(forecast_dates) > 1:
+        if (
+            pivot_data
+            and "Classic" in pivot_data
+            and forecast_dates is not None
+            and len(forecast_dates) > 1
+        ):
             pivot_levels = pivot_data["Classic"]
 
             fd = _as_datetime_index(forecast_dates)
-            line_start_date = _safe_timestamp(plot_data.index[0]) + pd.DateOffset(days=2)
+            line_start_date = _safe_timestamp(plot_data.index[0]) + pd.DateOffset(
+                days=2
+            )
             line_end_date = _safe_timestamp(fd[1])
             label_date = _safe_timestamp(plot_data.index[0]) + pd.DateOffset(days=1)
 
@@ -449,7 +566,12 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                         va="center",
                         ha="left",
                         fontsize=9,
-                        bbox=dict(facecolor="white", alpha=0.5, edgecolor="none", boxstyle="round,pad=0.1"),
+                        bbox=dict(
+                            facecolor="white",
+                            alpha=0.5,
+                            edgecolor="none",
+                            boxstyle="round,pad=0.1",
+                        ),
                         zorder=12,
                     )
 
@@ -465,8 +587,12 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                 for i in range(len(bkps) - 1):
                     start_idx, end_idx = int(bkps[i]), int(bkps[i + 1])
                     if start_idx < len(close_series) and end_idx <= len(close_series):
-                        start_date_reg = _safe_timestamp(_as_datetime_index(close_series.index)[start_idx])
-                        end_date_reg = _safe_timestamp(_as_datetime_index(close_series.index)[end_idx - 1])
+                        start_date_reg = _safe_timestamp(
+                            _as_datetime_index(close_series.index)[start_idx]
+                        )
+                        end_date_reg = _safe_timestamp(
+                            _as_datetime_index(close_series.index)[end_idx - 1]
+                        )
 
                         cast(Any, ax1).axvspan(
                             _date2num_one(start_date_reg),
@@ -476,7 +602,9 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                             label="_nolegend_",
                         )
 
-                        label_x_pos = start_date_reg + (end_date_reg - start_date_reg) / 2
+                        label_x_pos = (
+                            start_date_reg + (end_date_reg - start_date_reg) / 2
+                        )
                         y_min, y_max = ax1.get_ylim()
                         label_y_pos = y_min + (y_max - y_min) * 0.03
 
@@ -488,7 +616,12 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                             va="bottom",
                             fontsize=9,
                             color="black",
-                            bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", boxstyle="round,pad=0.2"),
+                            bbox=dict(
+                                facecolor="white",
+                                alpha=0.6,
+                                edgecolor="none",
+                                boxstyle="round,pad=0.2",
+                            ),
                             zorder=12,
                         )
 
@@ -515,7 +648,13 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                 )
 
         if "GARCH_Hist_Vol" in plot_data.columns:
-            ax2.plot(plot_data.index, plot_data["GARCH_Hist_Vol"], color="gray", alpha=0.7, label="Historical Vol^2")
+            ax2.plot(
+                plot_data.index,
+                plot_data["GARCH_Hist_Vol"],
+                color="gray",
+                alpha=0.7,
+                label="Historical Vol^2",
+            )
 
         ax3.set_ylabel("Indicator Oscillators")
         ax3.grid(True, which="both", linestyle="--", linewidth=0.5)
@@ -527,7 +666,9 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         for indicator in C.INDICATORS_0_100:
             if indicator in plot_data.columns:
                 style = indicator_styles.get(indicator, default_indicator_style)
-                ax3.plot(plot_data.index, plot_data[indicator], label=indicator, **style)
+                ax3.plot(
+                    plot_data.index, plot_data[indicator], label=indicator, **style
+                )
 
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
@@ -555,7 +696,10 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
 # Markdown formatting helpers
 # ----------------------------
 
-def format_indicator_table(ticker: str, date: Any, latest_indicators: pd.Series, pivot_data) -> str:
+
+def format_indicator_table(
+    ticker: str, date: Any, latest_indicators: pd.Series, pivot_data
+) -> str:
     assert C is not None, "Constants not imported"
     if latest_indicators is None or latest_indicators.empty:
         return "Could not generate indicator table."
@@ -588,7 +732,11 @@ def format_indicator_table(ticker: str, date: Any, latest_indicators: pd.Series,
     for display_name, series_name in indicator_map.items():
         value = None
         if series_name == "Classic Pivot":
-            if pivot_data and "Classic" in pivot_data and "Pivot" in pivot_data["Classic"]:
+            if (
+                pivot_data
+                and "Classic" in pivot_data
+                and "Pivot" in pivot_data["Classic"]
+            ):
                 value = pivot_data["Classic"]["Pivot"]
         elif series_name in latest_indicators:
             value = latest_indicators[series_name]
@@ -599,10 +747,21 @@ def format_indicator_table(ticker: str, date: Any, latest_indicators: pd.Series,
     return "\n".join(table)
 
 
-def format_forecast_table(ticker: str, model_results: Dict[str, Optional[pd.DataFrame]]) -> str:
+def format_forecast_table(
+    ticker: str, model_results: Dict[str, Optional[pd.DataFrame]]
+) -> str:
     assert C is not None, "Constants not imported"
     header = f"#### {ticker} Forecasting results (Day {C.FH}):"
-    model_order = ["PyCaret", "ARIMAX", "PCE", "LSTM", "GARCH", "VAR", "RW", "ETS"]
+    model_order = [
+        "TorchForecast",
+        "ARIMAX",
+        "PCE",
+        "LSTM",
+        "GARCH",
+        "VAR",
+        "RW",
+        "ETS",
+    ]
     table = [
         header,
         "| Model   | Lower CI | Forecast | Upper CI |",
@@ -615,20 +774,37 @@ def format_forecast_table(ticker: str, model_results: Dict[str, Optional[pd.Data
         lower_col = f"{model_name}_Lower"
         upper_col = f"{model_name}_Upper"
 
-        if preds_df is None or preds_df.empty or len(preds_df) < int(C.FH) or pred_col not in preds_df:
+        if (
+            preds_df is None
+            or preds_df.empty
+            or len(preds_df) < int(C.FH)
+            or pred_col not in preds_df
+        ):
             pred_str, lower_str, upper_str = "-", "-", "-"
         else:
             final_day = preds_df.iloc[-1]
             pred_str = f"{float(final_day[pred_col]):.4f}"
-            lower_str = f"{float(final_day[lower_col]):.4f}" if lower_col in final_day and pd.notna(final_day[lower_col]) else "-"
-            upper_str = f"{float(final_day[upper_col]):.4f}" if upper_col in final_day and pd.notna(final_day[upper_col]) else "-"
+            lower_str = (
+                f"{float(final_day[lower_col]):.4f}"
+                if lower_col in final_day and pd.notna(final_day[lower_col])
+                else "-"
+            )
+            upper_str = (
+                f"{float(final_day[upper_col]):.4f}"
+                if upper_col in final_day and pd.notna(final_day[upper_col])
+                else "-"
+            )
 
-        table.append(f"| {model_name:<7} | {lower_str:>8} | {pred_str:>8} | {upper_str:>8} |")
+        table.append(
+            f"| {model_name:<7} | {lower_str:>8} | {pred_str:>8} | {upper_str:>8} |"
+        )
 
     return "\n".join(table)
 
 
-def format_garch_vol_table(ticker: str, garch_vol_forecast: Optional[pd.DataFrame]) -> str:
+def format_garch_vol_table(
+    ticker: str, garch_vol_forecast: Optional[pd.DataFrame]
+) -> str:
     if garch_vol_forecast is None or garch_vol_forecast.empty:
         return ""
     header = f"#### {ticker} GARCH Volatility Forecast (Variance):"
@@ -639,7 +815,9 @@ def format_garch_vol_table(ticker: str, garch_vol_forecast: Optional[pd.DataFram
     ]
     for date, row in garch_vol_forecast.iterrows():
         date_ts = _safe_timestamp(date)
-        table.append(f"| {date_ts.strftime('%Y-%m-%d')} | {float(row['Volatility_Forecast']):.4f}   |")
+        table.append(
+            f"| {date_ts.strftime('%Y-%m-%d')} | {float(row['Volatility_Forecast']):.4f}   |"
+        )
     return "\n".join(table)
 
 
@@ -652,9 +830,13 @@ def format_garch_summary_markdown(ticker: str, garch_results) -> str:
             return garch_results.summary().as_text()
 
         results_data = summary_tables[0].data
-        table1_data = [results_data[i][:2] for i in range(len(results_data))] + [results_data[i][2:] for i in range(len(results_data))]
+        table1_data = [results_data[i][:2] for i in range(len(results_data))] + [
+            results_data[i][2:] for i in range(len(results_data))
+        ]
         header1 = "**AR-X - GARCH Model Results**"
-        table1_md = tabulate(table1_data, headers=["**Parameter**", "**Value**"], tablefmt="pipe")
+        table1_md = tabulate(
+            table1_data, headers=["**Parameter**", "**Value**"], tablefmt="pipe"
+        )
 
         header2 = "**Mean Model**"
         table2_headers_raw = summary_tables[1].data[0]
@@ -671,13 +853,17 @@ def format_garch_summary_markdown(ticker: str, garch_results) -> str:
         footer = "**Covariance estimator: robust**"
         return f"{header1}\n{table1_md}\n\n{header2}\n{table2_md}\n\n{header3}\n{table3_md}\n\n{footer}"
     except Exception as e:
-        log.warning("Could not format GARCH summary to Markdown; falling back to text. Error: %s", e)
+        log.warning(
+            "Could not format GARCH summary to Markdown; falling back to text. Error: %s",
+            e,
+        )
         return garch_results.summary().as_text()
 
 
 # ----------------------------
 # Orchestrated pipeline
 # ----------------------------
+
 
 def analysis_pipeline(
     ticker: str,
@@ -706,16 +892,30 @@ def analysis_pipeline(
             return False, 0.0
 
         if getattr(compat, "HAS_ARCH", False):
-            enriched_data["GARCH_Hist_Vol"] = (100 * enriched_data["Close"].pct_change()).pow(2)
+            enriched_data["GARCH_Hist_Vol"] = (
+                100 * enriched_data["Close"].pct_change()
+            ).pow(2)
 
-        atr_change_std = float(enriched_data["ATR (14)"].diff().std()) if "ATR (14)" in enriched_data.columns else 0.0
+        atr_change_std = (
+            float(enriched_data["ATR (14)"].diff().std())
+            if "ATR (14)" in enriched_data.columns
+            else 0.0
+        )
 
         latest_indicators = enriched_data.iloc[-1]
         pivot_data = Pivots.calculate_latest_pivot_points(enriched_data)
 
-        print("\n" + format_indicator_table(ticker, latest_indicators.name, latest_indicators, pivot_data))
+        print(
+            "\n"
+            + format_indicator_table(
+                ticker, latest_indicators.name, latest_indicators, pivot_data
+            )
+        )
         if pivot_data:
-            print("\n" + Pivots.format_pivot_table(pivot_data, ticker, latest_indicators.name))
+            print(
+                "\n"
+                + Pivots.format_pivot_table(pivot_data, ticker, latest_indicators.name)
+            )
             print()
 
         progress_callback(20, "Running forecast models...")
@@ -728,32 +928,50 @@ def analysis_pipeline(
 
         if arimax_residuals is not None and getattr(compat, "HAS_ARCH", False):
             p_value = float(het_arch(arimax_residuals, nlags=10)[1])
-            test_result = "Significant (GARCH is appropriate)" if p_value < 0.05 else "Not Significant"
-            print(f"ARIMAX Residual ARCH Test (p-value): {p_value:.4f} -> {test_result}\n")
+            test_result = (
+                "Significant (GARCH is appropriate)"
+                if p_value < 0.05
+                else "Not Significant"
+            )
+            print(
+                f"ARIMAX Residual ARCH Test (p-value): {p_value:.4f} -> {test_result}\n"
+            )
 
         if getattr(compat, "HAS_ARCH", False):
-            garch_price_forecast, garch_vol_forecast, garch_results = Models.predict_arch_model(
-                enriched_data,
-                ticker=ticker,
-                exo_config=exo_config,
+            garch_price_forecast, garch_vol_forecast, garch_results = (
+                Models.predict_arch_model(
+                    enriched_data,
+                    ticker=ticker,
+                    exo_config=exo_config,
+                )
             )
         else:
             garch_price_forecast, garch_vol_forecast, garch_results = None, None, None
 
         model_results: Dict[str, Optional[pd.DataFrame]] = {
-            "PyCaret": Models.run_external_pycaret(ticker),
+            "TorchForecast": Models.run_external_torch_forecasting(ticker),
             "ARIMAX": arimax_preds,
-            "PCE": Models.predict_pce_narx(enriched_data, ticker=ticker, exo_config=exo_config),
-            "LSTM": Models.predict_lstm(enriched_data, ticker=ticker, exo_config=exo_config) if getattr(compat, "HAS_TENSORFLOW", False) else None,
+            "PCE": Models.predict_pce_narx(
+                enriched_data, ticker=ticker, exo_config=exo_config
+            ),
+            "LSTM": Models.predict_lstm(
+                enriched_data, ticker=ticker, exo_config=exo_config
+            )
+            if getattr(compat, "HAS_TORCH", False)
+            else None,
             "GARCH": garch_price_forecast,
             "ETS": Models.predict_exp_smoothing(enriched_data),
             "RW": Models.predict_random_walk(enriched_data),
-            "VAR": Models.predict_var(enriched_data) if getattr(compat, "HAS_STATSMODELS", False) else None,
+            "VAR": Models.predict_var(enriched_data)
+            if getattr(compat, "HAS_STATSMODELS", False)
+            else None,
         }
 
         print("\n" + format_forecast_table(ticker, model_results))
         if arimax_order:
-            print(f"\n* ARIMAX Model Selected: p,d,q = {arimax_order} with configured exogenous regressors.")
+            print(
+                f"\n* ARIMAX Model Selected: p,d,q = {arimax_order} with configured exogenous regressors."
+            )
 
         if garch_results:
             print("\n#### GARCH Model Summary:\n")
@@ -778,7 +996,12 @@ def analysis_pipeline(
         return True, atr_change_std
 
     except Exception as e:
-        log.error("An error occurred during the analysis pipeline for %s: %s", ticker, e, exc_info=True)
+        log.error(
+            "An error occurred during the analysis pipeline for %s: %s",
+            ticker,
+            e,
+            exc_info=True,
+        )
         messagebox.showerror("Analysis Failed", f"An unexpected error occurred: {e}")
         return False, 0.0
 
@@ -786,6 +1009,7 @@ def analysis_pipeline(
 # ----------------------------
 # Application Entry Point
 # ----------------------------
+
 
 def _startup_sanity_checks() -> None:
     """
@@ -797,15 +1021,21 @@ def _startup_sanity_checks() -> None:
         messagebox.showerror(
             "Startup Error",
             f"Raw data folder not found:\n{paths.DATA_RAW_DIR}\n"
-            "Please ensure data/raw exists and contains *_data.csv files."
+            "Please ensure data/raw exists and contains *_data.csv files.",
         )
         raise SystemExit(1)
 
     if not paths.EXO_CONFIG_PATH.exists():
-        log.warning("Exogenous config not found at %s. Exogenous scenarios will be disabled.", paths.EXO_CONFIG_PATH)
+        log.warning(
+            "Exogenous config not found at %s. Exogenous scenarios will be disabled.",
+            paths.EXO_CONFIG_PATH,
+        )
 
     if not paths.GRAPHS_DIR.exists():
-        messagebox.showerror("Startup Error", f"Graphs folder not found and could not be created:\n{paths.GRAPHS_DIR}")
+        messagebox.showerror(
+            "Startup Error",
+            f"Graphs folder not found and could not be created:\n{paths.GRAPHS_DIR}",
+        )
         raise SystemExit(1)
 
 

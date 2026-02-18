@@ -82,7 +82,9 @@ def _make_bday_ohlcv(
 
 
 def _future_bdays(last_dt: pd.Timestamp, fh: int) -> pd.DatetimeIndex:
-    return pd.bdate_range(last_dt + pd.tseries.frequencies.to_offset("B"), periods=fh, freq="B")
+    return pd.bdate_range(
+        last_dt + pd.tseries.frequencies.to_offset("B"), periods=fh, freq="B"
+    )
 
 
 def _has_module(modname: str) -> bool:
@@ -156,7 +158,9 @@ def test_random_walk_smoke_fh3() -> None:
 
 def test_var_smoke_skips_if_missing_statsmodels() -> None:
     has_flag = _has_fin_compat_flag("HAS_STATSMODELS")
-    has_statsmodels = bool(has_flag) if has_flag is not None else _has_module("statsmodels")
+    has_statsmodels = (
+        bool(has_flag) if has_flag is not None else _has_module("statsmodels")
+    )
     if not has_statsmodels:
         pytest.skip("statsmodels not available; VAR smoke test skipped.")
 
@@ -184,7 +188,9 @@ def test_pce_narx_smoke_skips_if_missing_deps() -> None:
     has_chaospy = _has_module("chaospy")
     has_sklearn = _has_module("sklearn")
     if not (has_chaospy and has_sklearn):
-        pytest.skip("chaospy and/or scikit-learn not available; PCE-NARX smoke test skipped.")
+        pytest.skip(
+            "chaospy and/or scikit-learn not available; PCE-NARX smoke test skipped."
+        )
 
     from src.models.pce_narx import predict_pce_narx
 
@@ -203,15 +209,15 @@ def test_pce_narx_smoke_skips_if_missing_deps() -> None:
 
 
 # ---------------------------------------------------------------------
-# LSTM Quantiles (tensorflow optional)
+# LSTM Quantiles (torch optional)
 # ---------------------------------------------------------------------
 
 
-def test_lstm_quantiles_smoke_skips_if_missing_tensorflow() -> None:
-    has_flag = _has_fin_compat_flag("HAS_TENSORFLOW")
-    has_tf = bool(has_flag) if has_flag is not None else _has_module("tensorflow")
-    if not has_tf:
-        pytest.skip("tensorflow not available; LSTM smoke test skipped.")
+def test_lstm_quantiles_smoke_skips_if_missing_torch() -> None:
+    has_flag = _has_fin_compat_flag("HAS_TORCH")
+    has_torch = bool(has_flag) if has_flag is not None else _has_module("torch")
+    if not has_torch:
+        pytest.skip("torch not available; LSTM smoke test skipped.")
 
     from src.models.lstm import predict_lstm_quantiles
 
@@ -259,7 +265,7 @@ def test_lstm_quantiles_smoke_skips_if_missing_tensorflow() -> None:
         ("src.models.random_walk", ()),
         ("src.models.var", ("statsmodels",)),
         ("src.models.pce_narx", ("chaospy", "sklearn")),
-        ("src.models.lstm", ("tensorflow",)),
+        ("src.models.lstm", ("torch",)),
     ],
 )
 def test_model_module_imports(modname: str, deps: Tuple[str, ...]) -> None:

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Sequence, Tuple, cast
 
@@ -24,6 +25,7 @@ DEFAULT_TARGET_COL = "Close"
 # Result structure
 # ----------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class LSTMResult:
     model_used: str
@@ -38,6 +40,7 @@ class LSTMResult:
 # ----------------------------------------------------------------------
 # Constants discovery (optional; compat/Constants.py may exist)
 # ----------------------------------------------------------------------
+
 
 def _discover_fh() -> int:
     try:
@@ -70,32 +73,22 @@ def _as_bday(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _future_index(last_dt: pd.Timestamp, fh: int) -> pd.DatetimeIndex:
-    return cast(pd.DatetimeIndex, pd.date_range(start=last_dt + to_offset("B"), periods=int(fh), freq="B"))
+    return cast(
+        pd.DatetimeIndex,
+        pd.date_range(start=last_dt + to_offset("B"), periods=int(fh), freq="B"),
+    )
 
 
 # ----------------------------------------------------------------------
-# Pinball loss for quantile regression (TF-loaded lazily)
+# Loss + dataset utilities
 # ----------------------------------------------------------------------
 
-def _pinball_loss(q: float):
-    """
-    Returns a tf.keras loss function implementing pinball loss for quantile q.
-    TensorFlow symbols are resolved at runtime (lazy import).
-    """
+
+def _pinball_loss(y_true: Any, y_pred: Any, q: float, torch_mod: Any) -> Any:
     qf = float(q)
+    e = y_true - y_pred
+    return torch_mod.mean(torch_mod.maximum(qf * e, (qf - 1.0) * e))
 
-    def loss(y_true, y_pred):
-        import tensorflow as tf  # type: ignore
-
-        e = y_true - y_pred
-        return tf.reduce_mean(tf.maximum(qf * e, (qf - 1.0) * e))
-
-    return loss
-
-
-# ----------------------------------------------------------------------
-# Dataset utilities
-# ----------------------------------------------------------------------
 
 def _build_supervised_windows(
     X: np.ndarray,
@@ -136,13 +129,16 @@ def _scale_minmax_fit(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray
     return X_scaled, x_min, x_range
 
 
-def _scale_minmax_apply(X: np.ndarray, x_min: np.ndarray, x_range: np.ndarray) -> np.ndarray:
+def _scale_minmax_apply(
+    X: np.ndarray, x_min: np.ndarray, x_range: np.ndarray
+) -> np.ndarray:
     return (X - x_min) / x_range
 
 
 # ----------------------------------------------------------------------
 # Public API
 # ----------------------------------------------------------------------
+
 
 def predict_lstm_quantiles(
     enriched_data: pd.DataFrame,
@@ -165,7 +161,7 @@ def predict_lstm_quantiles(
     verbose: int = 0,
 ) -> Optional[LSTMResult]:
     """
-    Quantile LSTM forecaster.
+    Quantile LSTM forecaster (PyTorch backend).
 
     Output
     ------
@@ -176,20 +172,20 @@ def predict_lstm_quantiles(
 
     Notes
     -----
-    - TensorFlow is optional. If missing, returns None.
+    - PyTorch is optional. If missing, returns None.
     - Exogenous regressors are optional. If provided, they are concatenated as extra features.
     - Forecast is recursive: predicted point estimate feeds into the next step.
     """
-    if not cap.HAS_TENSORFLOW:
-        log.info("LSTM disabled: optional dependency 'tensorflow' not available.")
+    if not getattr(cap, "HAS_TORCH", False):
+        log.info("LSTM disabled: optional dependency 'torch' not available.")
         return None
 
-    # Lazy TF import (keeps module import-safe)
+    # Lazy torch import (keeps module import-safe)
     try:
-        import tensorflow as tf  # type: ignore
-        from tensorflow import keras  # type: ignore
+        import torch  # type: ignore
+        from torch import nn  # type: ignore
     except Exception as e:
-        log.warning("LSTM disabled: could not import tensorflow/keras: %s", e)
+        log.warning("LSTM disabled: could not import torch: %s", e)
         return None
 
     if enriched_data is None or enriched_data.empty:
@@ -204,15 +200,16 @@ def predict_lstm_quantiles(
         raise ValueError("quantiles must satisfy 0 < q_lo < q_hi < 1.")
 
     if tgt not in enriched_data.columns:
-        log.warning("LSTM: target column '%s' missing for %s.", tgt, ticker or "<ticker>")
+        log.warning(
+            "LSTM: target column '%s' missing for %s.", tgt, ticker or "<ticker>"
+        )
         return None
 
     # Determinism (best effort)
     np.random.seed(int(seed))
-    try:
-        tf.random.set_seed(int(seed))
-    except Exception:
-        pass
+    torch.manual_seed(int(seed))
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(int(seed))
 
     df_b = _as_bday(enriched_data)
 
@@ -284,7 +281,9 @@ def predict_lstm_quantiles(
     # Supervised windows
     X_win, y_win = _build_supervised_windows(X_scaled, y_raw, lookback=int(lookback))
     if X_win.size == 0 or y_win.size == 0:
-        log.warning("LSTM: could not build supervised windows for %s.", ticker or "<ticker>")
+        log.warning(
+            "LSTM: could not build supervised windows for %s.", ticker or "<ticker>"
+        )
         return None
 
     # Train/val split (simple holdout)
@@ -293,53 +292,123 @@ def predict_lstm_quantiles(
     X_tr, y_tr = X_win[:split], y_win[:split]
     X_va, y_va = X_win[split:], y_win[split:]
 
-    # Build model: trunk + two quantile heads
-    inp = keras.Input(shape=(int(lookback), int(X_win.shape[2])), name="x")
-    x = keras.layers.LSTM(int(lstm_units), return_sequences=False, name="lstm")(inp)
-    if float(dropout) > 0:
-        x = keras.layers.Dropout(float(dropout), name="dropout")(x)
-    x = keras.layers.Dense(int(dense_units), activation="relu", name="dense")(x)
+    n_features = int(X_win.shape[2])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    out_lo = keras.layers.Dense(1, name="q_lo")(x)
-    out_hi = keras.layers.Dense(1, name="q_hi")(x)
+    class _LSTMQuantileNet(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.lstm = nn.LSTM(
+                input_size=n_features,
+                hidden_size=int(lstm_units),
+                num_layers=1,
+                batch_first=True,
+            )
+            self.dropout = (
+                nn.Dropout(float(dropout)) if float(dropout) > 0 else nn.Identity()
+            )
+            self.dense = nn.Linear(int(lstm_units), int(dense_units))
+            self.relu = nn.ReLU()
+            self.q_lo = nn.Linear(int(dense_units), 1)
+            self.q_hi = nn.Linear(int(dense_units), 1)
 
-    model = keras.Model(inputs=inp, outputs=[out_lo, out_hi], name="lstm_quantiles")
+        def forward(self, x: Any) -> Tuple[Any, Any]:
+            out, _ = self.lstm(x)
+            h = out[:, -1, :]
+            h = self.dropout(h)
+            h = self.relu(self.dense(h))
+            return self.q_lo(h), self.q_hi(h)
 
-    opt = keras.optimizers.Adam(learning_rate=float(learning_rate))
-    model.compile(
-        optimizer=opt,
-        loss={"q_lo": _pinball_loss(q_lo), "q_hi": _pinball_loss(q_hi)},
-    )
+    model = _LSTMQuantileNet().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=float(learning_rate))
 
-    callbacks = [
-        keras.callbacks.EarlyStopping(
-            monitor="val_loss",
-            patience=10,
-            restore_best_weights=True,
-        )
-    ]
+    x_tr_t = torch.tensor(X_tr, dtype=torch.float32, device=device)
+    y_tr_t = torch.tensor(y_tr, dtype=torch.float32, device=device)
 
-    # Pylance fix: keras stubs can type verbose as str; cast through Any to preserve runtime.
-    model_any = cast(Any, model)
+    has_val = len(X_va) > 0
+    if has_val:
+        x_va_t = torch.tensor(X_va, dtype=torch.float32, device=device)
+        y_va_t = torch.tensor(y_va, dtype=torch.float32, device=device)
+    else:
+        x_va_t = None
+        y_va_t = None
+
+    best_state: Optional[Dict[str, Any]] = None
+    best_loss = float("inf")
+    patience = 10
+    bad_epochs = 0
+    bs = max(1, int(batch_size))
 
     try:
-        validation_data: Any
-        if len(X_va) > 0:
-            validation_data = (X_va, {"q_lo": y_va, "q_hi": y_va})
-        else:
-            validation_data = None
+        for ep in range(int(epochs)):
+            model.train()
+            perm = torch.randperm(x_tr_t.size(0), device=device)
+            train_loss_acc = 0.0
+            n_batches = 0
 
-        model_any.fit(
-            X_tr,
-            {"q_lo": y_tr, "q_hi": y_tr},
-            validation_data=validation_data,
-            epochs=int(epochs),
-            batch_size=int(batch_size),
-            verbose=int(verbose),
-            callbacks=callbacks,
-        )
+            for start in range(0, int(x_tr_t.size(0)), bs):
+                idx = perm[start : start + bs]
+                xb = x_tr_t.index_select(0, idx)
+                yb = y_tr_t.index_select(0, idx)
+
+                optimizer.zero_grad()
+                lo_hat, hi_hat = model(xb)
+                loss = _pinball_loss(yb, lo_hat, q_lo, torch) + _pinball_loss(
+                    yb, hi_hat, q_hi, torch
+                )
+                loss.backward()
+                optimizer.step()
+
+                train_loss_acc += float(loss.detach().cpu().item())
+                n_batches += 1
+
+            train_loss = train_loss_acc / max(1, n_batches)
+
+            if has_val and x_va_t is not None and y_va_t is not None:
+                model.eval()
+                with torch.no_grad():
+                    lo_v, hi_v = model(x_va_t)
+                    val_loss_t = _pinball_loss(
+                        y_va_t, lo_v, q_lo, torch
+                    ) + _pinball_loss(y_va_t, hi_v, q_hi, torch)
+                    monitor = float(val_loss_t.detach().cpu().item())
+            else:
+                monitor = train_loss
+
+            if monitor + 1e-9 < best_loss:
+                best_loss = monitor
+                best_state = deepcopy(model.state_dict())
+                bad_epochs = 0
+            else:
+                bad_epochs += 1
+
+            if int(verbose) > 0:
+                if has_val:
+                    log.info(
+                        "LSTM[%s] epoch=%d train_loss=%.6f val_loss=%.6f",
+                        ticker or "<ticker>",
+                        ep + 1,
+                        train_loss,
+                        monitor,
+                    )
+                else:
+                    log.info(
+                        "LSTM[%s] epoch=%d train_loss=%.6f",
+                        ticker or "<ticker>",
+                        ep + 1,
+                        train_loss,
+                    )
+
+            if bad_epochs >= patience:
+                break
+
+        if best_state is not None:
+            model.load_state_dict(best_state)
+
     except Exception as e:
-        log.warning("LSTM: training failed for %s: %s", ticker or "<ticker>", e, exc_info=True)
+        log.warning(
+            "LSTM: training failed for %s: %s", ticker or "<ticker>", e, exc_info=True
+        )
         return None
 
     # Future index: avoid pd.Timestamp(Index) patterns (Pylance + runtime safety)
@@ -363,12 +432,20 @@ def predict_lstm_quantiles(
 
         if exf is None:
             last_row = cast(pd.Series, ex_train_aligned.iloc[-1])
-            exf = pd.DataFrame([last_row.values] * int(fh_i), index=fut_idx, columns=ex_train_aligned.columns)
+            exf = pd.DataFrame(
+                [last_row.values] * int(fh_i),
+                index=fut_idx,
+                columns=ex_train_aligned.columns,
+            )
 
         ex_future_aligned = cast(pd.DataFrame, exf.reindex(index=fut_idx).ffill())
         if ex_future_aligned.isna().any(axis=None):
             last_row = cast(pd.Series, ex_train_aligned.iloc[-1])
-            ex_future_aligned = pd.DataFrame([last_row.values] * int(fh_i), index=fut_idx, columns=ex_train_aligned.columns)
+            ex_future_aligned = pd.DataFrame(
+                [last_row.values] * int(fh_i),
+                index=fut_idx,
+                columns=ex_train_aligned.columns,
+            )
 
     # Recursive forecast (raw space feedback, scaled input window)
     last_hist_raw = X_raw[-int(lookback) :, :].copy()  # (lookback, n_features)
@@ -376,14 +453,19 @@ def predict_lstm_quantiles(
     lowers: list[float] = []
     uppers: list[float] = []
 
+    model.eval()
     for step in range(int(fh_i)):
         X_in_raw = last_hist_raw.copy()
         X_in_scaled = _scale_minmax_apply(X_in_raw, x_min=x_min, x_range=x_range)
-        X_in_scaled_3d = X_in_scaled.reshape(1, int(lookback), int(X_in_scaled.shape[1]))
+        x_in = torch.tensor(
+            X_in_scaled.reshape(1, int(lookback), int(X_in_scaled.shape[1])),
+            dtype=torch.float32,
+            device=device,
+        )
 
-        # Pylance fix: keras stubs may type verbose as str; cast through Any.
         try:
-            qlo_hat, qhi_hat = model_any.predict(X_in_scaled_3d, verbose=0)
+            with torch.no_grad():
+                qlo_hat, qhi_hat = model(x_in)
         except Exception as e:
             log.warning(
                 "LSTM: predict failed for %s at step %d: %s",
@@ -394,8 +476,10 @@ def predict_lstm_quantiles(
             )
             return None
 
-        y_lo = float(np.asarray(qlo_hat).reshape(-1)[0])
-        y_hi = float(np.asarray(qhi_hat).reshape(-1)[0])
+        y_lo = float(qlo_hat.detach().cpu().numpy().reshape(-1)[0])
+        y_hi = float(qhi_hat.detach().cpu().numpy().reshape(-1)[0])
+        if y_lo > y_hi:
+            y_lo, y_hi = y_hi, y_lo
         y_pred = 0.5 * (y_lo + y_hi)
 
         lowers.append(y_lo)
@@ -432,10 +516,12 @@ def predict_lstm_quantiles(
         "n_features": int(X_raw.shape[1]),
         "n_samples": int(len(X_df)),
         "has_exog": bool(ex_train_aligned is not None),
+        "backend": "torch",
+        "device": str(device),
     }
 
     return LSTMResult(
-        model_used="LSTM-Quantile",
+        model_used="LSTM-Quantile-Torch",
         cols_used=tuple(feat_cols),
         pred_df=out_df,
         meta=meta,

@@ -33,7 +33,7 @@ Notes
 - This module intentionally performs *capability detection* at import time.
   That is acceptable because it has no filesystem mutation and will not crash
   when packages are missing.
-- Some heavy libraries (e.g., tensorflow) are imported only if present; for true
+- Some heavy libraries (e.g., torch, tensorflow) are imported only if present; for true
   "lazy import" behavior inside model execution, keep imports local in model
   functions as a separate refactor step.
 """
@@ -175,20 +175,37 @@ else:
 
 
 # --------------------------------------------------------------------
-# TensorFlow (for LSTM Model)
+# PyTorch (for LSTM Model)
+# --------------------------------------------------------------------
+
+HAS_TORCH = _spec_exists("torch")
+if HAS_TORCH:
+    import torch  # noqa: F401, E402
+
+    log.info("Dependency 'torch' found. LSTM model will be available.")
+else:
+    if TYPE_CHECKING:
+        import torch  # type: ignore  # noqa: F401, E402
+    else:
+        torch = None  # type: ignore
+    log.warning("Dependency 'torch' not found. LSTM model will be disabled.")
+
+
+# --------------------------------------------------------------------
+# TensorFlow (legacy optional flag retained for compatibility)
 # --------------------------------------------------------------------
 
 HAS_TENSORFLOW = _spec_exists("tensorflow")
 if HAS_TENSORFLOW:
     import tensorflow as tf  # noqa: F401, E402
 
-    log.info("Dependency 'tensorflow' found. LSTM model will be available.")
+    log.info("Dependency 'tensorflow' found. Legacy TF paths may be available.")
 else:
     if TYPE_CHECKING:
         import tensorflow as tf  # type: ignore  # noqa: F401, E402
     else:
         tf = None  # type: ignore
-    log.warning("Dependency 'tensorflow' not found. LSTM model will be disabled.")
+    log.info("Dependency 'tensorflow' not found. Legacy TF paths disabled.")
 
 
 # --------------------------------------------------------------------
@@ -260,6 +277,7 @@ CAPABILITIES = {
     "HAS_TDA": HAS_TDA,
     # Existing project flags
     "HAS_RUPTURES": HAS_RUPTURES,
+    "HAS_TORCH": HAS_TORCH,
     "HAS_TENSORFLOW": HAS_TENSORFLOW,
     "HAS_ARCH": HAS_ARCH,
     "HAS_STATSMODELS": HAS_STATSMODELS,

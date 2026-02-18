@@ -67,8 +67,10 @@ Violations of these rules should fail CI.
 
 LSTM backend migration is torch-first in Phase-1.
 
-* `requirements.txt` and `requirements.test.txt` pin `torch==2.6.0`.
-* TensorFlow/Keras runtime pins were removed from the project requirements.
+* `requirements.txt` pins `torch==2.6.0` and `pytorch-forecasting==1.4.0`.
+* Technical indicators use `TA-Lib==0.6.8`.
+* TensorFlow/Keras, PyCaret, and Darts runtime pins were removed from project requirements.
+* `xgboost` and `catboost` are not required by the current forecasting stack.
 * Default install strategy is CPU-first from PyPI:
 
 ```bash

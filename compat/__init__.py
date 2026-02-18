@@ -10,7 +10,7 @@ Phase-1 Path Stabilization:
 
 This package-level __init__ provides backward-compatible aliases for:
 - capability flags historically accessed as `compat.HAS_*`
-- safe imported symbols historically accessed as `compat.tf`, `compat.arch_model`, etc.
+- safe imported symbols historically accessed as `compat.torch`, `compat.tf`, `compat.arch_model`, etc.
 
 Canonical source:
   src.utils.compat
@@ -31,6 +31,7 @@ HAS_PANDAS: bool = False
 
 HAS_STATSMODELS: bool = False
 HAS_ARCH: bool = False
+HAS_TORCH: bool = False
 HAS_TENSORFLOW: bool = False
 HAS_RUPTURES: bool = False
 
@@ -44,6 +45,7 @@ CAPABILITIES: Dict[str, Any] = {}
 
 np: Any = None
 pd: Any = None
+torch: Any = None
 tf: Any = None
 arch_model: Any = None
 
@@ -56,6 +58,7 @@ _DEFAULTS: Dict[str, Any] = {
     "HAS_PANDAS": HAS_PANDAS,
     "HAS_STATSMODELS": HAS_STATSMODELS,
     "HAS_ARCH": HAS_ARCH,
+    "HAS_TORCH": HAS_TORCH,
     "HAS_TENSORFLOW": HAS_TENSORFLOW,
     "HAS_RUPTURES": HAS_RUPTURES,
     "HAS_SVL": HAS_SVL,
@@ -66,6 +69,7 @@ _DEFAULTS: Dict[str, Any] = {
     "CAPABILITIES": CAPABILITIES,
     "np": np,
     "pd": pd,
+    "torch": torch,
     "tf": tf,
     "arch_model": arch_model,
 }
@@ -75,6 +79,7 @@ _NAMES = (
     "HAS_PANDAS",
     "HAS_STATSMODELS",
     "HAS_ARCH",
+    "HAS_TORCH",
     "HAS_TENSORFLOW",
     "HAS_RUPTURES",
     "HAS_SVL",
@@ -85,6 +90,7 @@ _NAMES = (
     "CAPABILITIES",
     "np",
     "pd",
+    "torch",
     "tf",
     "arch_model",
 )
@@ -115,6 +121,7 @@ __all__ = [
     "HAS_PANDAS",
     "HAS_STATSMODELS",
     "HAS_ARCH",
+    "HAS_TORCH",
     "HAS_TENSORFLOW",
     "HAS_RUPTURES",
     "HAS_SVL",
@@ -125,6 +132,7 @@ __all__ = [
     "CAPABILITIES",
     "np",
     "pd",
+    "torch",
     "tf",
     "arch_model",
 ]

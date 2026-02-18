@@ -24,6 +24,7 @@ def test_compat_exports_capability_flags_and_symbols() -> None:
         "HAS_RIPSER",
         "HAS_TDA",
         # Other optional dependencies used elsewhere
+        "HAS_TORCH",
         "HAS_TENSORFLOW",
         "HAS_ARCH",
         "HAS_STATSMODELS",
@@ -56,6 +57,10 @@ def test_compat_exports_capability_flags_and_symbols() -> None:
     if getattr(compat, "HAS_TENSORFLOW"):
         assert getattr(compat, "tf", None) is not None, (
             "compat.tf must be non-None when HAS_TENSORFLOW is True"
+        )
+    if getattr(compat, "HAS_TORCH"):
+        assert getattr(compat, "torch", None) is not None, (
+            "compat.torch must be non-None when HAS_TORCH is True"
         )
     if getattr(compat, "HAS_NUMPY"):
         assert getattr(compat, "np", None) is not None, (
