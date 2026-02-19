@@ -82,11 +82,22 @@ def _discover_str(name: str, default: str) -> str:
 def _discover_dynamix_repo_path() -> Path:
     env_override = os.environ.get("FIN_DYNAMIX_REPO", "").strip()
     if env_override:
-        return Path(env_override).resolve()
+        env_path = Path(env_override).resolve()
+        if env_path.exists():
+            return env_path
+        log.warning(
+            "DynaMix: FIN_DYNAMIX_REPO is set but path does not exist: %s", env_path
+        )
 
     cfg_path = _discover_str("DYNAMIX_REPO_PATH", "")
     if cfg_path:
-        return Path(cfg_path).resolve()
+        cfg_repo = Path(cfg_path).resolve()
+        if cfg_repo.exists():
+            return cfg_repo
+        log.info(
+            "DynaMix: DYNAMIX_REPO_PATH does not exist (%s). Trying defaults.",
+            cfg_repo,
+        )
 
     vendor_default = (paths.APP_ROOT / "vendor" / "DynaMix-python").resolve()
     if vendor_default.exists():

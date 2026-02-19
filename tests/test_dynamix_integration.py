@@ -136,3 +136,23 @@ def test_facade_compute_forecasts_accepts_dynamix_only(monkeypatch) -> None:
     key, selected = select_forecast_path(bundle)
     assert key == "DYNAMIX"
     assert selected.model == "DYNAMIX"
+
+
+def test_discover_repo_path_falls_back_when_config_path_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from src.models import dynamix as dx
+
+    repo_root_clone = tmp_path / "DynaMix-python"
+    repo_root_clone.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(dx.paths, "APP_ROOT", tmp_path)
+    monkeypatch.setattr(
+        dx,
+        "_discover_str",
+        lambda name, default: str(tmp_path / "vendor" / "DynaMix-python"),
+    )
+    monkeypatch.delenv("FIN_DYNAMIX_REPO", raising=False)
+
+    resolved = dx._discover_dynamix_repo_path()
+    assert resolved == repo_root_clone.resolve()
