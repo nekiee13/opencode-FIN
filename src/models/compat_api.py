@@ -889,7 +889,7 @@ def _predict_arima_statsmodels_fallback(
         # Local import keeps module import-safe.
         from pandas.tseries.frequencies import to_offset
 
-        last_dt = cast("Timestamp", pd.Timestamp(cast(Any, target_index[-1])))
+        last_dt = pd.Timestamp(cast(Any, target_index[-1]))
         future_dates = pd.date_range(
             start=last_dt + to_offset("B"),
             periods=C.FH,

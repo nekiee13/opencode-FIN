@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional
 
 
 # ----------------------------
@@ -171,16 +171,81 @@ def ensure_directories(dirs: Optional[Iterable[Path]] = None) -> None:
     dirs:
         Optional iterable of directories to create. If None, uses defaults.
     """
-    for d in (dirs or _DEFAULT_DIRS_TO_ENSURE):
+    for d in dirs or _DEFAULT_DIRS_TO_ENSURE:
         try:
             d.mkdir(parents=True, exist_ok=True)
         except OSError as e:
             raise RuntimeError(f"Failed to create directory: {d}. Error: {e}") from e
 
 
+def load_dotenv_if_present(
+    dotenv_path: Optional[Path] = None,
+    *,
+    override: bool = False,
+) -> Dict[str, str]:
+    """
+    Load a simple ``.env`` file into ``os.environ`` if present.
+
+    Supported line forms:
+      - KEY=VALUE
+      - export KEY=VALUE
+      - optional quotes around VALUE: "..." or '...'
+
+    Notes:
+      - This utility is intentionally dependency-free (no python-dotenv required).
+      - Existing environment variables are preserved unless ``override=True``.
+      - Malformed lines are ignored.
+
+    Returns
+    -------
+    Dict[str, str]
+        The key/value pairs actually written to ``os.environ``.
+    """
+    p = (dotenv_path or (APP_ROOT / ".env")).resolve()
+    if not p.exists() or not p.is_file():
+        return {}
+
+    loaded: Dict[str, str] = {}
+
+    try:
+        lines = p.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+
+        if not key:
+            continue
+
+        if value and value[0] in {'"', "'"} and value[-1:] == value[0]:
+            value = value[1:-1]
+
+        if not override and key in os.environ:
+            continue
+
+        os.environ[key] = value
+        loaded[key] = value
+
+    return loaded
+
+
 # ----------------------------
 # Worker script resolution
 # ----------------------------
+
 
 def get_worker_script_path(script_name: str) -> Path:
     """Resolve a worker script path.
@@ -258,4 +323,5 @@ __all__ = [
     "ensure_directories",
     "get_worker_script_path",
     "get_exo_config_path",
+    "load_dotenv_if_present",
 ]

@@ -73,6 +73,9 @@ except Exception as e:
     ) from e
 
 
+LOADED_DOTENV = paths.load_dotenv_if_present()
+
+
 # ----------------------------
 # Logging (must be set up before other imports log)
 # ----------------------------
@@ -99,6 +102,12 @@ def _configure_logging() -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.info("FIN app3G bootstrap complete. APP_ROOT=%s", paths.APP_ROOT)
     logger.info("Logs: %s", log_file)
+    if LOADED_DOTENV:
+        logger.info(
+            "Loaded %d variable(s) from %s/.env",
+            len(LOADED_DOTENV),
+            paths.APP_ROOT,
+        )
     return logger
 
 

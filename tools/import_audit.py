@@ -72,19 +72,18 @@ import argparse
 import ast
 import builtins
 import importlib
-import os
 import pkgutil
-import re
 import sys
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 
 # ----------------------------------------------------------------------
 # Bootstrap: locate FIN root, ensure importable
 # ----------------------------------------------------------------------
+
 
 def _bootstrap_fin_root() -> Path:
     here = Path(__file__).resolve()
@@ -106,6 +105,7 @@ FIN_ROOT = _bootstrap_fin_root()
 # ----------------------------------------------------------------------
 # Data structures
 # ----------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class StaticImportIssue:
@@ -149,6 +149,7 @@ def _iter_py_files(root: Path, dirs: Sequence[str]) -> List[Path]:
 # Static import extraction
 # ----------------------------------------------------------------------
 
+
 def _module_from_import(node: ast.AST) -> List[str]:
     out: List[str] = []
     if isinstance(node, ast.Import):
@@ -189,10 +190,30 @@ def _extract_imports_from_file(path: Path) -> List[str]:
 def _is_probably_stdlib(module: str) -> bool:
     # heuristic: stdlib modules have no dots or common names; too hard to be perfect
     return module in {
-        "os", "sys", "re", "json", "math", "time", "datetime", "pathlib", "typing",
-        "logging", "argparse", "subprocess", "itertools", "functools", "dataclasses",
-        "traceback", "importlib", "pkgutil", "collections", "statistics", "shutil",
-        "tempfile", "threading", "tkinter",
+        "os",
+        "sys",
+        "re",
+        "json",
+        "math",
+        "time",
+        "datetime",
+        "pathlib",
+        "typing",
+        "logging",
+        "argparse",
+        "subprocess",
+        "itertools",
+        "functools",
+        "dataclasses",
+        "traceback",
+        "importlib",
+        "pkgutil",
+        "collections",
+        "statistics",
+        "shutil",
+        "tempfile",
+        "threading",
+        "tkinter",
     }
 
 
@@ -212,7 +233,7 @@ def _resolve_intra_project_module(module: str, root: Path) -> Optional[Path]:
         rel = Path(*m.split(".")[1:])  # drop 'src'
         # package or module
         cand_mod = (root / "src" / rel).with_suffix(".py")
-        cand_pkg = (root / "src" / rel / "__init__.py")
+        cand_pkg = root / "src" / rel / "__init__.py"
         if cand_mod.exists():
             return cand_mod
         if cand_pkg.exists():
@@ -222,7 +243,7 @@ def _resolve_intra_project_module(module: str, root: Path) -> Optional[Path]:
     if m.startswith("compat.") or m == "compat":
         rel = Path(*m.split(".")[1:])  # drop 'compat'
         cand_mod = (root / "compat" / rel).with_suffix(".py")
-        cand_pkg = (root / "compat" / rel / "__init__.py")
+        cand_pkg = root / "compat" / rel / "__init__.py"
         if cand_mod.exists():
             return cand_mod
         if cand_pkg.exists():
@@ -232,8 +253,8 @@ def _resolve_intra_project_module(module: str, root: Path) -> Optional[Path]:
     # legacy flat module import (e.g., Constants, ExoConfig, TDAIndicators)
     # Consider it intra-project if a matching .py exists at root or under compat/
     leaf = m.split(".", 1)[0]
-    root_mod = (root / f"{leaf}.py")
-    compat_mod = (root / "compat" / f"{leaf}.py")
+    root_mod = root / f"{leaf}.py"
+    compat_mod = root / "compat" / f"{leaf}.py"
     if root_mod.exists():
         return root_mod
     if compat_mod.exists():
@@ -242,7 +263,9 @@ def _resolve_intra_project_module(module: str, root: Path) -> Optional[Path]:
     return None
 
 
-def run_static_scan(root: Path, scan_dirs: Sequence[str]) -> Tuple[Dict[Path, List[str]], List[StaticImportIssue]]:
+def run_static_scan(
+    root: Path, scan_dirs: Sequence[str]
+) -> Tuple[Dict[Path, List[str]], List[StaticImportIssue]]:
     files = _iter_py_files(root, scan_dirs)
     dep_map: Dict[Path, List[str]] = {}
     issues: List[StaticImportIssue] = []
@@ -260,7 +283,7 @@ def run_static_scan(root: Path, scan_dirs: Sequence[str]) -> Tuple[Dict[Path, Li
                     file=modfile,
                     imported=name,
                     issue=f"Shadowing hazard: both {modfile.name} and {pkgdir.name}/ exist. "
-                          f"Python may import the file instead of the package.",
+                    f"Python may import the file instead of the package.",
                 )
             )
 
@@ -305,6 +328,7 @@ def run_static_scan(root: Path, scan_dirs: Sequence[str]) -> Tuple[Dict[Path, Li
 # Dynamic import runner + side-effect probe
 # ----------------------------------------------------------------------
 
+
 class _SideEffectProbe:
     """
     Context manager that detects filesystem writes during import:
@@ -312,6 +336,7 @@ class _SideEffectProbe:
     - open(..., mode includes 'w', 'a', '+') calls
     This is best-effort: it cannot detect all writes (e.g., os.makedirs, pathlib.Path.write_text).
     """
+
     def __init__(self) -> None:
         self.events: List[str] = []
         self._orig_open = builtins.open
@@ -397,7 +422,9 @@ def run_dynamic_imports(
                 importlib.invalidate_caches()
                 importlib.import_module(mod)
 
-            results.append(DynamicImportResult(module=mod, ok=True, side_effects=side_events))
+            results.append(
+                DynamicImportResult(module=mod, ok=True, side_effects=side_events)
+            )
         except Exception as e:
             tb = traceback.format_exc()
             results.append(
@@ -417,7 +444,10 @@ def run_dynamic_imports(
 # Reporting
 # ----------------------------------------------------------------------
 
-def _print_static_report(dep_map: Dict[Path, List[str]], issues: List[StaticImportIssue]) -> None:
+
+def _print_static_report(
+    dep_map: Dict[Path, List[str]], issues: List[StaticImportIssue]
+) -> None:
     print("\n====================")
     print("STATIC IMPORT SCAN")
     print("====================")
@@ -472,11 +502,14 @@ def _print_dynamic_report(results: List[DynamicImportResult]) -> None:
 # CLI
 # ----------------------------------------------------------------------
 
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="FIN import audit (static + dynamic).")
 
     p.add_argument("--static-only", action="store_true", help="Run only static scan.")
-    p.add_argument("--dynamic-only", action="store_true", help="Run only dynamic imports.")
+    p.add_argument(
+        "--dynamic-only", action="store_true", help="Run only dynamic imports."
+    )
     p.add_argument(
         "--scan-dirs",
         nargs="*",
@@ -488,7 +521,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         nargs="*",
         default=["src", "compat"],
         help="Top-level module roots to include for dynamic imports. Default: src compat. "
-             "You can also pass specific modules like 'scripts.workers.app3GTI'.",
+        "You can also pass specific modules like 'scripts.workers.app3GTI'.",
     )
     p.add_argument(
         "--probe-side-effects",
@@ -512,22 +545,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     dynamic_results: List[DynamicImportResult] = []
 
     if do_static:
-        dep_map, static_issues = run_static_scan(FIN_ROOT, scan_dirs=tuple(args.scan_dirs))
+        dep_map, static_issues = run_static_scan(
+            FIN_ROOT, scan_dirs=tuple(args.scan_dirs)
+        )
         _print_static_report(dep_map, static_issues)
 
     if do_dynamic:
-        modules = _iter_importable_modules(FIN_ROOT, include_prefixes=tuple(args.include))
+        modules = _iter_importable_modules(
+            FIN_ROOT, include_prefixes=tuple(args.include)
+        )
         # Avoid importing tools.* by default, unless user asked; importing tools can
         # create circularities if they are scripts rather than packages.
         # The user can explicitly include them via --include.
         modules = [m for m in modules if not m.startswith("tools.")]
 
-        dynamic_results = run_dynamic_imports(modules, probe_side_effects=bool(args.probe_side_effects))
+        dynamic_results = run_dynamic_imports(
+            modules, probe_side_effects=bool(args.probe_side_effects)
+        )
         _print_dynamic_report(dynamic_results)
 
     # Determine exit status
     dynamic_fail = any((not r.ok) for r in dynamic_results)
-    missing_mods = any(("missing" in iss.issue.lower() or "unresolved" in iss.issue.lower()) for iss in static_issues)
+    missing_mods = any(
+        ("missing" in iss.issue.lower() or "unresolved" in iss.issue.lower())
+        for iss in static_issues
+    )
 
     if dynamic_fail or missing_mods:
         print("\nRESULT: ISSUES DETECTED")

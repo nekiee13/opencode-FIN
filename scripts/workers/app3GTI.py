@@ -39,7 +39,7 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import List, Optional, Union, cast
+from typing import Optional, cast
 
 import numpy as np
 import pandas as pd

@@ -26,7 +26,6 @@ from io import StringIO
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, cast
 
-import numpy as np
 import pandas as pd
 
 
@@ -165,7 +164,9 @@ def _write_text(path: Path, content: str) -> None:
 def _extract_fh3_tables_from_stdout(stdout: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     marker = "PASTE-READY (minimal) FORECAST_TABLE_ALL_TICKERS:"
     if marker not in stdout:
-        raise ValueError("FH3 stdout did not contain expected marker for minimal table.")
+        raise ValueError(
+            "FH3 stdout did not contain expected marker for minimal table."
+        )
 
     before, after = stdout.split(marker, 1)
 
@@ -271,7 +272,9 @@ def generate_artifacts(
     if rc != 0:
         _write_text(run_dir / "SVL_STDOUT.txt", out)
         _write_text(run_dir / "SVL_STDERR.txt", err)
-        raise RuntimeError(f"svl_export.py failed (rc={rc}). See SVL_STDERR.txt in {run_dir}")
+        raise RuntimeError(
+            f"svl_export.py failed (rc={rc}). See SVL_STDERR.txt in {run_dir}"
+        )
     _write_text(svl_md, out)
 
     tda_md = run_dir / "TDA_CONTEXT.md"
@@ -310,13 +313,19 @@ def generate_artifacts(
         if found:
             tda_md = found[-1]
         else:
-            _write_text(tda_md, "TDA_CONTEXT\n\n[golden_baseline] tda_export failed; see TDA_STDERR.txt.\n")
+            _write_text(
+                tda_md,
+                "TDA_CONTEXT\n\n[golden_baseline] tda_export failed; see TDA_STDERR.txt.\n",
+            )
     else:
         found = sorted(tda_out_dir.glob("TDA_CONTEXT_*.md"))
         if found:
             shutil.copy2(found[-1], tda_md)
         else:
-            _write_text(tda_md, "TDA_CONTEXT\n\n[golden_baseline] tda_export succeeded but no TDA_CONTEXT_*.md found.\n")
+            _write_text(
+                tda_md,
+                "TDA_CONTEXT\n\n[golden_baseline] tda_export succeeded but no TDA_CONTEXT_*.md found.\n",
+            )
 
     meta_json = run_dir / "RUN_META.json"
     meta = {
@@ -364,7 +373,9 @@ def _normalize_volatile_lines(text: str) -> str:
             out_lines.append(re.sub(r"(computed_on:\s*).*$", r"\1<normalized>", ln))
             continue
         if re.search(r"\bdata_source:\s*CSV:", ln):
-            out_lines.append(re.sub(r"(data_source:\s*CSV:).*$", r"\1<normalized_path>", ln))
+            out_lines.append(
+                re.sub(r"(data_source:\s*CSV:).*$", r"\1<normalized_path>", ln)
+            )
             continue
         if "CSV:" in ln and ("data_source" in ln or "Data_source" in ln):
             out_lines.append(re.sub(r"CSV:.*", "CSV:<normalized_path>", ln))
@@ -373,7 +384,9 @@ def _normalize_volatile_lines(text: str) -> str:
     return "\n".join(out_lines) + ("\n" if text.endswith("\n") else "")
 
 
-def _compare_text_files(golden: Path, fresh: Path, *, normalize: bool = True) -> Tuple[bool, str]:
+def _compare_text_files(
+    golden: Path, fresh: Path, *, normalize: bool = True
+) -> Tuple[bool, str]:
     if not golden.exists():
         return False, f"Golden file missing: {golden}"
     if not fresh.exists():
@@ -393,7 +406,9 @@ def _compare_text_files(golden: Path, fresh: Path, *, normalize: bool = True) ->
     return False, diff
 
 
-def _compare_csv_files(golden: Path, fresh: Path, *, float_tol: float = 1e-8) -> Tuple[bool, str]:
+def _compare_csv_files(
+    golden: Path, fresh: Path, *, float_tol: float = 1e-8
+) -> Tuple[bool, str]:
     if not golden.exists():
         return False, f"Golden file missing: {golden}"
     if not fresh.exists():
@@ -403,7 +418,10 @@ def _compare_csv_files(golden: Path, fresh: Path, *, float_tol: float = 1e-8) ->
     f = pd.read_csv(fresh)
 
     if list(g.columns) != list(f.columns):
-        return False, f"CSV columns differ.\nGolden: {list(g.columns)}\nFresh:  {list(f.columns)}"
+        return (
+            False,
+            f"CSV columns differ.\nGolden: {list(g.columns)}\nFresh:  {list(f.columns)}",
+        )
 
     if len(g) != len(f):
         return False, f"CSV row counts differ. Golden={len(g)} Fresh={len(f)}"
@@ -438,7 +456,9 @@ def _compare_csv_files(golden: Path, fresh: Path, *, float_tol: float = 1e-8) ->
             bad_ser = cast(pd.Series, gs_str != fs_str)
             if bool(bad_ser.any()):
                 bad_idx = cast(List[int], bad_ser[bad_ser].index[:10].tolist())
-                issues.append(f"Column '{col}' string mismatch. Examples idx={bad_idx}.")
+                issues.append(
+                    f"Column '{col}' string mismatch. Examples idx={bad_idx}."
+                )
 
     if not issues:
         return True, ""
@@ -446,7 +466,9 @@ def _compare_csv_files(golden: Path, fresh: Path, *, float_tol: float = 1e-8) ->
     return False, "\n".join(issues)
 
 
-def compare_against_golden(*, run_paths: RunPaths, golden_dir: Path, float_tol: float) -> CompareResult:
+def compare_against_golden(
+    *, run_paths: RunPaths, golden_dir: Path, float_tol: float
+) -> CompareResult:
     issues: List[str] = []
 
     g_fh3_txt = golden_dir / "FH3_STDOUT.txt"
@@ -459,7 +481,9 @@ def compare_against_golden(*, run_paths: RunPaths, golden_dir: Path, float_tol: 
     if not ok:
         issues.append(f"[FH3_STDOUT] Diff:\n{msg}")
 
-    ok, msg = _compare_csv_files(g_fh3_full, run_paths.fh3_csv_full, float_tol=float_tol)
+    ok, msg = _compare_csv_files(
+        g_fh3_full, run_paths.fh3_csv_full, float_tol=float_tol
+    )
     if not ok:
         issues.append(f"[FH3_FULL.csv] {msg}")
 
@@ -495,22 +519,43 @@ def update_golden_from_run(run_paths: RunPaths, golden_dir: Path) -> None:
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="FIN Golden Baseline Utility (generate/verify/update).")
+    p = argparse.ArgumentParser(
+        description="FIN Golden Baseline Utility (generate/verify/update)."
+    )
 
     sub = p.add_subparsers(dest="command", required=True)
 
     def add_common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--tickers", nargs="+", default=list(DEFAULT_TICKERS))
-        sp.add_argument("--map", nargs="*", default=[], help="Optional logical->prefix mapping, e.g. SPX=GSPC")
+        sp.add_argument(
+            "--map",
+            nargs="*",
+            default=[],
+            help="Optional logical->prefix mapping, e.g. SPX=GSPC",
+        )
         sp.add_argument("--golden-dir", type=str, default=str(DEFAULT_GOLDEN_DIR))
         sp.add_argument("--runs-dir", type=str, default=str(DEFAULT_RUNS_DIR))
         sp.add_argument("--float-tol", type=float, default=1e-8)
-        sp.add_argument("--no-metrics", action="store_true", help="Do not write metrics CSVs from exporters.")
-        sp.add_argument("--prompt-headers", action="store_true", help="Ask exporters to write prompt headers.")
+        sp.add_argument(
+            "--no-metrics",
+            action="store_true",
+            help="Do not write metrics CSVs from exporters.",
+        )
+        sp.add_argument(
+            "--prompt-headers",
+            action="store_true",
+            help="Ask exporters to write prompt headers.",
+        )
 
-    add_common(sub.add_parser("generate", help="Generate fresh artifacts (no compare)."))
+    add_common(
+        sub.add_parser("generate", help="Generate fresh artifacts (no compare).")
+    )
     add_common(sub.add_parser("verify", help="Generate and compare against golden."))
-    add_common(sub.add_parser("update", help="Generate and overwrite golden with the fresh artifacts."))
+    add_common(
+        sub.add_parser(
+            "update", help="Generate and overwrite golden with the fresh artifacts."
+        )
+    )
 
     return p.parse_args(argv)
 
@@ -560,9 +605,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "verify":
-        res = compare_against_golden(run_paths=run_paths, golden_dir=golden_dir, float_tol=float(args.float_tol))
+        res = compare_against_golden(
+            run_paths=run_paths, golden_dir=golden_dir, float_tol=float(args.float_tol)
+        )
         if res.ok:
-            print("[golden_baseline] VERIFY OK: fresh artifacts match golden baselines.")
+            print(
+                "[golden_baseline] VERIFY OK: fresh artifacts match golden baselines."
+            )
             return 0
 
         print("[golden_baseline] VERIFY FAILED: differences detected.")

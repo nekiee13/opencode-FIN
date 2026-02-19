@@ -44,6 +44,8 @@ import pandas as pd
 from src.config import paths
 from src.data.loading import fetch_data
 
+_ = paths.load_dotenv_if_present()
+
 # ---------------------------------------------------------------------
 # BOOTSTRAP: compat/ on sys.path for legacy Models.py + optional Constants.py
 # ---------------------------------------------------------------------

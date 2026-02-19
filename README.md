@@ -105,6 +105,15 @@ Override paths/interpreter with environment variables when needed:
 - `FIN_DYNAMIX_REPO` - path to DynaMix-python checkout
 - `FIN_DYNAMIX_PY_EXE` - python interpreter used by the DynaMix worker
 
+`scripts/app3G.py` and `scripts/make_fh3_table.py` now auto-load a repo-root `.env` file (if present), so these can be persisted without shell `set` commands.
+
+Example `.env`:
+
+```env
+FIN_DYNAMIX_REPO=F:\xPy\FIN-Git\opencode-FIN\DynaMix-python
+FIN_DYNAMIX_PY_EXE=F:\vEnv\opencode-FIN\python.exe
+```
+
 Legacy/compat constants are available in `compat/Constants.py` under `DYNAMIX_*`.
 
 ---
