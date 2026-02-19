@@ -805,8 +805,83 @@ def predict_random_walk(
 
 
 # ======================================================================
-# ARIMAX with ExoConfig (lazy pmdarima)
+# ARIMAX with ExoConfig (lazy pmdarima, statsmodels fallback)
 # ======================================================================
+
+
+def _predict_arima_statsmodels_fallback(
+    enriched_data: "DataFrame",
+    ticker: str,
+    exo_config: Optional[Any],
+) -> Tuple[
+    Optional["DataFrame"], Optional[Tuple[int, int, int]], Optional["NDArray[Any]"]
+]:
+    """
+    Fallback ARIMAX path that avoids pmdarima binary wheels.
+
+    Uses canonical statsmodels-backed implementation from src.models.arimax.
+    Keeps legacy return shape: (pred_df, model_order, residuals).
+    """
+    if pd is None or np is None:
+        return None, None, None
+
+    try:
+        from src.models.arimax import predict_arimax  # type: ignore
+    except Exception as e:
+        log.warning(
+            "ARIMAX fallback unavailable (cannot import src.models.arimax): %s", e
+        )
+        return None, None, None
+
+    if enriched_data is None or "Close" not in enriched_data.columns:
+        return None, None, None
+
+    try:
+        # Keep prep logic aligned with primary legacy path.
+        arima_data = enriched_data.copy()
+        arima_data["Close"] = pd.to_numeric(arima_data["Close"], errors="coerce")
+        arima_data = cast("DataFrame", arima_data.asfreq("B").ffill())
+        arima_data = cast("DataFrame", arima_data.dropna(subset=["Close"]))
+        if arima_data.empty:
+            return None, None, None
+
+        y_train = cast("Series", arima_data["Close"])
+        target_index = y_train.index
+
+        # Local import keeps module import-safe.
+        from pandas.tseries.frequencies import to_offset
+
+        last_dt = cast("Timestamp", pd.Timestamp(cast(Any, target_index[-1])))
+        future_dates = pd.date_range(
+            start=last_dt + to_offset("B"),
+            periods=C.FH,
+            freq="B",
+        )
+
+        X_train_df: Optional["DataFrame"] = None
+        X_future_df: Optional["DataFrame"] = None
+        if exo_config is not None:
+            X_train_df, X_future_df = build_exog_matrices(
+                "ARIMAX", ticker, arima_data, target_index, future_dates, exo_config
+            )
+
+        res = predict_arimax(
+            arima_data,
+            ticker=ticker,
+            exo_config=cast(Optional[Dict[str, Any]], exo_config),
+            exo_train_df=X_train_df,
+            exo_future_df=X_future_df,
+        )
+        if res is None or res.pred_df is None or res.pred_df.empty:
+            return None, None, None
+
+        return cast("DataFrame", res.pred_df.copy()), None, None
+
+    except Exception as e:
+        log.warning(
+            "ARIMAX statsmodels fallback failed for %s: %s", ticker, e, exc_info=True
+        )
+        return None, None, None
 
 
 def predict_arima(
@@ -928,8 +1003,12 @@ def predict_arima(
         return cast("DataFrame", result_df), model_order, residuals
 
     except Exception as e:
-        log.error("Error during ARIMAX model fitting: %s", e, exc_info=True)
-        return None, None, None
+        log.warning(
+            "ARIMAX pmdarima path failed for %s: %s. Trying statsmodels fallback.",
+            ticker,
+            e,
+        )
+        return _predict_arima_statsmodels_fallback(enriched_data, ticker, exo_config)
 
 
 # ======================================================================
