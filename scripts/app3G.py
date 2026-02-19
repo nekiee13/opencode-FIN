@@ -768,7 +768,8 @@ def format_forecast_table(
     ticker: str, model_results: Dict[str, Optional[pd.DataFrame]]
 ) -> str:
     assert C is not None, "Constants not imported"
-    header = f"#### {ticker} Forecasting results (Day {C.FH}):"
+    fh_i = int(C.FH)
+    header = f"#### {ticker} Forecasting results (Day {fh_i}):"
     model_order = [
         "TorchForecast",
         "DYNAMIX",
@@ -786,7 +787,29 @@ def format_forecast_table(
         "|:--------|:--------:|:--------:|:--------:|",
     ]
 
+    def _final_value(preds_df: Optional[pd.DataFrame], col: str) -> str:
+        if (
+            preds_df is None
+            or preds_df.empty
+            or len(preds_df) < fh_i
+            or col not in preds_df
+        ):
+            return "-"
+        try:
+            return f"{float(preds_df.iloc[-1][col]):.4f}"
+        except Exception:
+            return "-"
+
     for model_name in model_order:
+        if model_name == "DYNAMIX":
+            primary = model_results.get("DYNAMIX")
+            secondary = model_results.get("DYNAMIX_NONSTATIONARY")
+            primary_v = _final_value(primary, "DYNAMIX_Pred")
+            secondary_v = _final_value(secondary, "DYNAMIX_Pred")
+            pred_str = f"{primary_v} <br> {secondary_v}"
+            table.append(f"| {model_name:<7} | {'-':>8} | {pred_str} | {'-':>8} |")
+            continue
+
         preds_df = model_results.get(model_name)
         pred_col = f"{model_name}_Pred"
         lower_col = f"{model_name}_Lower"
@@ -938,6 +961,46 @@ def analysis_pipeline(
 
         progress_callback(20, "Running forecast models...")
 
+        # ARIMAX diagnostics (shape check) prior to model fitting.
+        try:
+            arimax_data = enriched_data.copy()
+            arimax_data["Close"] = pd.to_numeric(arimax_data["Close"], errors="coerce")
+            arimax_data = cast(pd.DataFrame, arimax_data.asfreq("B").ffill())
+            arimax_data = cast(pd.DataFrame, arimax_data.dropna(subset=["Close"]))
+
+            y_train_diag = cast(pd.Series, arimax_data["Close"])
+            target_index = y_train_diag.index
+
+            from pandas.tseries.frequencies import to_offset
+
+            future_dates = pd.date_range(
+                start=target_index[-1] + to_offset("B"),
+                periods=C.FH,
+                freq="B",
+            )
+
+            x_train_diag: Optional[pd.DataFrame] = None
+            if exo_config is not None:
+                x_train_diag, _ = Models.build_exog_matrices(
+                    "ARIMAX",
+                    ticker,
+                    arimax_data,
+                    target_index,
+                    future_dates,
+                    exo_config,
+                )
+
+            x_shape = (
+                tuple(x_train_diag.shape)
+                if x_train_diag is not None and not x_train_diag.empty
+                else (int(y_train_diag.shape[0]), 0)
+            )
+            print(
+                f"ARIMAX: y_train shape {y_train_diag.shape}, X_train shape {x_shape}"
+            )
+        except Exception as e:
+            log.info("ARIMAX diagnostics shape check skipped for %s: %s", ticker, e)
+
         arimax_preds, arimax_order, arimax_residuals = Models.predict_arima(
             enriched_data,
             ticker=ticker,
@@ -954,6 +1017,10 @@ def analysis_pipeline(
             print(
                 f"ARIMAX Residual ARCH Test (p-value): {p_value:.4f} -> {test_result}\n"
             )
+        elif getattr(compat, "HAS_ARCH", False):
+            print(
+                "ARIMAX Residual ARCH Test (p-value): unavailable (residuals missing)\n"
+            )
 
         if getattr(compat, "HAS_ARCH", False):
             garch_price_forecast, garch_vol_forecast, garch_results = (
@@ -966,14 +1033,27 @@ def analysis_pipeline(
         else:
             garch_price_forecast, garch_vol_forecast, garch_results = None, None, None
 
+        dynamix_std = Models.predict_dynamix(
+            enriched_data,
+            ticker=ticker,
+            target_col="Close",
+            fh=int(C.FH),
+            standardize=True,
+            fit_nonstationary=False,
+        )
+        dynamix_nonstationary = Models.predict_dynamix(
+            enriched_data,
+            ticker=ticker,
+            target_col="Close",
+            fh=int(C.FH),
+            standardize=True,
+            fit_nonstationary=True,
+        )
+
         model_results: Dict[str, Optional[pd.DataFrame]] = {
             "TorchForecast": Models.run_external_torch_forecasting(ticker),
-            "DYNAMIX": Models.predict_dynamix(
-                enriched_data,
-                ticker=ticker,
-                target_col="Close",
-                fh=int(C.FH),
-            ),
+            "DYNAMIX": dynamix_std,
+            "DYNAMIX_NONSTATIONARY": dynamix_nonstationary,
             "ARIMAX": arimax_preds,
             "PCE": Models.predict_pce_narx(
                 enriched_data, ticker=ticker, exo_config=exo_config

@@ -776,6 +776,8 @@ def predict_dynamix(
     ticker: str = "Unknown",
     target_col: str = "Close",
     fh: Optional[int] = None,
+    standardize: Optional[bool] = None,
+    fit_nonstationary: Optional[bool] = None,
     progress_callback=None,
 ) -> Optional["DataFrame"]:
     if pd is None:
@@ -795,6 +797,8 @@ def predict_dynamix(
             ticker=ticker,
             target_col=target_col,
             fh=fh,
+            standardize=standardize,
+            fit_nonstationary=fit_nonstationary,
         )
         if out is None or getattr(out, "empty", True):
             return None
@@ -913,7 +917,28 @@ def _predict_arima_statsmodels_fallback(
         if res is None or res.pred_df is None or res.pred_df.empty:
             return None, None, None
 
-        return cast("DataFrame", res.pred_df.copy()), None, None
+        order_out: Optional[Tuple[int, int, int]] = None
+        model_order = getattr(res, "model_order", None)
+        if isinstance(model_order, tuple) and len(model_order) == 3:
+            try:
+                order_out = (
+                    int(model_order[0]),
+                    int(model_order[1]),
+                    int(model_order[2]),
+                )
+            except Exception:
+                order_out = None
+
+        resid_out: Optional["NDArray[Any]"] = None
+        residuals = getattr(res, "residuals", None)
+        if residuals is not None:
+            try:
+                arr = cast("NDArray[Any]", np.asarray(residuals, dtype=float))
+                resid_out = arr if arr.size > 0 else None
+            except Exception:
+                resid_out = None
+
+        return cast("DataFrame", res.pred_df.copy()), order_out, resid_out
 
     except Exception as e:
         log.warning(

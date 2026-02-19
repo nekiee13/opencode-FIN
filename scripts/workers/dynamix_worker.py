@@ -36,7 +36,16 @@ def _resolve_repo_path(arg_path: str) -> Path:
     if env_path:
         return Path(env_path).resolve()
 
-    return (_resolve_repo_root() / "vendor" / "DynaMix-python").resolve()
+    root = _resolve_repo_root()
+    vendor_default = (root / "vendor" / "DynaMix-python").resolve()
+    if vendor_default.exists():
+        return vendor_default
+
+    repo_default = (root / "DynaMix-python").resolve()
+    if repo_default.exists():
+        return repo_default
+
+    return vendor_default
 
 
 def _prepare_context(

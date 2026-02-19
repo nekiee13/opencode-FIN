@@ -100,6 +100,12 @@ Expected repository location for DynaMix:
 <FIN_ROOT>/vendor/DynaMix-python
 ```
 
+Alternate supported location (also auto-discovered):
+
+```text
+<FIN_ROOT>/DynaMix-python
+```
+
 Override paths/interpreter with environment variables when needed:
 
 - `FIN_DYNAMIX_REPO` - path to DynaMix-python checkout
@@ -115,6 +121,13 @@ FIN_DYNAMIX_PY_EXE=F:\vEnv\opencode-FIN\python.exe
 ```
 
 Legacy/compat constants are available in `compat/Constants.py` under `DYNAMIX_*`.
+
+When running `app3G`, DynaMix is executed twice:
+
+- Run 1: `standardize=True, fit_nonstationary=False`
+- Run 2: `standardize=True, fit_nonstationary=True`
+
+The forecast table shows both DynaMix values in a single cell (`<br>` separated).
 
 ---
 

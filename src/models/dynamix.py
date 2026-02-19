@@ -88,7 +88,15 @@ def _discover_dynamix_repo_path() -> Path:
     if cfg_path:
         return Path(cfg_path).resolve()
 
-    return (paths.APP_ROOT / "vendor" / "DynaMix-python").resolve()
+    vendor_default = (paths.APP_ROOT / "vendor" / "DynaMix-python").resolve()
+    if vendor_default.exists():
+        return vendor_default
+
+    repo_root_default = (paths.APP_ROOT / "DynaMix-python").resolve()
+    if repo_root_default.exists():
+        return repo_root_default
+
+    return vendor_default
 
 
 def _resolve_worker_python() -> str:

@@ -108,7 +108,11 @@ def _apply_exo_scenarios(
       - Else if exo_train_df provided: repeat last row fh times
       - Else: None (no exog)
     """
-    if (exo_train_df is None or exo_train_df.empty) and (exo_future_df is None or exo_future_df.empty) and not exo_config:
+    if (
+        (exo_train_df is None or exo_train_df.empty)
+        and (exo_future_df is None or exo_future_df.empty)
+        and not exo_config
+    ):
         return None, None
 
     # Clean training exog
@@ -158,7 +162,9 @@ def _apply_exo_scenarios(
         values = list(spec.get("values", []))
         padded: List[Optional[float]] = (values + [None] * int(fh))[: int(fh)]
 
-        base_col = pd.to_numeric(out_future[regressor], errors="coerce").to_numpy(dtype=float)
+        base_col = pd.to_numeric(out_future[regressor], errors="coerce").to_numpy(
+            dtype=float
+        )
         new_col = base_col.copy()
 
         for i in range(int(fh)):
@@ -182,11 +188,14 @@ def _apply_exo_scenarios(
 # Public API
 # ----------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ARIMAXResult:
     pred_df: pd.DataFrame
     model_used: str
     cols_used: List[str]
+    model_order: Optional[Tuple[int, int, int]] = None
+    residuals: Optional[np.ndarray] = None
 
 
 def predict_arimax(
@@ -233,7 +242,9 @@ def predict_arimax(
 
     tgt = str(target_col) if target_col else _get_target_col()
     if tgt not in df.columns:
-        log.warning("ARIMAX: target column '%s' not found. cols=%s", tgt, list(df.columns))
+        log.warning(
+            "ARIMAX: target column '%s' not found. cols=%s", tgt, list(df.columns)
+        )
         return None
 
     # Target series
@@ -241,7 +252,9 @@ def predict_arimax(
     y_num = pd.to_numeric(df_b[tgt], errors="coerce")
     y = cast(pd.Series, y_num).dropna()
     if y.empty or len(y) < 30:
-        log.warning("ARIMAX: insufficient target history after cleaning (n=%d).", len(y))
+        log.warning(
+            "ARIMAX: insufficient target history after cleaning (n=%d).", len(y)
+        )
         return None
 
     train_index = y.index
@@ -263,7 +276,10 @@ def predict_arimax(
     exo_future_aligned: Optional[pd.DataFrame] = None
     if exo_future_df is not None and not exo_future_df.empty:
         exo_future_df2 = exo_future_df.copy()
-        if isinstance(exo_future_df2.index, pd.DatetimeIndex) and exo_future_df2.index.notna().all():
+        if (
+            isinstance(exo_future_df2.index, pd.DatetimeIndex)
+            and exo_future_df2.index.notna().all()
+        ):
             exo_future_df2 = _coerce_numeric_frame(exo_future_df2)
             aligned_f = _safe_reindex(exo_future_df2, future_index)
         else:
@@ -341,8 +357,16 @@ def predict_arimax(
         if lower is None or upper is None:
             # Fallback: normal approximation using residual std
             resid_raw = getattr(res, "resid", None)
-            resid_s = cast(pd.Series, pd.Series(resid_raw)).dropna() if resid_raw is not None else pd.Series(dtype=float)
-            sigma = float(np.std(resid_s.to_numpy(dtype=float), ddof=1)) if len(resid_s) > 2 else 0.0
+            resid_s = (
+                cast(pd.Series, pd.Series(resid_raw)).dropna()
+                if resid_raw is not None
+                else pd.Series(dtype=float)
+            )
+            sigma = (
+                float(np.std(resid_s.to_numpy(dtype=float), ddof=1))
+                if len(resid_s) > 2
+                else 0.0
+            )
             if not np.isfinite(sigma) or sigma <= 0.0:
                 sigma = float(np.std(y.to_numpy(dtype=float), ddof=1) * 0.05)
 
@@ -364,8 +388,23 @@ def predict_arimax(
             index=future_index,
         )
 
+        resid_raw = getattr(res, "resid", None)
+        resid_arr: Optional[np.ndarray]
+        if resid_raw is None:
+            resid_arr = None
+        else:
+            resid_arr = np.asarray(pd.Series(resid_raw).dropna(), dtype=float)
+            if resid_arr.size == 0:
+                resid_arr = None
+
         cols_used: List[str] = ["ARIMAX_Pred", "ARIMAX_Lower", "ARIMAX_Upper"]
-        return ARIMAXResult(pred_df=out_df, model_used=model_name, cols_used=cols_used)
+        return ARIMAXResult(
+            pred_df=out_df,
+            model_used=model_name,
+            cols_used=cols_used,
+            model_order=tuple(order),
+            residuals=resid_arr,
+        )
 
     except Exception as e:
         log.warning("ARIMAX: forecast failed for %s: %s", ticker, e, exc_info=True)
@@ -375,6 +414,7 @@ def predict_arimax(
 # ----------------------------------------------------------------------
 # Legacy-friendly adapter (optional)
 # ----------------------------------------------------------------------
+
 
 def predict_arima(
     df: pd.DataFrame,
