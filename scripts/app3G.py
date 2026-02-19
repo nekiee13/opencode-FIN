@@ -331,6 +331,13 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                 "ms": 5,
                 "fill_color": "#E6E6FA",
             },
+            "DYNAMIX": {
+                "color": "#6B4E16",
+                "marker": "P",
+                "linestyle": "--",
+                "label": "DynaMix",
+                "ms": 5,
+            },
             "PCE": {
                 "color": "#228B22",
                 "marker": "o",
@@ -432,6 +439,7 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
 
         model_plot_order = [
             "TorchForecast",
+            "DYNAMIX",
             "ARIMAX",
             "PCE",
             "LSTM",
@@ -754,6 +762,7 @@ def format_forecast_table(
     header = f"#### {ticker} Forecasting results (Day {C.FH}):"
     model_order = [
         "TorchForecast",
+        "DYNAMIX",
         "ARIMAX",
         "PCE",
         "LSTM",
@@ -950,6 +959,12 @@ def analysis_pipeline(
 
         model_results: Dict[str, Optional[pd.DataFrame]] = {
             "TorchForecast": Models.run_external_torch_forecasting(ticker),
+            "DYNAMIX": Models.predict_dynamix(
+                enriched_data,
+                ticker=ticker,
+                target_col="Close",
+                fh=int(C.FH),
+            ),
             "ARIMAX": arimax_preds,
             "PCE": Models.predict_pce_narx(
                 enriched_data, ticker=ticker, exo_config=exo_config

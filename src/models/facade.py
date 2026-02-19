@@ -507,11 +507,55 @@ def run_pce_narx(
     )
 
 
+def run_dynamix(
+    df: pd.DataFrame,
+    *,
+    ticker: str,
+    fh: Optional[int] = None,
+    target_col: Optional[str] = None,
+) -> Optional[ForecastArtifact]:
+    try:
+        from src.models.dynamix import predict_dynamix  # type: ignore
+    except Exception as e:
+        log.warning("DynaMix import failed: %s", e)
+        return None
+
+    try:
+        out = predict_dynamix(df, ticker=ticker, target_col=target_col, fh=fh)
+    except Exception as e:
+        log.warning("DynaMix failed for %s: %s", ticker, e, exc_info=True)
+        return None
+
+    if out is None:
+        return None
+
+    out_df = _coerce_pred_df(out, default_col="DYNAMIX_Pred")
+    if out_df is None:
+        return None
+
+    out_df = cast(pd.DataFrame, out_df.copy())
+
+    pred_col = (
+        "DYNAMIX_Pred"
+        if "DYNAMIX_Pred" in out_df.columns
+        else cast(str, out_df.columns[0])
+    )
+
+    return ForecastArtifact(
+        pred_df=cast(pd.DataFrame, out_df),
+        pred_col=pred_col,
+        model="DYNAMIX",
+        lower_col="DYNAMIX_Lower" if "DYNAMIX_Lower" in out_df.columns else None,
+        upper_col="DYNAMIX_Upper" if "DYNAMIX_Upper" in out_df.columns else None,
+        meta={"cpu_only": True},
+    )
+
+
 # ----------------------------------------------------------------------
 # Public facade API
 # ----------------------------------------------------------------------
 
-MODEL_PRIORITY_DEFAULT: Sequence[str] = ("ARIMAX", "ETS", "PCE", "RW")
+MODEL_PRIORITY_DEFAULT: Sequence[str] = ("DYNAMIX", "ARIMAX", "ETS", "PCE", "RW")
 
 
 def compute_forecasts(
@@ -537,6 +581,13 @@ def compute_forecasts(
     warnings_list: List[str] = []
 
     df_b = _as_bday(df)
+
+    if "DYNAMIX" in allow:
+        d = run_dynamix(df_b, ticker=ticker, fh=fh_i)
+        if d is not None:
+            forecasts["DYNAMIX"] = d
+        else:
+            warnings_list.append("DYNAMIX unavailable or failed.")
 
     if "ARIMAX" in allow:
         a = run_arimax(

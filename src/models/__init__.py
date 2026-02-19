@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, List
 if TYPE_CHECKING:  # pragma: no cover
     from . import arimax as arimax
     from . import compat_api as compat_api
+    from . import dynamix as dynamix
     from . import ets as ets
     from . import facade as facade
     from . import garch as garch
@@ -37,6 +38,7 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = [
     "facade",
     "compat_api",
+    "dynamix",
     "arimax",
     "ets",
     "garch",

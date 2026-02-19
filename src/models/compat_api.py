@@ -767,6 +767,44 @@ def predict_lstm(
 
 
 # ======================================================================
+# DynaMix wrapper (CPU-only worker-backed)
+# ======================================================================
+
+
+def predict_dynamix(
+    enriched_data: "DataFrame",
+    ticker: str = "Unknown",
+    target_col: str = "Close",
+    fh: Optional[int] = None,
+    progress_callback=None,
+) -> Optional["DataFrame"]:
+    if pd is None:
+        return None
+    if enriched_data is None or target_col not in enriched_data.columns:
+        return None
+
+    try:
+        from src.models.dynamix import predict_dynamix as _predict_dynamix  # type: ignore
+    except Exception as e:
+        log.warning("DynaMix: canonical import failed: %s", e)
+        return None
+
+    try:
+        out = _predict_dynamix(
+            enriched_data,
+            ticker=ticker,
+            target_col=target_col,
+            fh=fh,
+        )
+        if out is None or getattr(out, "empty", True):
+            return None
+        return cast("DataFrame", out)
+    except Exception as e:
+        log.warning("DynaMix failed for %s: %s", ticker, e, exc_info=True)
+        return None
+
+
+# ======================================================================
 # Random Walk baseline
 # ======================================================================
 
@@ -1384,6 +1422,7 @@ __all__ = [
     "run_external_ti_calculator",
     "run_external_torch_forecasting",
     "build_exog_matrices",
+    "predict_dynamix",
     "predict_lstm",
     "predict_random_walk",
     "predict_arima",

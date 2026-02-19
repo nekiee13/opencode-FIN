@@ -77,6 +77,36 @@ EXO_REGRESSORS_CSV: str = str(_paths.EXO_CONFIG_PATH)
 PCE_WORKER_PY_EXE: str = ""
 
 
+# ----------------------------------------------------------------------
+# DynaMix worker/model integration (CPU-only by default)
+# ----------------------------------------------------------------------
+#
+# DynaMix can run either in the current interpreter or an explicit external
+# interpreter (for dependency isolation).
+#
+# Resolution order for worker python (implemented in src/models/dynamix.py):
+# 1) FIN_DYNAMIX_PY_EXE env var
+# 2) DYNAMIX_WORKER_PY_EXE (this constant) when path exists
+# 3) sys.executable
+#
+# DynaMix repository path resolution:
+# 1) FIN_DYNAMIX_REPO env var
+# 2) DYNAMIX_REPO_PATH (this constant)
+# 3) <APP_ROOT>/vendor/DynaMix-python
+
+DYNAMIX_ENABLED = True
+DYNAMIX_FORCE_CPU = True
+DYNAMIX_REPO_PATH = str((_paths.APP_ROOT / "vendor" / "DynaMix-python").resolve())
+DYNAMIX_WORKER_PY_EXE: str = ""
+
+DYNAMIX_MIN_DATA_LENGTH = 30
+DYNAMIX_CONTEXT_STEPS = 2048
+DYNAMIX_STANDARDIZE = True
+DYNAMIX_FIT_NONSTATIONARY = False
+DYNAMIX_PREPROCESSING_METHOD = "pos_embedding"
+DYNAMIX_TIMEOUT_SEC = 300
+
+
 # --- Ticker and Indicator Lists ---
 TICKERS = ["TNX", "AAPL", "QQQ", "VIX", "GSPC", "DJI"]
 INDICATORS_0_100 = [
@@ -157,6 +187,17 @@ __all__ = [
     "EXO_REGRESSORS_CSV",
     # PCE worker
     "PCE_WORKER_PY_EXE",
+    # DynaMix integration
+    "DYNAMIX_ENABLED",
+    "DYNAMIX_FORCE_CPU",
+    "DYNAMIX_REPO_PATH",
+    "DYNAMIX_WORKER_PY_EXE",
+    "DYNAMIX_MIN_DATA_LENGTH",
+    "DYNAMIX_CONTEXT_STEPS",
+    "DYNAMIX_STANDARDIZE",
+    "DYNAMIX_FIT_NONSTATIONARY",
+    "DYNAMIX_PREPROCESSING_METHOD",
+    "DYNAMIX_TIMEOUT_SEC",
     # Lists
     "TICKERS",
     "INDICATORS_0_100",

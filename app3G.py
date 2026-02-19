@@ -27,6 +27,7 @@ def _pivotcalcresult_to_legacy_dict(obj: Any) -> Dict[str, Any]:
       {"Classic": {"Pivot": ..., "R1": ..., "S1": ...}, "Fibonacci": {...}, ...}
 
     Supported source shapes:
+      - obj.pivot_data: dict[str, dict[str, float]]
       - obj.levels: dict[str, dict[str, float]]
       - obj.pivots: dict[str, dict[str, float]]
       - obj.classic / obj.camarilla / obj.woodie / obj.fibonacci / obj.demark: dict[str, float]
@@ -37,7 +38,12 @@ def _pivotcalcresult_to_legacy_dict(obj: Any) -> Dict[str, Any]:
     if isinstance(obj, dict):
         return obj
 
-    # Direct mapping already present
+    # Canonical Phase-1 shape (src.utils.pivots.PivotCalcResult)
+    pivot_data = getattr(obj, "pivot_data", None)
+    if isinstance(pivot_data, dict) and pivot_data:
+        return pivot_data
+
+    # Older direct mapping shapes
     levels = getattr(obj, "levels", None)
     if isinstance(levels, dict) and levels:
         return levels

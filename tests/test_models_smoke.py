@@ -263,6 +263,7 @@ def test_lstm_quantiles_smoke_skips_if_missing_torch() -> None:
     "modname, deps",
     [
         ("src.models.random_walk", ()),
+        ("src.models.dynamix", ()),
         ("src.models.var", ("statsmodels",)),
         ("src.models.pce_narx", ("chaospy", "sklearn")),
         ("src.models.lstm", ("torch",)),

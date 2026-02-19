@@ -14,6 +14,7 @@ Phase-1 establishes non-negotiable architectural invariants before any deeper re
 
 * [`docs/refactor/phase1_rules.md`](docs/refactor/phase1_rules.md)
 * [`docs/refactor/decisions/0001-lstm-backend-pytorch-cutover.md`](docs/refactor/decisions/0001-lstm-backend-pytorch-cutover.md)
+* [`docs/refactor/decisions/0002-dynamix-cpu-worker-integration.md`](docs/refactor/decisions/0002-dynamix-cpu-worker-integration.md)
 
 This document defines:
 
@@ -83,6 +84,28 @@ For CUDA-enabled environments, install torch from the PyTorch CUDA wheel index t
 python -m pip install --index-url https://download.pytorch.org/whl/cu124 torch==2.6.0
 python -m pip install -r requirements.txt
 ```
+
+### Optional: DynaMix Integration (CPU-Only)
+
+FIN now includes an optional DynaMix forecast path (`DYNAMIX`) integrated through the canonical model layer.
+
+- Canonical entrypoint: `src.models.dynamix.predict_dynamix`
+- Worker entrypoint: `scripts/workers/dynamix_worker.py`
+- Facade model key: `DYNAMIX`
+- Runtime mode: forced CPU (`CUDA_VISIBLE_DEVICES=""` in worker)
+
+Expected repository location for DynaMix:
+
+```text
+<FIN_ROOT>/vendor/DynaMix-python
+```
+
+Override paths/interpreter with environment variables when needed:
+
+- `FIN_DYNAMIX_REPO` - path to DynaMix-python checkout
+- `FIN_DYNAMIX_PY_EXE` - python interpreter used by the DynaMix worker
+
+Legacy/compat constants are available in `compat/Constants.py` under `DYNAMIX_*`.
 
 ---
 

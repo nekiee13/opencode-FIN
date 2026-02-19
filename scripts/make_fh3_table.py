@@ -71,6 +71,7 @@ FILE_PREFIX_MAP: Dict[str, str] = {"SPX": "GSPC"}
 RAW_SUFFIX = "_data.csv"
 
 MODEL_PRIORITY: List[Tuple[str, str]] = [
+    ("DYNAMIX", "DYNAMIX_Pred"),
     ("ARIMAX", "ARIMAX_Pred"),
     ("ETS", "ETS_Pred"),
     ("RW", "RW_Pred"),
@@ -135,6 +136,22 @@ def safe_run_arimax(df: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def safe_run_dynamix(df: pd.DataFrame, ticker: str, fh: int) -> Optional[pd.DataFrame]:
+    try:
+        pred_df = Models.predict_dynamix(
+            df,
+            ticker=ticker,
+            target_col="Close",
+            fh=int(fh),
+        )
+        if pred_df is not None and not pred_df.empty:
+            return cast(pd.DataFrame, pred_df)
+        return None
+    except Exception as e:
+        log.warning("DynaMix failed for %s: %s", ticker, e, exc_info=True)
+        return None
+
+
 def safe_run_ets(df: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
     try:
         ets_df = Models.predict_exp_smoothing(df)
@@ -159,6 +176,12 @@ def safe_run_rw(df: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
 
 def compute_forecasts(df: pd.DataFrame, ticker: str) -> Dict[str, pd.DataFrame]:
     out: Dict[str, pd.DataFrame] = {}
+
+    fh = discover_fh()
+
+    dynamix_df = safe_run_dynamix(df, ticker, fh)
+    if dynamix_df is not None:
+        out["DYNAMIX"] = dynamix_df
 
     arimax_df = safe_run_arimax(df, ticker)
     if arimax_df is not None:
