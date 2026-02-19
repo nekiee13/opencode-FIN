@@ -29,21 +29,56 @@ def _resolve_repo_root() -> Path:
 
 
 def _resolve_repo_path(arg_path: str) -> Path:
+    def _is_repo(p: Path) -> bool:
+        try:
+            return p.exists() and (p / "src" / "model" / "forecaster.py").exists()
+        except Exception:
+            return False
+
+    def _scan_candidates(root: Path) -> Optional[Path]:
+        roots = [root, root / "vendor", root.parent]
+        for rr in roots:
+            if not rr.exists() or not rr.is_dir():
+                continue
+            try:
+                for child in rr.iterdir():
+                    if (
+                        child.is_dir()
+                        and "dynamix" in child.name.lower()
+                        and _is_repo(child)
+                    ):
+                        return child.resolve()
+            except Exception:
+                continue
+        return None
+
     if arg_path.strip():
-        return Path(arg_path).resolve()
+        p = Path(arg_path).resolve()
+        if _is_repo(p):
+            return p
+        _eprint(f"DynaMix worker: --dynamix-repo not usable ({p}). Trying fallbacks...")
 
     env_path = os.environ.get("FIN_DYNAMIX_REPO", "").strip()
     if env_path:
-        return Path(env_path).resolve()
+        ep = Path(env_path).resolve()
+        if _is_repo(ep):
+            return ep
+        _eprint(
+            f"DynaMix worker: FIN_DYNAMIX_REPO not usable ({ep}). Trying defaults..."
+        )
 
     root = _resolve_repo_root()
     vendor_default = (root / "vendor" / "DynaMix-python").resolve()
-    if vendor_default.exists():
+    if _is_repo(vendor_default):
         return vendor_default
 
     repo_default = (root / "DynaMix-python").resolve()
-    if repo_default.exists():
+    if _is_repo(repo_default):
         return repo_default
+
+    scanned = _scan_candidates(root)
+    if scanned is not None:
+        return scanned
 
     return vendor_default
 
@@ -206,7 +241,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         repo_path = _resolve_repo_path(str(args.dynamix_repo))
         if not repo_path.exists():
-            raise FileNotFoundError(f"DynaMix repository path not found: {repo_path}")
+            raise FileNotFoundError(
+                "DynaMix repository path not found: "
+                f"{repo_path}. Set FIN_DYNAMIX_REPO to your DynaMix-python clone."
+            )
 
         context_csv = Path(str(args.context_csv)).resolve()
         if not context_csv.exists():

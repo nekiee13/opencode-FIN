@@ -156,3 +156,61 @@ def test_discover_repo_path_falls_back_when_config_path_missing(
 
     resolved = dx._discover_dynamix_repo_path()
     assert resolved == repo_root_clone.resolve()
+
+
+def test_discover_repo_path_scans_dynamix_named_dirs(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from src.models import dynamix as dx
+
+    app_root = tmp_path / "app"
+    app_root.mkdir(parents=True, exist_ok=True)
+
+    candidate = app_root / "DynaMix-python-main"
+    (candidate / "src" / "model").mkdir(parents=True, exist_ok=True)
+    (candidate / "src" / "model" / "forecaster.py").write_text(
+        "# marker", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(dx.paths, "APP_ROOT", app_root)
+    monkeypatch.setattr(dx, "_discover_str", lambda name, default: "")
+    monkeypatch.delenv("FIN_DYNAMIX_REPO", raising=False)
+
+    resolved = dx._discover_dynamix_repo_path()
+    assert resolved == candidate.resolve()
+
+
+def test_build_worker_env_preserves_existing_repo_when_candidate_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from src.models import dynamix as dx
+
+    monkeypatch.setenv("FIN_DYNAMIX_REPO", "F:/custom/DynaMix-python")
+
+    env = dx._build_worker_env(tmp_path / "missing_repo")
+    assert env["FIN_DYNAMIX_REPO"] == "F:/custom/DynaMix-python"
+
+
+def test_discover_repo_path_reads_dotenv(monkeypatch, tmp_path: Path) -> None:
+    from src.models import dynamix as dx
+
+    app_root = tmp_path / "app"
+    app_root.mkdir(parents=True, exist_ok=True)
+
+    repo_dir = app_root / "my-dynamix-repo"
+    (repo_dir / "src" / "model").mkdir(parents=True, exist_ok=True)
+    (repo_dir / "src" / "model" / "forecaster.py").write_text(
+        "# marker", encoding="utf-8"
+    )
+
+    (app_root / ".env").write_text(
+        f"FIN_DYNAMIX_REPO={repo_dir}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(dx.paths, "APP_ROOT", app_root)
+    monkeypatch.setattr(dx, "_discover_str", lambda name, default: "")
+    monkeypatch.delenv("FIN_DYNAMIX_REPO", raising=False)
+
+    resolved = dx._discover_dynamix_repo_path()
+    assert resolved == repo_dir.resolve()

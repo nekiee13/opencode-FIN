@@ -80,10 +80,38 @@ def _discover_str(name: str, default: str) -> str:
 
 
 def _discover_dynamix_repo_path() -> Path:
+    # Best effort: load repo-root .env so FIN_DYNAMIX_REPO works in non-app3G entrypoints.
+    try:
+        paths.load_dotenv_if_present()
+    except Exception:
+        pass
+
+    def _is_repo(p: Path) -> bool:
+        try:
+            return p.exists() and (p / "src" / "model" / "forecaster.py").exists()
+        except Exception:
+            return False
+
+    def _scan_candidates() -> Optional[Path]:
+        roots = [paths.APP_ROOT, paths.APP_ROOT / "vendor", paths.APP_ROOT.parent]
+        for root in roots:
+            if not root.exists() or not root.is_dir():
+                continue
+            try:
+                for child in root.iterdir():
+                    if not child.is_dir():
+                        continue
+                    nm = child.name.lower()
+                    if "dynamix" in nm and _is_repo(child):
+                        return child.resolve()
+            except Exception:
+                continue
+        return None
+
     env_override = os.environ.get("FIN_DYNAMIX_REPO", "").strip()
     if env_override:
         env_path = Path(env_override).resolve()
-        if env_path.exists():
+        if _is_repo(env_path):
             return env_path
         log.warning(
             "DynaMix: FIN_DYNAMIX_REPO is set but path does not exist: %s", env_path
@@ -92,7 +120,7 @@ def _discover_dynamix_repo_path() -> Path:
     cfg_path = _discover_str("DYNAMIX_REPO_PATH", "")
     if cfg_path:
         cfg_repo = Path(cfg_path).resolve()
-        if cfg_repo.exists():
+        if _is_repo(cfg_repo):
             return cfg_repo
         log.info(
             "DynaMix: DYNAMIX_REPO_PATH does not exist (%s). Trying defaults.",
@@ -104,8 +132,12 @@ def _discover_dynamix_repo_path() -> Path:
         return vendor_default
 
     repo_root_default = (paths.APP_ROOT / "DynaMix-python").resolve()
-    if repo_root_default.exists():
+    if _is_repo(repo_root_default):
         return repo_root_default
+
+    scanned = _scan_candidates()
+    if scanned is not None:
+        return scanned
 
     return vendor_default
 
@@ -151,11 +183,12 @@ def _write_context_csv(series: pd.Series, out_path: Path, *, target_col: str) ->
     context_df.to_csv(out_path, index=False)
 
 
-def _build_worker_env(repo_path: Path) -> Dict[str, str]:
+def _build_worker_env(repo_path: Optional[Path]) -> Dict[str, str]:
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ""
     env["FIN_DYNAMIX_FORCE_CPU"] = "1"
-    env["FIN_DYNAMIX_REPO"] = str(repo_path)
+    if repo_path is not None and repo_path.exists():
+        env["FIN_DYNAMIX_REPO"] = str(repo_path)
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
     return env
 
@@ -320,11 +353,27 @@ def predict_dynamix(
     )
     timeout_i = max(30, timeout_i)
 
-    repo_path = (
-        Path(dynamix_repo_path).resolve()
-        if dynamix_repo_path
-        else _discover_dynamix_repo_path()
-    )
+    repo_path: Optional[Path]
+    if dynamix_repo_path:
+        rp = Path(dynamix_repo_path).resolve()
+        if rp.exists():
+            repo_path = rp
+        else:
+            log.info(
+                "DynaMix: explicit repo path does not exist (%s). Falling back to auto-discovery.",
+                rp,
+            )
+            repo_path = _discover_dynamix_repo_path()
+    else:
+        repo_path = _discover_dynamix_repo_path()
+
+    repo_arg = str(repo_path) if (repo_path is not None and repo_path.exists()) else ""
+    if not repo_arg:
+        log.warning(
+            "DynaMix: no valid repository path resolved for %s. "
+            "Set FIN_DYNAMIX_REPO or DYNAMIX_REPO_PATH to a clone containing src/model/forecaster.py.",
+            ticker or "<ticker>",
+        )
     worker_py = _resolve_worker_python()
 
     try:
@@ -358,7 +407,7 @@ def predict_dynamix(
             "--artifact-csv",
             str(artifact_csv),
             "--dynamix-repo",
-            str(repo_path),
+            repo_arg,
             "--context-steps",
             str(int(ctx_steps)),
             "--preprocessing-method",
