@@ -122,6 +122,21 @@ FIN_DYNAMIX_PY_EXE=F:\vEnv\opencode-FIN\python.exe
 
 Legacy/compat constants are available in `compat/Constants.py` under `DYNAMIX_*`.
 
+### Predictive Interval Harmonization (ARIMAX, PCE, LSTM)
+
+FIN harmonizes these models to a shared predictive-interval target:
+
+- Central coverage: `90%`
+- Quantiles: `q_low=0.05`, `q_high=0.95`
+- Alpha: `0.10`
+
+Configuration knobs live in `compat/Constants.py`:
+
+- `PI_COVERAGE`, `PI_ALPHA`, `PI_Q_LOW`, `PI_Q_HIGH`
+- `PI_CALIBRATION_ENABLED`, `PI_CALIBRATION_MIN_SAMPLES`
+
+Lightweight residual-quantile calibration can be enabled globally to widen intervals consistently across models.
+
 When running `app3G`, DynaMix is executed twice:
 
 - Run 1: `standardize=True, fit_nonstationary=False`

@@ -719,16 +719,23 @@ def predict_lstm(
         )
 
     # Legacy constants are [q_low, q_mid, q_high]. Canonical API expects (q_low, q_high).
-    q_lo = 0.10
-    q_hi = 0.90
+    q_lo = 0.05
+    q_hi = 0.95
     try:
-        qvals = [float(q) for q in list(getattr(C, "LSTM_QUANTILES", []))]
-        if len(qvals) >= 2:
-            qvals_sorted = sorted(qvals)
-            q_lo = float(qvals_sorted[0])
-            q_hi = float(qvals_sorted[-1])
+        from src.models.intervals import discover_pi_settings  # type: ignore
+
+        pi = discover_pi_settings()
+        q_lo = float(pi.q_low)
+        q_hi = float(pi.q_high)
     except Exception:
-        q_lo, q_hi = 0.10, 0.90
+        try:
+            qvals = [float(q) for q in list(getattr(C, "LSTM_QUANTILES", []))]
+            if len(qvals) >= 2:
+                qvals_sorted = sorted(qvals)
+                q_lo = float(qvals_sorted[0])
+                q_hi = float(qvals_sorted[-1])
+        except Exception:
+            q_lo, q_hi = 0.05, 0.95
 
     try:
         res = predict_lstm_quantiles(
@@ -1043,17 +1050,52 @@ def predict_arima(
             log.warning("ARIMAX: auto_arima failed to find a suitable model.")
             return None, None, None
 
+        alpha_i = 0.10
+        try:
+            from src.models.intervals import discover_pi_settings  # type: ignore
+
+            alpha_i = float(discover_pi_settings().alpha)
+        except Exception:
+            alpha_i = 0.10
+
         if X_future_arr is not None:
             predictions, conf_int = auto_model.predict(
-                n_periods=C.FH, X=X_future_arr, return_conf_int=True
+                n_periods=C.FH,
+                X=X_future_arr,
+                return_conf_int=True,
+                alpha=alpha_i,
             )
         else:
             predictions, conf_int = auto_model.predict(
-                n_periods=C.FH, X=None, return_conf_int=True
+                n_periods=C.FH,
+                X=None,
+                return_conf_int=True,
+                alpha=alpha_i,
             )
 
         model_order = auto_model.order
         residuals = cast("NDArray[Any]", auto_model.resid())
+
+        qhat = 0.0
+        try:
+            from src.models.intervals import (  # type: ignore
+                discover_pi_settings,
+                residual_quantile_expansion,
+            )
+
+            pi = discover_pi_settings()
+            if bool(pi.calibration_enabled):
+                qhat = residual_quantile_expansion(
+                    residuals,
+                    alpha=float(pi.alpha),
+                    min_samples=int(pi.calibration_min_samples),
+                )
+        except Exception:
+            qhat = 0.0
+
+        if qhat > 0.0 and np.isfinite(qhat):
+            conf_int[:, 0] = conf_int[:, 0] - float(qhat)
+            conf_int[:, 1] = conf_int[:, 1] + float(qhat)
 
         result_df = pd.DataFrame(
             {

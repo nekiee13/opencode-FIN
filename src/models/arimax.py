@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from src.exo.exo_validator import ValidationParams, validate_exo_config_for_run
+from src.models.intervals import discover_pi_settings, residual_quantile_expansion
 from src.utils import compat as cap
 
 log = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ DEFAULT_ORDER: Tuple[int, int, int] = (1, 1, 1)
 DEFAULT_SEASONAL_ORDER: Tuple[int, int, int, int] = (0, 0, 0, 0)
 
 DEFAULT_COVERAGE = 0.90  # prediction interval coverage
-_Z90 = 1.645  # ~90% two-sided z for normal approx
+_Z90 = 1.645  # compatibility fallback
 
 
 def _discover_fh() -> int:
@@ -212,7 +213,7 @@ def predict_arimax(
     seasonal_order: Tuple[int, int, int, int] = DEFAULT_SEASONAL_ORDER,
     enforce_stationarity: bool = False,
     enforce_invertibility: bool = False,
-    coverage: float = DEFAULT_COVERAGE,
+    coverage: Optional[float] = None,
 ) -> Optional[ARIMAXResult]:
     """
     Fits SARIMAX with optional exogenous regressors and forecasts FH business days.
@@ -235,6 +236,13 @@ def predict_arimax(
         return None
 
     model_name = "ARIMAX"
+    pi = discover_pi_settings()
+
+    if coverage is None:
+        cov_i = float(pi.coverage)
+    else:
+        cov_i = min(0.999, max(0.01, float(coverage)))
+    alpha = max(1e-6, min(0.99, 1.0 - cov_i))
 
     fh_i = int(fh) if fh is not None else _discover_fh()
     if fh_i <= 0:
@@ -343,7 +351,6 @@ def predict_arimax(
 
         # Prefer conf_int when available
         try:
-            alpha = float(max(1e-6, min(0.99, 1.0 - float(coverage))))
             ci = fc.conf_int(alpha=alpha)
             if isinstance(ci, pd.DataFrame) and ci.shape[1] >= 2:
                 lower = cast(pd.Series, ci.iloc[:, 0])
@@ -370,7 +377,7 @@ def predict_arimax(
             if not np.isfinite(sigma) or sigma <= 0.0:
                 sigma = float(np.std(y.to_numpy(dtype=float), ddof=1) * 0.05)
 
-            z = _Z90
+            z = float(pi.z_two_sided) if coverage is None else _Z90
             lower = pred_mean - z * sigma
             upper = pred_mean + z * sigma
         else:
@@ -396,6 +403,21 @@ def predict_arimax(
             resid_arr = np.asarray(pd.Series(resid_raw).dropna(), dtype=float)
             if resid_arr.size == 0:
                 resid_arr = None
+
+        if (
+            lower is not None
+            and upper is not None
+            and bool(pi.calibration_enabled)
+            and resid_arr is not None
+        ):
+            qhat = residual_quantile_expansion(
+                resid_arr,
+                alpha=alpha,
+                min_samples=int(pi.calibration_min_samples),
+            )
+            if qhat > 0.0 and np.isfinite(qhat):
+                lower = cast(pd.Series, lower - float(qhat))
+                upper = cast(pd.Series, upper + float(qhat))
 
         cols_used: List[str] = ["ARIMAX_Pred", "ARIMAX_Lower", "ARIMAX_Upper"]
         return ARIMAXResult(

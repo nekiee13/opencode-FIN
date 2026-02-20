@@ -122,6 +122,18 @@ INDICATORS_0_100 = [
 FH = 3  # Forecast Horizon in business days
 
 
+# --- Predictive Interval Harmonization (cross-model) ---
+# Target: calibrated central 90% predictive intervals.
+PI_COVERAGE = 0.90
+PI_ALPHA = 0.10
+PI_Q_LOW = 0.05
+PI_Q_HIGH = 0.95
+
+# Lightweight residual-quantile post-hoc calibration toggle.
+PI_CALIBRATION_ENABLED = True
+PI_CALIBRATION_MIN_SAMPLES = 30
+
+
 # --- VAR Model Parameters ---
 VAR_MAX_LAGS = 15  # Max lags to check for the VAR model
 
@@ -130,7 +142,7 @@ VAR_MAX_LAGS = 15  # Max lags to check for the VAR model
 LSTM_LOOKBACK = 28
 LSTM_EPOCHS = 120
 LSTM_TRAIN_WINDOW = 500
-LSTM_QUANTILES = [0.1, 0.5, 0.9]
+LSTM_QUANTILES = [0.05, 0.5, 0.95]
 
 
 # --- Random Walk Model Parameters ---
@@ -203,6 +215,12 @@ __all__ = [
     "INDICATORS_0_100",
     # Parameters
     "FH",
+    "PI_COVERAGE",
+    "PI_ALPHA",
+    "PI_Q_LOW",
+    "PI_Q_HIGH",
+    "PI_CALIBRATION_ENABLED",
+    "PI_CALIBRATION_MIN_SAMPLES",
     "VAR_MAX_LAGS",
     "LSTM_LOOKBACK",
     "LSTM_EPOCHS",

@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
+from src.models.intervals import discover_pi_settings, residual_quantile_expansion
+
 log = logging.getLogger(__name__)
 
 DEFAULT_FH = 3
@@ -25,6 +27,7 @@ DEFAULT_LASSO_MAX_ITER = 50_000
 # ----------------------------------------------------------------------
 # Result structure (optional convenience for facade-level provenance)
 # ----------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class PCENARXResult:
@@ -40,6 +43,7 @@ class PCENARXResult:
 # ----------------------------------------------------------------------
 # Optional dependency import
 # ----------------------------------------------------------------------
+
 
 def _import_dependencies():
     """
@@ -58,7 +62,9 @@ def _import_dependencies():
     try:
         from sklearn.linear_model import LassoCV  # type: ignore
     except Exception:
-        log.info("PCE-NARX disabled: optional dependency 'scikit-learn' is not available.")
+        log.info(
+            "PCE-NARX disabled: optional dependency 'scikit-learn' is not available."
+        )
         return None, None, None
 
     try:
@@ -72,6 +78,7 @@ def _import_dependencies():
 # ----------------------------------------------------------------------
 # Constants discovery (optional; compat/Constants.py may exist)
 # ----------------------------------------------------------------------
+
 
 def _discover_fh() -> int:
     try:
@@ -104,6 +111,7 @@ def _discover_num(name: str, default: Any) -> Any:
 # ----------------------------------------------------------------------
 # Core helpers
 # ----------------------------------------------------------------------
+
 
 def _as_bday_series(s: pd.Series) -> pd.Series:
     if not isinstance(s.index, pd.DatetimeIndex):
@@ -163,7 +171,9 @@ def _build_narx_dataset_from_df(
     return X, y, cols_used
 
 
-def _scale_features_to_unit_box(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _scale_features_to_unit_box(
+    X: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Scale each feature of X approximately into [-1, 1] (legacy behavior).
 
@@ -180,12 +190,16 @@ def _scale_features_to_unit_box(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, 
 
 
 def _future_bday_index(last_dt: pd.Timestamp, fh: int) -> pd.DatetimeIndex:
-    return cast(pd.DatetimeIndex, pd.date_range(start=last_dt + to_offset("B"), periods=int(fh), freq="B"))
+    return cast(
+        pd.DatetimeIndex,
+        pd.date_range(start=last_dt + to_offset("B"), periods=int(fh), freq="B"),
+    )
 
 
 # ----------------------------------------------------------------------
 # Public API
 # ----------------------------------------------------------------------
+
 
 def predict_pce_narx(
     enriched_data: pd.DataFrame,
@@ -224,7 +238,13 @@ def predict_pce_narx(
     if cp is None or LassoCV is None:
         return None
 
-    tgt = str(target_col) if target_col else str(_discover_num("PCE_TARGET_COL", DEFAULT_TARGET_COL))
+    pi = discover_pi_settings()
+
+    tgt = (
+        str(target_col)
+        if target_col
+        else str(_discover_num("PCE_TARGET_COL", DEFAULT_TARGET_COL))
+    )
     if tgt not in enriched_data.columns:
         log.warning("PCE-NARX: target '%s' missing for %s.", tgt, ticker or "<ticker>")
         return None
@@ -257,9 +277,13 @@ def predict_pce_narx(
 
     max_lag = int(_discover_num("PCE_LAGS", 5))
 
-    X_opt, y_opt, cols_used = _build_narx_dataset_from_df(y_series, ex_train_aligned, max_lag)
+    X_opt, y_opt, cols_used = _build_narx_dataset_from_df(
+        y_series, ex_train_aligned, max_lag
+    )
     if X_opt is None or y_opt is None:
-        log.warning("PCE-NARX: insufficient data after alignment for %s.", ticker or "<ticker>")
+        log.warning(
+            "PCE-NARX: insufficient data after alignment for %s.", ticker or "<ticker>"
+        )
         return None
 
     X_arr = cast(np.ndarray, X_opt)
@@ -313,7 +337,12 @@ def predict_pce_narx(
         )
         lasso.fit(A_train, y_arr)
     except Exception as e:
-        log.warning("PCE-NARX: LassoCV fit failed for %s: %s", ticker or "<ticker>", e, exc_info=True)
+        log.warning(
+            "PCE-NARX: LassoCV fit failed for %s: %s",
+            ticker or "<ticker>",
+            e,
+            exc_info=True,
+        )
         return None
 
     # Residual scale for intervals
@@ -360,7 +389,14 @@ def predict_pce_narx(
     lowers: List[float] = []
     uppers: List[float] = []
 
-    z_score = float(_discover_num("PCE_ZSCORE", 1.645))
+    z_score = float(pi.z_two_sided)
+    qhat = 0.0
+    if bool(pi.calibration_enabled):
+        qhat = residual_quantile_expansion(
+            residuals,
+            alpha=float(pi.alpha),
+            min_samples=int(pi.calibration_min_samples),
+        )
 
     for step in range(int(fh_i)):
         feats: List[float] = []
@@ -382,17 +418,31 @@ def predict_pce_narx(
         try:
             y_pred = float(lasso.predict(A_future)[0])
         except Exception as e:
-            log.warning("PCE-NARX: prediction failed for %s at step %d: %s", ticker or "<ticker>", step + 1, e)
+            log.warning(
+                "PCE-NARX: prediction failed for %s at step %d: %s",
+                ticker or "<ticker>",
+                step + 1,
+                e,
+            )
             return None
 
         preds.append(y_pred)
-        lowers.append(y_pred - z_score * sigma)
-        uppers.append(y_pred + z_score * sigma)
+        base_low = y_pred - z_score * sigma
+        base_up = y_pred + z_score * sigma
+        if qhat > 0.0 and np.isfinite(qhat):
+            base_low -= float(qhat)
+            base_up += float(qhat)
+
+        lowers.append(base_low)
+        uppers.append(base_up)
         y_hist.append(y_pred)
 
         if progress_callback is not None:
             try:
-                progress_callback(int(100.0 * (step + 1) / max(1, int(fh_i))), f"PCE-NARX step {step+1}/{fh_i}")
+                progress_callback(
+                    int(100.0 * (step + 1) / max(1, int(fh_i))),
+                    f"PCE-NARX step {step + 1}/{fh_i}",
+                )
             except Exception:
                 pass
 
@@ -419,7 +469,11 @@ def predict_pce_narx_result(
     """
     Convenience wrapper returning provenance alongside the prediction DataFrame.
     """
-    tgt = str(target_col) if target_col else str(_discover_num("PCE_TARGET_COL", DEFAULT_TARGET_COL))
+    tgt = (
+        str(target_col)
+        if target_col
+        else str(_discover_num("PCE_TARGET_COL", DEFAULT_TARGET_COL))
+    )
     max_lag = int(_discover_num("PCE_LAGS", 5))
 
     df = predict_pce_narx(
@@ -443,10 +497,17 @@ def predict_pce_narx_result(
         "target_col": tgt,
         "fh": int(fh) if fh is not None else _discover_fh(),
         "max_lag": int(max_lag),
+        "pi_coverage": float(pi.coverage),
+        "pi_alpha": float(pi.alpha),
+        "pi_q_low": float(pi.q_low),
+        "pi_q_high": float(pi.q_high),
+        "pi_calibration_enabled": bool(pi.calibration_enabled),
         "poly_degree": int(_discover_num("PCE_POLY_DEGREE", 2)),
         "min_samples": int(_discover_num("PCE_MIN_SAMPLES", 50)),
         "has_exog": bool(exog_train_df is not None and not exog_train_df.empty),
-        "lasso_max_iter": int(_discover_num("PCE_LASSO_MAX_ITER", DEFAULT_LASSO_MAX_ITER)),
+        "lasso_max_iter": int(
+            _discover_num("PCE_LASSO_MAX_ITER", DEFAULT_LASSO_MAX_ITER)
+        ),
     }
 
     return PCENARXResult(

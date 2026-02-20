@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
+from src.models.intervals import discover_pi_settings, residual_quantile_expansion
 from src.utils import compat as cap
 
 log = logging.getLogger(__name__)
@@ -148,7 +149,7 @@ def predict_lstm_quantiles(
     fh: Optional[int] = None,
     exog_train: Optional[pd.DataFrame] = None,
     exog_future: Optional[pd.DataFrame] = None,
-    quantiles: Tuple[float, float] = (0.10, 0.90),
+    quantiles: Optional[Tuple[float, float]] = None,
     lookback: int = 60,
     epochs: int = 60,
     batch_size: int = 32,
@@ -195,7 +196,12 @@ def predict_lstm_quantiles(
     fh_i = int(fh) if fh is not None else _discover_fh()
     fh_i = fh_i if fh_i > 0 else DEFAULT_FH
 
-    q_lo, q_hi = float(quantiles[0]), float(quantiles[1])
+    pi = discover_pi_settings()
+    if quantiles is None:
+        q_lo, q_hi = float(pi.q_low), float(pi.q_high)
+    else:
+        q_lo, q_hi = float(quantiles[0]), float(quantiles[1])
+
     if not (0.0 < q_lo < q_hi < 1.0):
         raise ValueError("quantiles must satisfy 0 < q_lo < q_hi < 1.")
 
@@ -411,6 +417,27 @@ def predict_lstm_quantiles(
         )
         return None
 
+    qhat = 0.0
+    if bool(pi.calibration_enabled):
+        try:
+            model.eval()
+            with torch.no_grad():
+                lo_cal, hi_cal = model(x_tr_t)
+
+            lo_np = lo_cal.detach().cpu().numpy().reshape(-1)
+            hi_np = hi_cal.detach().cpu().numpy().reshape(-1)
+            mid_np = 0.5 * (lo_np + hi_np)
+            y_np = y_tr_t.detach().cpu().numpy().reshape(-1)
+            resid = np.abs(y_np - mid_np)
+
+            qhat = residual_quantile_expansion(
+                resid,
+                alpha=float(pi.alpha),
+                min_samples=int(pi.calibration_min_samples),
+            )
+        except Exception:
+            qhat = 0.0
+
     # Future index: avoid pd.Timestamp(Index) patterns (Pylance + runtime safety)
     last_dt = cast(pd.Timestamp, pd.Timestamp(cast(Any, X_df.index.max())))
     fut_idx = _future_index(last_dt, int(fh_i))
@@ -480,6 +507,9 @@ def predict_lstm_quantiles(
         y_hi = float(qhi_hat.detach().cpu().numpy().reshape(-1)[0])
         if y_lo > y_hi:
             y_lo, y_hi = y_hi, y_lo
+        if qhat > 0.0 and np.isfinite(qhat):
+            y_lo -= float(qhat)
+            y_hi += float(qhat)
         y_pred = 0.5 * (y_lo + y_hi)
 
         lowers.append(y_lo)
@@ -513,6 +543,12 @@ def predict_lstm_quantiles(
         "dropout": float(dropout),
         "learning_rate": float(learning_rate),
         "quantiles": (q_lo, q_hi),
+        "pi_coverage": float(pi.coverage),
+        "pi_alpha": float(pi.alpha),
+        "pi_q_low": float(pi.q_low),
+        "pi_q_high": float(pi.q_high),
+        "pi_calibration_enabled": bool(pi.calibration_enabled),
+        "pi_qhat": float(qhat),
         "n_features": int(X_raw.shape[1]),
         "n_samples": int(len(X_df)),
         "has_exog": bool(ex_train_aligned is not None),
