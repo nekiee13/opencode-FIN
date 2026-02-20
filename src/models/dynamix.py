@@ -21,6 +21,19 @@ DEFAULT_FH = 3
 DEFAULT_TARGET_COL = "Close"
 
 
+def _is_dynamix_repo_path(p: Path) -> bool:
+    try:
+        return bool(
+            p.exists()
+            and (
+                (p / "src" / "dynamix" / "model" / "forecaster.py").exists()
+                or (p / "src" / "model" / "forecaster.py").exists()
+            )
+        )
+    except Exception:
+        return False
+
+
 @dataclass(frozen=True)
 class DynaMixResult:
     model_used: str
@@ -87,10 +100,7 @@ def _discover_dynamix_repo_path() -> Path:
         pass
 
     def _is_repo(p: Path) -> bool:
-        try:
-            return p.exists() and (p / "src" / "model" / "forecaster.py").exists()
-        except Exception:
-            return False
+        return _is_dynamix_repo_path(p)
 
     def _scan_candidates() -> Optional[Path]:
         roots = [paths.APP_ROOT, paths.APP_ROOT / "vendor", paths.APP_ROOT.parent]
@@ -114,7 +124,8 @@ def _discover_dynamix_repo_path() -> Path:
         if _is_repo(env_path):
             return env_path
         log.warning(
-            "DynaMix: FIN_DYNAMIX_REPO is set but path does not exist: %s", env_path
+            "DynaMix: FIN_DYNAMIX_REPO is set but path is not a supported DynaMix repo: %s",
+            env_path,
         )
 
     cfg_path = _discover_str("DYNAMIX_REPO_PATH", "")
@@ -123,12 +134,12 @@ def _discover_dynamix_repo_path() -> Path:
         if _is_repo(cfg_repo):
             return cfg_repo
         log.info(
-            "DynaMix: DYNAMIX_REPO_PATH does not exist (%s). Trying defaults.",
+            "DynaMix: DYNAMIX_REPO_PATH is not a supported DynaMix repo (%s). Trying defaults.",
             cfg_repo,
         )
 
     vendor_default = (paths.APP_ROOT / "vendor" / "DynaMix-python").resolve()
-    if vendor_default.exists():
+    if _is_repo(vendor_default):
         return vendor_default
 
     repo_root_default = (paths.APP_ROOT / "DynaMix-python").resolve()
@@ -187,7 +198,7 @@ def _build_worker_env(repo_path: Optional[Path]) -> Dict[str, str]:
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ""
     env["FIN_DYNAMIX_FORCE_CPU"] = "1"
-    if repo_path is not None and repo_path.exists():
+    if repo_path is not None and _is_dynamix_repo_path(repo_path):
         env["FIN_DYNAMIX_REPO"] = str(repo_path)
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
     return env
@@ -356,22 +367,27 @@ def predict_dynamix(
     repo_path: Optional[Path]
     if dynamix_repo_path:
         rp = Path(dynamix_repo_path).resolve()
-        if rp.exists():
+        if _is_dynamix_repo_path(rp):
             repo_path = rp
         else:
             log.info(
-                "DynaMix: explicit repo path does not exist (%s). Falling back to auto-discovery.",
+                "DynaMix: explicit repo path is not a supported DynaMix repo (%s). Falling back to auto-discovery.",
                 rp,
             )
             repo_path = _discover_dynamix_repo_path()
     else:
         repo_path = _discover_dynamix_repo_path()
 
-    repo_arg = str(repo_path) if (repo_path is not None and repo_path.exists()) else ""
+    repo_arg = (
+        str(repo_path)
+        if (repo_path is not None and _is_dynamix_repo_path(repo_path))
+        else ""
+    )
     if not repo_arg:
         log.warning(
             "DynaMix: no valid repository path resolved for %s. "
-            "Set FIN_DYNAMIX_REPO or DYNAMIX_REPO_PATH to a clone containing src/model/forecaster.py.",
+            "Set FIN_DYNAMIX_REPO or DYNAMIX_REPO_PATH to a clone containing either "
+            "src/dynamix/model/forecaster.py (new layout) or src/model/forecaster.py (legacy layout).",
             ticker or "<ticker>",
         )
     worker_py = _resolve_worker_python()

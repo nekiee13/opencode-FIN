@@ -12,6 +12,19 @@ from typing import Any, Dict, Optional, Tuple
 PROTOCOL_VERSION = 1
 
 
+def _is_dynamix_repo_path(p: Path) -> bool:
+    try:
+        return bool(
+            p.exists()
+            and (
+                (p / "src" / "dynamix" / "model" / "forecaster.py").exists()
+                or (p / "src" / "model" / "forecaster.py").exists()
+            )
+        )
+    except Exception:
+        return False
+
+
 def _eprint(*args, **kwargs) -> None:
     print(*args, file=sys.stderr, **kwargs)
 
@@ -30,10 +43,7 @@ def _resolve_repo_root() -> Path:
 
 def _resolve_repo_path(arg_path: str) -> Path:
     def _is_repo(p: Path) -> bool:
-        try:
-            return p.exists() and (p / "src" / "model" / "forecaster.py").exists()
-        except Exception:
-            return False
+        return _is_dynamix_repo_path(p)
 
     def _scan_candidates(root: Path) -> Optional[Path]:
         roots = [root, root / "vendor", root.parent]
@@ -150,11 +160,18 @@ def _run_dynamix_forecast(
 
     import torch
 
-    if str(repo_path) not in sys.path:
-        sys.path.insert(0, str(repo_path))
+    repo_src = (repo_path / "src").resolve()
+    for p in (str(repo_path), str(repo_src)):
+        if p in sys.path:
+            sys.path.remove(p)
+        sys.path.insert(0, p)
 
-    from src.model.forecaster import DynaMixForecaster  # type: ignore
-    from src.utilities.utilities import load_hf_model  # type: ignore
+    try:
+        from dynamix.model.forecaster import DynaMixForecaster  # type: ignore
+        from dynamix.utilities.utilities import load_hf_model  # type: ignore
+    except Exception:
+        from src.model.forecaster import DynaMixForecaster  # type: ignore
+        from src.utilities.utilities import load_hf_model  # type: ignore
 
     model_id = (
         str(model_name).strip()
@@ -240,10 +257,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     try:
         repo_path = _resolve_repo_path(str(args.dynamix_repo))
-        if not repo_path.exists():
+        if not _is_dynamix_repo_path(repo_path):
             raise FileNotFoundError(
                 "DynaMix repository path not found: "
-                f"{repo_path}. Set FIN_DYNAMIX_REPO to your DynaMix-python clone."
+                f"{repo_path}. Set FIN_DYNAMIX_REPO to your DynaMix-python clone "
+                "(supported layouts: src/dynamix/... or legacy src/...)."
             )
 
         context_csv = Path(str(args.context_csv)).resolve()

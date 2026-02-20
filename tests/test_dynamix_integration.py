@@ -15,12 +15,21 @@ def _make_bday_close(n: int = 80) -> pd.DataFrame:
     return pd.DataFrame({"Close": vals.astype(float)}, index=idx)
 
 
+def _make_repo_marker(repo_path: Path, *, new_layout: bool = True) -> None:
+    if new_layout:
+        marker = repo_path / "src" / "dynamix" / "model" / "forecaster.py"
+    else:
+        marker = repo_path / "src" / "model" / "forecaster.py"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("# marker", encoding="utf-8")
+
+
 def test_predict_dynamix_worker_success_cpu_env(monkeypatch, tmp_path: Path) -> None:
     from src.models import dynamix as dx
 
     data = _make_bday_close(120)
     repo_path = tmp_path / "DynaMix-python"
-    repo_path.mkdir(parents=True, exist_ok=True)
+    _make_repo_marker(repo_path)
 
     seen: Dict[str, Any] = {}
 
@@ -79,7 +88,7 @@ def test_predict_dynamix_worker_failure_returns_none(
 
     data = _make_bday_close(120)
     repo_path = tmp_path / "DynaMix-python"
-    repo_path.mkdir(parents=True, exist_ok=True)
+    _make_repo_marker(repo_path)
 
     def _fake_run(cmd, capture_output, text, check, timeout, cwd, env):  # type: ignore[no-untyped-def]
         payload = {
@@ -144,7 +153,7 @@ def test_discover_repo_path_falls_back_when_config_path_missing(
     from src.models import dynamix as dx
 
     repo_root_clone = tmp_path / "DynaMix-python"
-    repo_root_clone.mkdir(parents=True, exist_ok=True)
+    _make_repo_marker(repo_root_clone)
 
     monkeypatch.setattr(dx.paths, "APP_ROOT", tmp_path)
     monkeypatch.setattr(
@@ -167,10 +176,7 @@ def test_discover_repo_path_scans_dynamix_named_dirs(
     app_root.mkdir(parents=True, exist_ok=True)
 
     candidate = app_root / "DynaMix-python-main"
-    (candidate / "src" / "model").mkdir(parents=True, exist_ok=True)
-    (candidate / "src" / "model" / "forecaster.py").write_text(
-        "# marker", encoding="utf-8"
-    )
+    _make_repo_marker(candidate)
 
     monkeypatch.setattr(dx.paths, "APP_ROOT", app_root)
     monkeypatch.setattr(dx, "_discover_str", lambda name, default: "")
@@ -198,10 +204,7 @@ def test_discover_repo_path_reads_dotenv(monkeypatch, tmp_path: Path) -> None:
     app_root.mkdir(parents=True, exist_ok=True)
 
     repo_dir = app_root / "my-dynamix-repo"
-    (repo_dir / "src" / "model").mkdir(parents=True, exist_ok=True)
-    (repo_dir / "src" / "model" / "forecaster.py").write_text(
-        "# marker", encoding="utf-8"
-    )
+    _make_repo_marker(repo_dir)
 
     (app_root / ".env").write_text(
         f"FIN_DYNAMIX_REPO={repo_dir}\n",
@@ -214,3 +217,12 @@ def test_discover_repo_path_reads_dotenv(monkeypatch, tmp_path: Path) -> None:
 
     resolved = dx._discover_dynamix_repo_path()
     assert resolved == repo_dir.resolve()
+
+
+def test_is_dynamix_repo_path_accepts_legacy_layout(tmp_path: Path) -> None:
+    from src.models import dynamix as dx
+
+    repo_dir = tmp_path / "legacy-dynamix"
+    _make_repo_marker(repo_dir, new_layout=False)
+
+    assert dx._is_dynamix_repo_path(repo_dir)
