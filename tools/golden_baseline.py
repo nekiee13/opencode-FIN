@@ -252,7 +252,7 @@ def generate_artifacts(
         "--tickers",
         *list(tickers),
         "--csv-dir",
-        str(fin_paths.DATA_RAW_DIR),
+        str(fin_paths.DATA_TICKERS_DIR),
         "--csv-suffix",
         "_data.csv",
         "--out-dir",
@@ -291,7 +291,7 @@ def generate_artifacts(
         "--tickers",
         *list(tickers),
         "--raw-dir",
-        str(fin_paths.DATA_RAW_DIR),
+        str(fin_paths.DATA_TICKERS_DIR),
         "--suffix",
         "_data.csv",
         "--out-dir",
@@ -336,6 +336,7 @@ def generate_artifacts(
         "python": sys.version,
         "executable": _python_exe(),
         "data_raw_dir": str(fin_paths.DATA_RAW_DIR),
+        "data_tickers_dir": str(fin_paths.DATA_TICKERS_DIR),
     }
     _write_text(meta_json, json.dumps(meta, indent=2))
 

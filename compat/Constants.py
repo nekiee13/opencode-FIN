@@ -47,7 +47,7 @@ APP_ROOT_DIR: str = str(_paths.APP_ROOT)
 
 # Legacy folder constants preserved; now FIN-relative.
 # In TS these were hardcoded to F:\\xPy\\TS\\DATA and F:\\xPy\\TS\\Graphs.
-DATA_FOLDER: str = str(_paths.DATA_RAW_DIR)
+DATA_FOLDER: str = str(_paths.DATA_TICKERS_DIR)
 GRAPHS_FOLDER: str = str(_paths.GRAPHS_DIR)
 
 # Optional/commonly used additional folders (non-breaking additions).
@@ -177,7 +177,7 @@ PEAK_WIDTH = 2
 # --- Compatibility: provide Path objects where useful (non-breaking additions) ---
 # Some refactored modules may prefer Path types; legacy code can ignore these.
 APP_ROOT_PATH: Path = _paths.APP_ROOT
-DATA_PATH: Path = _paths.DATA_RAW_DIR
+DATA_PATH: Path = _paths.DATA_TICKERS_DIR
 GRAPHS_PATH: Path = _paths.GRAPHS_DIR
 OUTPUT_PATH: Path = _paths.OUTPUT_DIR
 LOGS_PATH: Path = _paths.LOGS_DIR

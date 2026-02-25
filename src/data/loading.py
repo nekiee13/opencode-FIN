@@ -23,7 +23,8 @@ This module is based on the TS legacy `Data_Loading.fetch_data()` behavior:
 
 Path resolution
 ---------------
-- Uses src.config.paths.DATA_RAW_DIR (FIN layout: data/raw/{TICKER}_data.csv)
+- Uses src.config.paths.DATA_TICKERS_DIR (FIN layout: data/raw/tickers/{TICKER}_data.csv)
+- Transitional fallback: data/raw/{TICKER}_data.csv
 - No filesystem mutation on import.
 """
 
@@ -56,9 +57,21 @@ def resolve_raw_csv_path(
     suffix: str = "_data.csv",
 ) -> Path:
     """Resolve the expected raw CSV path for a ticker."""
-    base = Path(raw_dir) if raw_dir is not None else paths.DATA_RAW_DIR
     sanitized = _sanitize_ticker_for_filename(ticker)
-    return (base / f"{sanitized}{suffix}").resolve()
+    filename = f"{sanitized}{suffix}"
+
+    if raw_dir is not None:
+        return (Path(raw_dir) / filename).resolve()
+
+    preferred = (paths.DATA_TICKERS_DIR / filename).resolve()
+    if preferred.exists():
+        return preferred
+
+    legacy = (paths.DATA_RAW_DIR / filename).resolve()
+    if legacy.exists():
+        return legacy
+
+    return preferred
 
 
 def detect_date_column(df: pd.DataFrame, candidates: Sequence[str] = _DATE_COL_CANDIDATES) -> Optional[str]:

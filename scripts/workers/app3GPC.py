@@ -95,7 +95,7 @@ except Exception as e:
     ) from e
 
 try:
-    from src.data.loading import fetch_data
+    from src.data.loading import fetch_data, resolve_raw_csv_path
 except Exception as e:
     raise RuntimeError(
         "Failed to import FIN loader: from src.data.loading import fetch_data. "
@@ -171,7 +171,7 @@ def _import_torch_forecasting() -> Tuple[Any, Any]:
 def fetch_minimal_data(ticker: str) -> Optional[pd.DataFrame]:
     try:
         eprint(f"TorchForecast worker: resolving FIN raw CSV for {ticker}...")
-        raw_path = paths.DATA_RAW_DIR / f"{ticker.replace('^', '')}_data.csv"
+        raw_path = resolve_raw_csv_path(ticker)
         eprint(f"TorchForecast worker: expected path: {raw_path}")
 
         df_full = fetch_data(ticker, csv_path=raw_path)
@@ -319,7 +319,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     eprint(f"--- Starting TorchForecast worker for ticker: {ticker_arg} ---")
     eprint(f"FIN root: {paths.APP_ROOT}")
-    eprint(f"Raw dir:  {paths.DATA_RAW_DIR}")
+    eprint(f"Raw dir:  {paths.DATA_TICKERS_DIR} (fallback: {paths.DATA_RAW_DIR})")
     eprint(f"FH:       {FORECAST_HORIZON}")
 
     try:

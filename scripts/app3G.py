@@ -163,7 +163,7 @@ def _bridge_constants() -> None:
     """
     assert C is not None, "Constants module not imported"
     C.APP_ROOT_DIR = str(paths.WORKERS_DIR)
-    C.DATA_FOLDER = str(paths.DATA_RAW_DIR)
+    C.DATA_FOLDER = str(paths.DATA_TICKERS_DIR)
     C.GRAPHS_FOLDER = str(paths.GRAPHS_DIR)
 
     log.info("Constants bridge applied:")
@@ -1121,11 +1121,13 @@ def _startup_sanity_checks() -> None:
     """
     paths.ensure_directories()
 
-    if not paths.DATA_RAW_DIR.exists():
+    if not paths.DATA_TICKERS_DIR.exists() and not paths.DATA_RAW_DIR.exists():
         messagebox.showerror(
             "Startup Error",
-            f"Raw data folder not found:\n{paths.DATA_RAW_DIR}\n"
-            "Please ensure data/raw exists and contains *_data.csv files.",
+            "Raw data folder not found:\n"
+            f"- {paths.DATA_TICKERS_DIR}\n"
+            f"- {paths.DATA_RAW_DIR}\n"
+            "Please ensure raw ticker CSVs exist (preferred: data/raw/tickers/*_data.csv).",
         )
         raise SystemExit(1)
 

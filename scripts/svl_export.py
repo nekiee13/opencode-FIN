@@ -4,7 +4,8 @@
 # SVL-v1.0 Export Utility (Fractal-only, Daily) — FIN Refactor Phase 1
 #
 # Purpose:
-#   - Load daily OHLCV CSVs (FIN convention supported: data/raw/{TICKER}_data.csv)
+#   - Load daily OHLCV CSVs (FIN convention preferred: data/raw/tickers/{TICKER}_data.csv)
+#     with transitional fallback to data/raw/{TICKER}_data.csv
 #   - Compute SVL-v1.0 STRUCTURAL_CONTEXT via compat/StructuralIndicators.py
 #   - Export:
 #       1) Paste-ready STRUCTURAL_CONTEXT block (markdown)
@@ -12,7 +13,7 @@
 #       3) Optional "browser-agent insertion" text snippet (prompt header)
 #
 # Default FIN paths:
-#   --csv-dir  defaults to <FIN>/data/raw
+#   --csv-dir  defaults to <FIN>/data/raw/tickers
 #   --out-dir  defaults to <FIN>/data/artifacts/svl
 #
 # Example:
@@ -63,8 +64,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--csv-dir",
         type=str,
-        default=str(paths.DATA_RAW_DIR),
-        help="Directory containing per-ticker CSV files. Default: FIN data/raw",
+        default=str(paths.DATA_TICKERS_DIR),
+        help="Directory containing per-ticker CSV files. Default: FIN data/raw/tickers",
     )
     p.add_argument(
         "--csv-suffix",
@@ -140,13 +141,26 @@ def resolve_csv_path(csv_dir: Path, logical: str, mapped: str, suffix: str) -> P
     """
     Preferred: <mapped><suffix> then fallback: <logical><suffix>
     """
-    primary = csv_dir / f"{mapped}{suffix}"
-    fallback = csv_dir / f"{logical}{suffix}"
-    if primary.exists():
-        return primary
-    if fallback.exists():
-        return fallback
-    raise FileNotFoundError(f"CSV not found for {logical}. Tried: {primary} and {fallback}")
+    primary = (csv_dir / f"{mapped}{suffix}").resolve()
+    fallback = (csv_dir / f"{logical}{suffix}").resolve()
+
+    candidates = [primary, fallback]
+    if csv_dir.name == "tickers":
+        legacy_dir = csv_dir.parent
+        candidates.extend(
+            [
+                (legacy_dir / f"{mapped}{suffix}").resolve(),
+                (legacy_dir / f"{logical}{suffix}").resolve(),
+            ]
+        )
+
+    for p in candidates:
+        if p.exists():
+            return p
+
+    raise FileNotFoundError(
+        f"CSV not found for {logical}. Tried: {', '.join(str(p) for p in candidates)}"
+    )
 
 
 def compute_contexts_from_csv(

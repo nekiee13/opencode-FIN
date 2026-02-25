@@ -27,7 +27,7 @@ Assumptions
     src/config/paths.py
     src/data/loading.py
 - Raw CSV naming convention:
-  data/raw/{TICKER}_data.csv
+  preferred data/raw/tickers/{TICKER}_data.csv (fallback: data/raw/{TICKER}_data.csv)
   with SPX mapped to GSPC (file) but printed as SPX (logical).
 """
 
@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 import pandas as pd
 
 from src.config import paths
-from src.data.loading import fetch_data
+from src.data.loading import fetch_data, resolve_raw_csv_path
 
 _ = paths.load_dotenv_if_present()
 
@@ -95,7 +95,7 @@ def yyyymmdd(x: Any) -> str:
 
 def _resolve_raw_path_for_logical_ticker(ticker: str) -> Path:
     prefix = file_prefix(ticker)
-    return (paths.DATA_RAW_DIR / f"{prefix}{RAW_SUFFIX}").resolve()
+    return resolve_raw_csv_path(prefix, suffix=RAW_SUFFIX)
 
 
 def load_ticker_df_close_only(ticker: str) -> pd.DataFrame:

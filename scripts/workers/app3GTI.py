@@ -7,7 +7,7 @@ FIN Technical Indicators Worker (subprocess)
 Contract with main orchestrator (Models.run_external_script)
 -----------------------------------------------------------
 - Invoked as:  python app3GTI.py <TICKER>
-- Loads raw OHLCV from FIN layout: data/raw/{TICKER}_data.csv (via src.data.loading.fetch_data)
+- Loads raw OHLCV from FIN layout: data/raw/tickers/{TICKER}_data.csv (fallback: data/raw/{TICKER}_data.csv)
 - Adds technical indicators (TA-Lib) + classic pivots
 - Enforces business-day frequency (asfreq('B') with ffill/bfill on OHLC)
 - Writes enriched DataFrame to a temporary CSV file
@@ -93,7 +93,7 @@ except Exception as e:
     ) from e
 
 try:
-    from src.data.loading import fetch_data
+    from src.data.loading import fetch_data, resolve_raw_csv_path
 except Exception as e:
     raise RuntimeError(
         "Failed to import FIN loader: from src.data.loading import fetch_data. "
@@ -437,7 +437,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     # Normal run begins here (help mode will already have exited via argparse)
     eprint(f"\n--- Starting TI worker for ticker: {ticker} ---")
     eprint(f"FIN root: {paths.APP_ROOT}")
-    eprint(f"Raw dir:  {paths.DATA_RAW_DIR}")
+    eprint(f"Raw dir:  {paths.DATA_TICKERS_DIR} (fallback: {paths.DATA_RAW_DIR})")
 
     # Require optional dependency only after parsing args (so --help works without TA-Lib)
     try:
@@ -446,7 +446,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
 
     # Use FIN canonical loader (centralized sanitization)
-    raw_path = paths.DATA_RAW_DIR / f"{ticker.replace('^', '')}_data.csv"
+    raw_path = resolve_raw_csv_path(ticker)
     raw_df = fetch_data(ticker, csv_path=raw_path)
 
     if raw_df is None or raw_df.empty:

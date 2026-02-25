@@ -6,7 +6,8 @@ FIN — Phase 2A TDA artifact exporter (weekly / H1 cycles from return embedding
 
 Responsibilities (mirrors scripts/svl_export.py philosophy)
 ---------------------------------------------------------
-- Load per-ticker OHLCV CSVs from FIN canonical location: data/raw/{PREFIX}_data.csv
+- Load per-ticker OHLCV CSVs from FIN canonical location: data/raw/tickers/{PREFIX}_data.csv
+  (fallback: data/raw/{PREFIX}_data.csv)
 - Compute TDA Phase 2A structural context using FIN's TDA module (preferred) or legacy fallback.
 - Write paste-ready markdown artifact: data/artifacts/tda/TDA_CONTEXT_<ASOF>.md (always)
 - Optionally write metrics CSV:       data/artifacts/tda/TDA_METRICS_<ASOF>.csv
@@ -236,7 +237,19 @@ def resolve_csv_path(
 ) -> Path:
     prefix = prefix_map.get(ticker, ticker) if prefix_map else ticker
     prefix = str(prefix).replace("^", "")
-    return (raw_dir / f"{prefix}{suffix}").resolve()
+    filename = f"{prefix}{suffix}"
+
+    candidates = [(raw_dir / filename).resolve()]
+    if raw_dir.name == "tickers":
+        candidates.append((raw_dir.parent / filename).resolve())
+    else:
+        candidates.append((raw_dir / "tickers" / filename).resolve())
+
+    for p in candidates:
+        if p.exists():
+            return p
+
+    return candidates[0]
 
 
 def _asof_tag(ts: pd.Timestamp, fmt: str = "%Y%m%d") -> str:
@@ -295,7 +308,7 @@ def export_tda_artifacts(
         lastn = int(tda.DEFAULT_LASTN)
 
     out_dir = (out_dir or fin_paths.TDA_ARTIFACTS_DIR).resolve()
-    raw_dir = (raw_dir or fin_paths.DATA_RAW_DIR).resolve()
+    raw_dir = (raw_dir or fin_paths.DATA_TICKERS_DIR).resolve()
 
     # Load CSVs via canonical FIN loader
     ticker_dfs: Dict[str, pd.DataFrame] = {}
@@ -497,7 +510,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--raw-dir",
         type=str,
         default=None,
-        help="Override raw data directory. Default: FIN data/raw.",
+        help="Override raw data directory. Default: FIN data/raw/tickers (fallback: data/raw).",
     )
     p.add_argument(
         "--suffix",
@@ -552,7 +565,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     out_dir = (
         Path(args.out_dir).resolve() if args.out_dir else fin_paths.TDA_ARTIFACTS_DIR
     )
-    raw_dir = Path(args.raw_dir).resolve() if args.raw_dir else fin_paths.DATA_RAW_DIR
+    raw_dir = Path(args.raw_dir).resolve() if args.raw_dir else fin_paths.DATA_TICKERS_DIR
 
     computed_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[tda_export] FIN root: {fin_paths.APP_ROOT}")

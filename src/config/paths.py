@@ -15,7 +15,7 @@ Design goals:
 Project layout (expected):
 FIN/
   config/Exo_regressors.csv
-  data/raw/*.csv
+  data/raw/tickers/*.csv
   data/artifacts/{svl,tda}/
   graphs/
   logs/
@@ -105,6 +105,7 @@ LEGACY_CONFIG_DIR: Path = APP_ROOT
 
 DATA_DIR: Path = APP_ROOT / "data"
 DATA_RAW_DIR: Path = DATA_DIR / "raw"
+DATA_TICKERS_DIR: Path = DATA_RAW_DIR / "tickers"
 
 ARTIFACTS_DIR: Path = DATA_DIR / "artifacts"
 SVL_ARTIFACTS_DIR: Path = ARTIFACTS_DIR / "svl"
@@ -150,6 +151,7 @@ _DEFAULT_DIRS_TO_ENSURE: tuple[Path, ...] = (
     CONFIG_DIR,
     DATA_DIR,
     DATA_RAW_DIR,
+    DATA_TICKERS_DIR,
     ARTIFACTS_DIR,
     SVL_ARTIFACTS_DIR,
     TDA_ARTIFACTS_DIR,
@@ -292,6 +294,7 @@ PATHS = {
     "EXO_CONFIG_PATH": EXO_CONFIG_PATH,
     "DATA_DIR": DATA_DIR,
     "DATA_RAW_DIR": DATA_RAW_DIR,
+    "DATA_TICKERS_DIR": DATA_TICKERS_DIR,
     "ARTIFACTS_DIR": ARTIFACTS_DIR,
     "SVL_ARTIFACTS_DIR": SVL_ARTIFACTS_DIR,
     "TDA_ARTIFACTS_DIR": TDA_ARTIFACTS_DIR,
@@ -309,6 +312,7 @@ __all__ = [
     "CONFIG_DIR",
     "DATA_DIR",
     "DATA_RAW_DIR",
+    "DATA_TICKERS_DIR",
     "ARTIFACTS_DIR",
     "SVL_ARTIFACTS_DIR",
     "TDA_ARTIFACTS_DIR",
