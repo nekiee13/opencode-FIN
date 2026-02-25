@@ -14,7 +14,7 @@ Design goals:
 
 Project layout (expected):
 FIN/
-  config/Exo_regressors.csv
+  data/raw/exoregressors/Exo_regressors.csv
   data/raw/tickers/*.csv
   data/artifacts/{svl,tda}/
   graphs/
@@ -40,6 +40,7 @@ from typing import Dict, Iterable, Optional
 
 # Anchor files/paths that indicate the project root. Add more if you introduce them.
 _ROOT_ANCHORS: tuple[str, ...] = (
+    os.path.join("data", "raw", "exoregressors", "Exo_regressors.csv"),
     os.path.join("config", "Exo_regressors.csv"),
     # Transitional/compat: allow legacy root anchor (kept for migration convenience)
     "Exo_regressors.csv",
@@ -106,6 +107,7 @@ LEGACY_CONFIG_DIR: Path = APP_ROOT
 DATA_DIR: Path = APP_ROOT / "data"
 DATA_RAW_DIR: Path = DATA_DIR / "raw"
 DATA_TICKERS_DIR: Path = DATA_RAW_DIR / "tickers"
+DATA_EXOREGRESSORS_DIR: Path = DATA_RAW_DIR / "exoregressors"
 
 ARTIFACTS_DIR: Path = DATA_DIR / "artifacts"
 SVL_ARTIFACTS_DIR: Path = ARTIFACTS_DIR / "svl"
@@ -123,18 +125,23 @@ def get_exo_config_path() -> Path:
     """Return the canonical Exo_regressors.csv path.
 
     Priority:
-    1) FIN normalized location: config/Exo_regressors.csv
-    2) Transitional legacy location: <root>/Exo_regressors.csv
+    1) FIN normalized location: data/raw/exoregressors/Exo_regressors.csv
+    2) Transitional legacy location: config/Exo_regressors.csv
+    3) Transitional legacy location: <root>/Exo_regressors.csv
 
     This function does not validate the file contents; it only resolves location.
     """
-    preferred = CONFIG_DIR / "Exo_regressors.csv"
+    preferred = DATA_EXOREGRESSORS_DIR / "Exo_regressors.csv"
     if preferred.exists():
         return preferred
 
-    legacy = LEGACY_CONFIG_DIR / "Exo_regressors.csv"
-    if legacy.exists():
-        return legacy
+    legacy_config = CONFIG_DIR / "Exo_regressors.csv"
+    if legacy_config.exists():
+        return legacy_config
+
+    legacy_root = LEGACY_CONFIG_DIR / "Exo_regressors.csv"
+    if legacy_root.exists():
+        return legacy_root
 
     # If neither exists, return preferred path (so callers can show a consistent error).
     return preferred
@@ -152,6 +159,7 @@ _DEFAULT_DIRS_TO_ENSURE: tuple[Path, ...] = (
     DATA_DIR,
     DATA_RAW_DIR,
     DATA_TICKERS_DIR,
+    DATA_EXOREGRESSORS_DIR,
     ARTIFACTS_DIR,
     SVL_ARTIFACTS_DIR,
     TDA_ARTIFACTS_DIR,
@@ -295,6 +303,7 @@ PATHS = {
     "DATA_DIR": DATA_DIR,
     "DATA_RAW_DIR": DATA_RAW_DIR,
     "DATA_TICKERS_DIR": DATA_TICKERS_DIR,
+    "DATA_EXOREGRESSORS_DIR": DATA_EXOREGRESSORS_DIR,
     "ARTIFACTS_DIR": ARTIFACTS_DIR,
     "SVL_ARTIFACTS_DIR": SVL_ARTIFACTS_DIR,
     "TDA_ARTIFACTS_DIR": TDA_ARTIFACTS_DIR,
@@ -313,6 +322,7 @@ __all__ = [
     "DATA_DIR",
     "DATA_RAW_DIR",
     "DATA_TICKERS_DIR",
+    "DATA_EXOREGRESSORS_DIR",
     "ARTIFACTS_DIR",
     "SVL_ARTIFACTS_DIR",
     "TDA_ARTIFACTS_DIR",

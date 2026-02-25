@@ -330,7 +330,7 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                 "color": "#333333",
                 "marker": "x",
                 "linestyle": "--",
-                "label": "TorchForecast",
+                "label": "Torch",
             },
             "ARIMAX": {
                 "color": "#8A2BE2",
@@ -801,13 +801,15 @@ def format_forecast_table(
             return "-"
 
     for model_name in model_order:
+        display_name = "Torch" if model_name == "TorchForecast" else model_name
+
         if model_name == "DYNAMIX":
             primary = model_results.get("DYNAMIX")
             secondary = model_results.get("DYNAMIX_NONSTATIONARY")
             primary_v = _final_value(primary, "DYNAMIX_Pred")
             secondary_v = _final_value(secondary, "DYNAMIX_Pred")
             pred_str = f"{primary_v} <br> {secondary_v}"
-            table.append(f"| {model_name:<7} | {'-':>8} | {pred_str} | {'-':>8} |")
+            table.append(f"| {display_name:<7} | {'-':>8} | {pred_str} | {'-':>8} |")
             continue
 
         preds_df = model_results.get(model_name)
@@ -837,7 +839,7 @@ def format_forecast_table(
             )
 
         table.append(
-            f"| {model_name:<7} | {lower_str:>8} | {pred_str:>8} | {upper_str:>8} |"
+            f"| {display_name:<7} | {lower_str:>8} | {pred_str:>8} | {upper_str:>8} |"
         )
 
     return "\n".join(table)

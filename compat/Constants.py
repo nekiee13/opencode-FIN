@@ -123,11 +123,11 @@ FH = 3  # Forecast Horizon in business days
 
 
 # --- Predictive Interval Harmonization (cross-model) ---
-# Target: calibrated central 90% predictive intervals.
-PI_COVERAGE = 0.90
-PI_ALPHA = 0.10
-PI_Q_LOW = 0.05
-PI_Q_HIGH = 0.95
+# Target: calibrated central 86% predictive intervals.
+PI_COVERAGE = 0.86
+PI_ALPHA = 0.14
+PI_Q_LOW = 0.07
+PI_Q_HIGH = 0.93
 
 # Lightweight residual-quantile post-hoc calibration toggle.
 PI_CALIBRATION_ENABLED = True
