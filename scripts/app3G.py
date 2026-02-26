@@ -700,7 +700,10 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         )
         fig.tight_layout(rect=(0, 0.05, 1, 0.97))
 
-        graph_filename = Path(C.GRAPHS_FOLDER) / f"{ticker}_{period}_plot.png"
+        asof_tag = _safe_timestamp(cast(Any, plot_data.index.max())).strftime("%Y-%m-%d")
+        graph_filename = (
+            Path(C.GRAPHS_FOLDER) / f"{ticker}_{period}_plot_asof_{asof_tag}.png"
+        )
         plt.savefig(str(graph_filename), bbox_inches="tight", dpi=150)
         print(f"Plot saved to {graph_filename}")
 
