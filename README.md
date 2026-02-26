@@ -122,18 +122,41 @@ FIN_DYNAMIX_PY_EXE=F:\vEnv\opencode-FIN\python.exe
 
 Legacy/compat constants are available in `compat/Constants.py` under `DYNAMIX_*`.
 
+### PyCaret Replacement and Model Capability Matrix
+
+PyCaret is no longer part of the runtime stack.
+
+- The legacy "PC" worker slot now runs a torch-based baseline worker (`scripts/workers/app3GPC.py`).
+- In UI/table output this model is shown as `Torch` (internal columns remain `TorchForecast_*` for compatibility).
+- `DYNAMIX` is integrated as a separate canonical model path via `src.models.dynamix`.
+
+Current capability snapshot (app3G forecasting path):
+
+| Model (table key) | Backend / entrypoint | Exogenous regressors | CI in table | Main tuning knobs |
+|---|---|---|---|---|
+| `Torch` | `scripts/workers/app3GPC.py` (pytorch-forecasting Baseline) | No | Yes (`TorchForecast_Lower/Upper`) | `FIN_TF_COVERAGE`, `FIN_FH` |
+| `DYNAMIX` | `src.models.dynamix.predict_dynamix` + worker | No | Columns exist, often unavailable (`-`) | `DYNAMIX_*` constants / env overrides |
+| `ARIMAX` | `src.models.arimax` (with fallback path in compat API) | Yes | Yes | `ARIMA_MAX_P/Q/D`, `ARIMA_SEASONAL`, PI knobs |
+| `PCE` | `src.models.pce_narx` (or worker fallback) | Yes | Yes | `PCE_*` knobs (lags/degree/samples/lasso), `PCE_PI_WIDTH_MULT` |
+| `LSTM` | `src.models.lstm` (torch) | Yes | Yes | `LSTM_LOOKBACK`, `LSTM_EPOCHS`, `LSTM_QUANTILES`, `LSTM_PI_WIDTH_MULT` |
+| `GARCH` | compat API (`arch`) | Yes | No (point forecast only in table) | PI does not currently surface for GARCH in app table |
+| `VAR` | compat API (`statsmodels`) | No (uses endogenous multivariate inputs) | No | `VAR_MAX_LAGS` |
+| `RW` | `src.models.random_walk` | No | No | `RW_DRIFT_ENABLED` |
+| `ETS` | `src.models.ets` | No | No | `ETS_TREND`, `ETS_SEASONAL`, `ETS_SEASONAL_PERIODS` |
+
 ### Predictive Interval Harmonization (ARIMAX, PCE, LSTM)
 
 FIN harmonizes these models to a shared predictive-interval target:
 
-- Central coverage: `90%`
-- Quantiles: `q_low=0.05`, `q_high=0.95`
-- Alpha: `0.10`
+- Central coverage: `86%`
+- Quantiles: `q_low=0.07`, `q_high=0.93`
+- Alpha: `0.14`
 
 Configuration knobs live in `compat/Constants.py`:
 
 - `PI_COVERAGE`, `PI_ALPHA`, `PI_Q_LOW`, `PI_Q_HIGH`
 - `PI_CALIBRATION_ENABLED`, `PI_CALIBRATION_MIN_SAMPLES`
+- `PCE_PI_WIDTH_MULT`, `LSTM_PI_WIDTH_MULT` (model-specific width controls)
 
 Lightweight residual-quantile calibration can be enabled globally to widen intervals consistently across models.
 
