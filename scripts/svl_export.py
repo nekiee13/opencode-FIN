@@ -14,7 +14,7 @@
 #
 # Default FIN paths:
 #   --csv-dir  defaults to <FIN>/data/raw/tickers
-#   --out-dir  defaults to <FIN>/data/artifacts/svl
+#   --out-dir  defaults to <FIN>/out/i_calc/svl
 #
 # Example:
 #   python scripts/svl_export.py --tickers TNX DJI SPX VIX QQQ AAPL --map-json "{\"SPX\":\"GSPC\"}" --print --write-metrics
@@ -94,8 +94,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--out-dir",
         type=str,
-        default=str(paths.SVL_ARTIFACTS_DIR),
-        help="Directory for output artifacts. Default: FIN data/artifacts/svl",
+        default=str(paths.OUT_I_CALC_SVL_DIR),
+        help="Directory for output artifacts. Default: FIN out/i_calc/svl",
     )
     p.add_argument(
         "--basename",

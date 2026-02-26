@@ -9,9 +9,9 @@ Responsibilities (mirrors scripts/svl_export.py philosophy)
 - Load per-ticker OHLCV CSVs from FIN canonical location: data/raw/tickers/{PREFIX}_data.csv
   (fallback: data/raw/{PREFIX}_data.csv)
 - Compute TDA Phase 2A structural context using FIN's TDA module (preferred) or legacy fallback.
-- Write paste-ready markdown artifact: data/artifacts/tda/TDA_CONTEXT_<ASOF>.md (always)
-- Optionally write metrics CSV:       data/artifacts/tda/TDA_METRICS_<ASOF>.csv
-- Optionally write prompt header:     data/artifacts/tda/TDA_PROMPT_HEADER_<ASOF>.txt
+- Write paste-ready markdown artifact: out/i_calc/tda/TDA_CONTEXT_<ASOF>.md (always)
+- Optionally write metrics CSV:       out/i_calc/tda/TDA_METRICS_<ASOF>.csv
+- Optionally write prompt header:     out/i_calc/tda/TDA_PROMPT_HEADER_<ASOF>.txt
 - Graceful degradation:
     - Missing CSVs or compute failures produce degraded per-ticker entries (not a crash).
     - If ripser (or required deps) are missing, exporter still writes markdown indicating disabled states.
@@ -23,7 +23,7 @@ This script is designed to be executed from FIN root *or* any working directory.
 Typical usage
 -------------
   python scripts/tda_export.py --tickers TNX DJI SPX VIX QQQ AAPL --map SPX=GSPC
-  python scripts/tda_export.py --tickers QQQ AAPL --out-dir data/artifacts/tda --write-metrics --write-prompt-header
+  python scripts/tda_export.py --tickers QQQ AAPL --out-dir out/i_calc/tda --write-metrics --write-prompt-header
 
 Notes
 -----
@@ -307,7 +307,7 @@ def export_tda_artifacts(
     if lastn == 10 and int(tda.DEFAULT_LASTN) != 10:
         lastn = int(tda.DEFAULT_LASTN)
 
-    out_dir = (out_dir or fin_paths.TDA_ARTIFACTS_DIR).resolve()
+    out_dir = (out_dir or fin_paths.OUT_I_CALC_TDA_DIR).resolve()
     raw_dir = (raw_dir or fin_paths.DATA_TICKERS_DIR).resolve()
 
     # Load CSVs via canonical FIN loader
@@ -523,7 +523,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--out-dir",
         type=str,
         default=None,
-        help="Output directory for artifacts. Default: FIN data/artifacts/tda.",
+        help="Output directory for artifacts. Default: FIN out/i_calc/tda.",
     )
 
     p.add_argument(
@@ -563,7 +563,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     prefix_map = parse_prefix_map(args.map) if args.map else None
     out_dir = (
-        Path(args.out_dir).resolve() if args.out_dir else fin_paths.TDA_ARTIFACTS_DIR
+        Path(args.out_dir).resolve() if args.out_dir else fin_paths.OUT_I_CALC_TDA_DIR
     )
     raw_dir = Path(args.raw_dir).resolve() if args.raw_dir else fin_paths.DATA_TICKERS_DIR
 
