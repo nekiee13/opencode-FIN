@@ -34,3 +34,5 @@ Thumbs.db
 
 # Data (keep source datasets out unless explicitly needed)
 # data/
+lightning_logs/
+lightning_logs/
