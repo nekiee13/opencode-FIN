@@ -145,7 +145,7 @@ VAR_MAX_LAGS = 15  # Max lags to check for the VAR model
 
 # --- LSTM Model Parameters ---
 LSTM_LOOKBACK = 28
-LSTM_EPOCHS = 120
+LSTM_EPOCHS = 240
 LSTM_TRAIN_WINDOW = 500
 LSTM_QUANTILES = [0.05, 0.5, 0.95]
 
