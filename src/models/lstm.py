@@ -62,6 +62,15 @@ def _discover_target_col() -> str:
         return DEFAULT_TARGET_COL
 
 
+def _discover_num(name: str, default: Any) -> Any:
+    try:
+        import Constants as C  # type: ignore
+
+        return getattr(C, name, default)
+    except Exception:
+        return default
+
+
 def _as_bday(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
@@ -197,6 +206,8 @@ def predict_lstm_quantiles(
     fh_i = fh_i if fh_i > 0 else DEFAULT_FH
 
     pi = discover_pi_settings()
+    lstm_pi_width_mult = float(_discover_num("LSTM_PI_WIDTH_MULT", 1.0))
+    lstm_pi_width_mult = min(2.0, max(0.05, lstm_pi_width_mult))
     if quantiles is None:
         q_lo, q_hi = float(pi.q_low), float(pi.q_high)
     else:
@@ -510,6 +521,13 @@ def predict_lstm_quantiles(
         if qhat > 0.0 and np.isfinite(qhat):
             y_lo -= float(qhat)
             y_hi += float(qhat)
+
+        if lstm_pi_width_mult != 1.0:
+            mid = 0.5 * (y_lo + y_hi)
+            half_width = max(0.0, 0.5 * (y_hi - y_lo) * float(lstm_pi_width_mult))
+            y_lo = mid - half_width
+            y_hi = mid + half_width
+
         y_pred = 0.5 * (y_lo + y_hi)
 
         lowers.append(y_lo)
@@ -548,6 +566,7 @@ def predict_lstm_quantiles(
         "pi_q_low": float(pi.q_low),
         "pi_q_high": float(pi.q_high),
         "pi_calibration_enabled": bool(pi.calibration_enabled),
+        "lstm_pi_width_mult": float(lstm_pi_width_mult),
         "pi_qhat": float(qhat),
         "n_features": int(X_raw.shape[1]),
         "n_samples": int(len(X_df)),

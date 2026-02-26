@@ -133,6 +133,11 @@ PI_Q_HIGH = 0.93
 PI_CALIBRATION_ENABLED = True
 PI_CALIBRATION_MIN_SAMPLES = 30
 
+# Model-specific PI narrowing multipliers (1.0 = unchanged).
+# Applied only to final interval half-width in each model.
+PCE_PI_WIDTH_MULT = 0.22
+LSTM_PI_WIDTH_MULT = 0.30
+
 
 # --- VAR Model Parameters ---
 VAR_MAX_LAGS = 15  # Max lags to check for the VAR model
@@ -221,6 +226,8 @@ __all__ = [
     "PI_Q_HIGH",
     "PI_CALIBRATION_ENABLED",
     "PI_CALIBRATION_MIN_SAMPLES",
+    "PCE_PI_WIDTH_MULT",
+    "LSTM_PI_WIDTH_MULT",
     "VAR_MAX_LAGS",
     "LSTM_LOOKBACK",
     "LSTM_EPOCHS",

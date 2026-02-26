@@ -43,6 +43,24 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 import pandas as pd
 
+
+def _bootstrap_sys_path() -> Path:
+    this_file = Path(__file__).resolve()
+    scripts_dir = this_file.parent
+    app_root = scripts_dir.parent
+
+    if str(app_root) not in sys.path:
+        sys.path.insert(0, str(app_root))
+
+    compat_dir = app_root / "compat"
+    if compat_dir.exists() and str(compat_dir) not in sys.path:
+        sys.path.insert(0, str(compat_dir))
+
+    return app_root
+
+
+APP_ROOT = _bootstrap_sys_path()
+
 from src.config import paths
 from src.data.loading import fetch_data, resolve_raw_csv_path
 
@@ -51,7 +69,6 @@ _ = paths.load_dotenv_if_present()
 # ---------------------------------------------------------------------
 # BOOTSTRAP: compat/ on sys.path for legacy Models.py + optional Constants.py
 # ---------------------------------------------------------------------
-APP_ROOT = paths.APP_ROOT
 COMPAT_DIR = (APP_ROOT / "compat").resolve()
 if COMPAT_DIR.exists() and str(COMPAT_DIR) not in sys.path:
     sys.path.insert(0, str(COMPAT_DIR))

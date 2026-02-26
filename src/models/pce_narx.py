@@ -239,6 +239,8 @@ def predict_pce_narx(
         return None
 
     pi = discover_pi_settings()
+    pce_pi_width_mult = float(_discover_num("PCE_PI_WIDTH_MULT", 1.0))
+    pce_pi_width_mult = min(2.0, max(0.05, pce_pi_width_mult))
 
     tgt = (
         str(target_col)
@@ -433,6 +435,12 @@ def predict_pce_narx(
             base_low -= float(qhat)
             base_up += float(qhat)
 
+        if pce_pi_width_mult != 1.0:
+            half_width = max(float(base_up - y_pred), float(y_pred - base_low))
+            half_width = max(0.0, half_width * float(pce_pi_width_mult))
+            base_low = y_pred - half_width
+            base_up = y_pred + half_width
+
         lowers.append(base_low)
         uppers.append(base_up)
         y_hist.append(y_pred)
@@ -475,6 +483,9 @@ def predict_pce_narx_result(
         else str(_discover_num("PCE_TARGET_COL", DEFAULT_TARGET_COL))
     )
     max_lag = int(_discover_num("PCE_LAGS", 5))
+    pi = discover_pi_settings()
+    pce_pi_width_mult = float(_discover_num("PCE_PI_WIDTH_MULT", 1.0))
+    pce_pi_width_mult = min(2.0, max(0.05, pce_pi_width_mult))
 
     df = predict_pce_narx(
         enriched_data,
@@ -502,6 +513,7 @@ def predict_pce_narx_result(
         "pi_q_low": float(pi.q_low),
         "pi_q_high": float(pi.q_high),
         "pi_calibration_enabled": bool(pi.calibration_enabled),
+        "pce_pi_width_mult": float(pce_pi_width_mult),
         "poly_degree": int(_discover_num("PCE_POLY_DEGREE", 2)),
         "min_samples": int(_discover_num("PCE_MIN_SAMPLES", 50)),
         "has_exog": bool(exog_train_df is not None and not exog_train_df.empty),
