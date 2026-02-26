@@ -17,6 +17,7 @@ Key behaviors (refactor-aligned)
 - Produces:
     1) Full table with model provenance (Model_Used / Col_Used)
     2) Minimal paste-ready table for prompt injection
+    3) Intermediate artifacts under out/i_calc/fh3
 
 Assumptions
 -----------
@@ -36,6 +37,7 @@ from __future__ import annotations
 import logging
 import importlib
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
@@ -251,6 +253,28 @@ def _as_dt_index(idx_like: Any, *, ticker: str) -> pd.DatetimeIndex:
     return dt_idx
 
 
+def _write_fh3_artifacts(out_df: pd.DataFrame, minimal_cols: List[str]) -> Tuple[Path, Path]:
+    out_dir = paths.OUT_I_CALC_FH3_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    asof_tag = datetime.now().strftime("%Y%m%d")
+    if "FH_Date1" in out_df.columns:
+        try:
+            asof_tag = pd.to_datetime(out_df["FH_Date1"], errors="coerce").min().strftime(
+                "%Y%m%d"
+            )
+        except Exception:
+            pass
+
+    full_path = out_dir / f"FH3_TABLE_FULL_{asof_tag}.csv"
+    minimal_path = out_dir / f"FH3_TABLE_MIN_{asof_tag}.csv"
+
+    out_df.to_csv(full_path, index=False)
+    out_df[minimal_cols].to_csv(minimal_path, index=False)
+
+    return full_path, minimal_path
+
+
 # ---------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------
@@ -315,6 +339,11 @@ def main() -> int:
     ]
     print("\nPASTE-READY (minimal) FORECAST_TABLE_ALL_TICKERS:")
     print(out_df[minimal_cols].to_string(index=False))
+
+    full_path, minimal_path = _write_fh3_artifacts(out_df, minimal_cols)
+    print("\nWROTE FH3 ARTIFACTS:")
+    print(f"  {full_path}")
+    print(f"  {minimal_path}")
 
     return 0
 
