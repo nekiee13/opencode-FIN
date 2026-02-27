@@ -69,6 +69,8 @@ class DraftArtifacts:
 class FinalizeArtifacts:
     round_id: str
     round_state: str
+    ok_actuals: int
+    total_actuals: int
     actuals_csv: Path
     context_json: Path
     dashboard_md: Path
@@ -741,6 +743,8 @@ def run_tplus3_finalize_round(
     return FinalizeArtifacts(
         round_id=str(round_id),
         round_state=round_state,
+        ok_actuals=ok_count,
+        total_actuals=total,
         actuals_csv=round_actuals_csv,
         context_json=context_json,
         dashboard_md=dashboard_md,

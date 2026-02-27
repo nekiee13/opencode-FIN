@@ -104,6 +104,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         print("[followup-ml] Round finalized:")
         print(f"  state={artifacts.round_state}")
+        print(f"  actuals_ok={artifacts.ok_actuals}/{artifacts.total_actuals}")
         print(f"  {artifacts.actuals_csv}")
         print(f"  {artifacts.context_json}")
         print(f"  {artifacts.dashboard_md}")
