@@ -124,7 +124,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("[followup-ml] Round finalized:")
         print(f"  state={artifacts.round_state}")
         print(f"  actuals_ok={artifacts.ok_actuals}/{artifacts.total_actuals}")
+        print(
+            f"  scores_computed={artifacts.scored_rows}/{artifacts.total_score_rows}"
+        )
+        print(
+            "  model_coverage_avg="
+            f"{artifacts.model_coverage_avg:.3f}"
+        )
         print(f"  {artifacts.actuals_csv}")
+        print(f"  {artifacts.partial_scores_csv}")
+        print(f"  {artifacts.model_summary_csv}")
         print(f"  {artifacts.context_json}")
         print(f"  {artifacts.dashboard_md}")
         try:

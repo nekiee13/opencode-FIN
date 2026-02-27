@@ -72,7 +72,12 @@ class FinalizeArtifacts:
     round_state: str
     ok_actuals: int
     total_actuals: int
+    scored_rows: int
+    total_score_rows: int
+    model_coverage_avg: float
     actuals_csv: Path
+    partial_scores_csv: Path
+    model_summary_csv: Path
     context_json: Path
     dashboard_md: Path
 
@@ -446,6 +451,16 @@ def _fmt_number(v: Any, ndp: int = 4) -> str:
     return "-"
 
 
+def _to_int_or_zero(v: Any) -> int:
+    try:
+        f = float(v)
+        if _isfinite(f):
+            return int(f)
+    except Exception:
+        pass
+    return 0
+
+
 def _render_round_markdown(
     *,
     round_id: str,
@@ -455,6 +470,8 @@ def _render_round_markdown(
     dayn_df: pd.DataFrame,
     metrics_df: pd.DataFrame,
     actuals_df: Optional[pd.DataFrame] = None,
+    score_summary_df: Optional[pd.DataFrame] = None,
+    score_stats: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines: List[str] = []
     lines.append(f"# Follow-up ML Board - {round_id}")
@@ -516,6 +533,53 @@ def _render_round_markdown(
                 + " |"
             )
 
+    if score_summary_df is not None and not score_summary_df.empty:
+        lines.append("")
+        lines.append("## Partial Scoring")
+        lines.append("")
+        if score_stats is not None:
+            lines.append(
+                "- Coverage: "
+                f"`{int(score_stats.get('scored_tickers', 0))}/{int(score_stats.get('total_tickers', 0))}` tickers "
+                "with at least one scored model"
+            )
+            lines.append(
+                "- Scored rows: "
+                f"`{int(score_stats.get('scored_rows', 0))}/{int(score_stats.get('total_rows', 0))}`"
+            )
+            lines.append(
+                "- Mean model coverage ratio: "
+                f"`{_fmt_number(score_stats.get('model_coverage_avg', 0.0), ndp=3)}`"
+            )
+            lines.append("")
+
+        header3 = [
+            "Model",
+            "Mean Accuracy",
+            "Scored",
+            "Expected",
+            "Coverage",
+        ]
+        lines.append("| " + " | ".join(header3) + " |")
+        lines.append("|" + "|".join([":--" for _ in header3]) + "|")
+        for _, rec in score_summary_df.iterrows():
+            cov_pct = 100.0 * _to_float_or_nan(rec.get("coverage_ratio"))
+            cov_str = _fmt_number(cov_pct, ndp=1)
+            cov_cell = f"{cov_str}%" if cov_str != "-" else "-"
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(rec.get("model", "")),
+                        _fmt_number(rec.get("mean_accuracy_pct"), ndp=4),
+                        str(_to_int_or_zero(rec.get("scored_tickers"))),
+                        str(_to_int_or_zero(rec.get("expected_tickers"))),
+                        cov_cell,
+                    ]
+                )
+                + " |"
+            )
+
     lines.append("")
     lines.append("## Notes")
     lines.append("")
@@ -570,6 +634,165 @@ def _round_actuals_path(round_id: str) -> Path:
 
 def _global_actuals_path(round_id: str) -> Path:
     return paths.OUT_I_CALC_FOLLOWUP_ML_ACTUALS_DIR / f"{round_id}_actuals.csv"
+
+
+def _global_partial_scores_path(round_id: str) -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR / f"{round_id}_partial_scores.csv"
+
+
+def _global_model_summary_path(round_id: str) -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR / f"{round_id}_model_summary.csv"
+
+
+def _compute_partial_scores(
+    *,
+    round_id: str,
+    forecasts_df: pd.DataFrame,
+    actuals_df: pd.DataFrame,
+    fh: int,
+) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+    fsub = cast(
+        pd.DataFrame,
+        forecasts_df[forecasts_df["fh_step"] == int(fh)].copy(),
+    )
+    if fsub.empty:
+        empty_scores = pd.DataFrame(
+            columns=[
+                "round_id",
+                "ticker",
+                "model",
+                "forecast_date",
+                "expected_actual_date",
+                "pred_value",
+                "actual_close",
+                "accuracy_pct",
+                "score_status",
+            ]
+        )
+        empty_summary = pd.DataFrame(
+            columns=[
+                "model",
+                "mean_accuracy_pct",
+                "scored_tickers",
+                "expected_tickers",
+                "coverage_ratio",
+            ]
+        )
+        return empty_scores, empty_summary, {
+            "scored_rows": 0,
+            "total_rows": 0,
+            "scored_tickers": 0,
+            "total_tickers": 0,
+            "model_coverage_avg": 0.0,
+        }
+
+    actuals_by_ticker: Dict[str, Dict[str, Any]] = {}
+    for _, r in actuals_df.iterrows():
+        t = str(r.get("ticker", ""))
+        actuals_by_ticker[t] = dict(r)
+
+    score_rows: List[Dict[str, Any]] = []
+    for _, r in fsub.iterrows():
+        ticker = str(r.get("ticker", ""))
+        model = str(r.get("model", ""))
+        forecast_date = str(r.get("forecast_date", ""))
+        pred_value = _to_float_or_nan(r.get("pred_value"))
+        forecast_status = str(r.get("status", ""))
+
+        actual_rec = actuals_by_ticker.get(ticker, {})
+        actual_status = str(actual_rec.get("status", "pending_actual"))
+        expected_actual_date = str(actual_rec.get("expected_actual_date", ""))
+        actual_close = _to_float_or_nan(actual_rec.get("actual_close"))
+
+        accuracy_pct = NAN
+        score_status = "pending_actual"
+
+        if forecast_status != "ok":
+            if forecast_status == "nan_pred":
+                score_status = "nan_pred"
+            else:
+                score_status = "model_unavailable"
+        else:
+            if actual_status == "ok" and _isfinite(actual_close) and abs(actual_close) > 0:
+                accuracy_pct = 100.0 - abs((actual_close - pred_value) / actual_close * 100.0)
+                score_status = "scored" if _isfinite(accuracy_pct) else "nan_pred"
+            elif actual_status == "no_expected_date":
+                score_status = "no_expected_date"
+            elif actual_status == "actual_missing":
+                score_status = "actual_missing"
+            else:
+                score_status = "pending_actual"
+
+        score_rows.append(
+            {
+                "round_id": str(round_id),
+                "ticker": ticker,
+                "model": model,
+                "forecast_date": forecast_date,
+                "expected_actual_date": expected_actual_date,
+                "pred_value": pred_value,
+                "actual_close": actual_close,
+                "accuracy_pct": accuracy_pct,
+                "score_status": score_status,
+            }
+        )
+
+    scores_df = pd.DataFrame(score_rows)
+    expected_tickers = int(cast(pd.Series, fsub["ticker"]).nunique())
+
+    summary_rows: List[Dict[str, Any]] = []
+    for model in MODEL_ORDER:
+        mdf = cast(pd.DataFrame, scores_df[scores_df["model"] == model].copy())
+        scored = cast(pd.DataFrame, mdf[mdf["score_status"] == "scored"].copy())
+
+        vals = [
+            _to_float_or_nan(v)
+            for v in list(scored["accuracy_pct"]) if "accuracy_pct" in scored.columns
+        ]
+        vals_f = [v for v in vals if _isfinite(v)]
+        mean_acc = float(sum(vals_f) / len(vals_f)) if vals_f else NAN
+        scored_tickers = int(cast(pd.Series, scored["ticker"]).nunique()) if not scored.empty else 0
+        coverage_ratio = (
+            float(scored_tickers / expected_tickers) if expected_tickers > 0 else 0.0
+        )
+
+        summary_rows.append(
+            {
+                "model": model,
+                "mean_accuracy_pct": mean_acc,
+                "scored_tickers": scored_tickers,
+                "expected_tickers": expected_tickers,
+                "coverage_ratio": coverage_ratio,
+            }
+        )
+
+    summary_df = pd.DataFrame(summary_rows)
+    summary_df = cast(
+        pd.DataFrame,
+        summary_df.sort_values(by=["mean_accuracy_pct", "coverage_ratio"], ascending=[False, False]).reset_index(drop=True),
+    )
+
+    scored_rows = int((scores_df["score_status"] == "scored").sum())
+    total_rows = int(len(scores_df))
+    scored_tickers = int(
+        cast(pd.Series, scores_df[scores_df["score_status"] == "scored"]["ticker"]).nunique()
+    )
+    total_tickers = int(cast(pd.Series, scores_df["ticker"]).nunique())
+    cov_vals = [
+        _to_float_or_nan(v)
+        for v in list(summary_df["coverage_ratio"]) if "coverage_ratio" in summary_df.columns
+    ]
+    cov_vals_f = [v for v in cov_vals if _isfinite(v)]
+    model_cov_avg = float(sum(cov_vals_f) / len(cov_vals_f)) if cov_vals_f else 0.0
+
+    stats = {
+        "scored_rows": scored_rows,
+        "total_rows": total_rows,
+        "scored_tickers": scored_tickers,
+        "total_tickers": total_tickers,
+        "model_coverage_avg": model_cov_avg,
+    }
+    return scores_df, summary_df, stats
 
 
 def _expected_actual_dates_by_ticker(
@@ -728,10 +951,22 @@ def run_tplus3_finalize_round(
 
     round_actuals_csv = _round_actuals_path(round_id)
     global_actuals_csv = _global_actuals_path(round_id)
+    partial_scores_csv = _global_partial_scores_path(round_id)
+    model_summary_csv = _global_model_summary_path(round_id)
     round_actuals_csv.parent.mkdir(parents=True, exist_ok=True)
     global_actuals_csv.parent.mkdir(parents=True, exist_ok=True)
+    partial_scores_csv.parent.mkdir(parents=True, exist_ok=True)
     cast(pd.DataFrame, actuals_df).to_csv(round_actuals_csv, index=False)
     cast(pd.DataFrame, actuals_df).to_csv(global_actuals_csv, index=False)
+
+    scores_df, score_summary_df, score_stats = _compute_partial_scores(
+        round_id=str(round_id),
+        forecasts_df=cast(pd.DataFrame, forecasts_df),
+        actuals_df=cast(pd.DataFrame, actuals_df),
+        fh=fh_i,
+    )
+    cast(pd.DataFrame, scores_df).to_csv(partial_scores_csv, index=False)
+    cast(pd.DataFrame, score_summary_df).to_csv(model_summary_csv, index=False)
 
     context["round_state"] = round_state
     context["finalized_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -741,9 +976,20 @@ def run_tplus3_finalize_round(
         "actuals_csv": str(round_actuals_csv),
         "global_actuals_csv": str(global_actuals_csv),
     }
+    context["scores"] = {
+        "scored_rows": int(score_stats.get("scored_rows", 0)),
+        "total_rows": int(score_stats.get("total_rows", 0)),
+        "scored_tickers": int(score_stats.get("scored_tickers", 0)),
+        "total_tickers": int(score_stats.get("total_tickers", 0)),
+        "model_coverage_avg": float(score_stats.get("model_coverage_avg", 0.0)),
+        "partial_scores_csv": str(partial_scores_csv),
+        "model_summary_csv": str(model_summary_csv),
+    }
     context_outputs = cast(Dict[str, Any], context.get("outputs", {}))
     context_outputs["actuals_csv"] = str(round_actuals_csv)
     context_outputs["global_actuals_csv"] = str(global_actuals_csv)
+    context_outputs["partial_scores_csv"] = str(partial_scores_csv)
+    context_outputs["model_summary_csv"] = str(model_summary_csv)
     context["outputs"] = context_outputs
     context_json.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
@@ -758,6 +1004,8 @@ def run_tplus3_finalize_round(
         dayn_df=cast(pd.DataFrame, dayn_df),
         metrics_df=cast(pd.DataFrame, metrics_df),
         actuals_df=cast(pd.DataFrame, actuals_df),
+        score_summary_df=cast(pd.DataFrame, score_summary_df),
+        score_stats=cast(Dict[str, Any], score_stats),
     )
     _write_nonempty_text(dashboard_md, md)
 
@@ -766,7 +1014,12 @@ def run_tplus3_finalize_round(
         round_state=round_state,
         ok_actuals=ok_count,
         total_actuals=total,
+        scored_rows=int(score_stats.get("scored_rows", 0)),
+        total_score_rows=int(score_stats.get("total_rows", 0)),
+        model_coverage_avg=float(score_stats.get("model_coverage_avg", 0.0)),
         actuals_csv=round_actuals_csv,
+        partial_scores_csv=partial_scores_csv,
+        model_summary_csv=model_summary_csv,
         context_json=context_json,
         dashboard_md=dashboard_md,
     )
@@ -894,6 +1147,17 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
     if actuals_path.exists():
         actuals_df = pd.read_csv(actuals_path)
 
+    score_summary_df: Optional[pd.DataFrame] = None
+    score_stats: Optional[Dict[str, Any]] = None
+    outputs = cast(Dict[str, Any], context.get("outputs", {}))
+    score_summary_path = outputs.get("model_summary_csv")
+    if score_summary_path:
+        p = Path(str(score_summary_path))
+        if p.exists():
+            score_summary_df = pd.read_csv(p)
+    if isinstance(context.get("scores"), dict):
+        score_stats = cast(Dict[str, Any], context.get("scores"))
+
     md = _render_round_markdown(
         round_id=str(round_id),
         round_state=round_state,
@@ -902,6 +1166,8 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
         dayn_df=cast(pd.DataFrame, dayn_df),
         metrics_df=cast(pd.DataFrame, metrics_df),
         actuals_df=cast(Optional[pd.DataFrame], actuals_df),
+        score_summary_df=cast(Optional[pd.DataFrame], score_summary_df),
+        score_stats=cast(Optional[Dict[str, Any]], score_stats),
     )
     dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
     _write_nonempty_text(dashboard_md, md)
