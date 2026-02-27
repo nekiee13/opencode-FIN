@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import paths
+from src.data.loading import fetch_data, resolve_raw_csv_path
 from src.exo.exo_config import load_exo_config
 from src.models import compat_api as models_api
 
@@ -60,6 +61,15 @@ class DraftArtifacts:
     forecasts_csv: Path
     draft_metrics_csv: Path
     day3_matrix_csv: Path
+    context_json: Path
+    dashboard_md: Path
+
+
+@dataclass(frozen=True)
+class FinalizeArtifacts:
+    round_id: str
+    round_state: str
+    actuals_csv: Path
     context_json: Path
     dashboard_md: Path
 
@@ -416,21 +426,30 @@ def _fmt_number(v: Any, ndp: int = 4) -> str:
     return "-"
 
 
-def _render_t0_markdown(
+def _render_round_markdown(
     *,
     round_id: str,
+    round_state: str,
     generated_at: str,
     fh: int,
     dayn_df: pd.DataFrame,
     metrics_df: pd.DataFrame,
+    actuals_df: Optional[pd.DataFrame] = None,
 ) -> str:
     lines: List[str] = []
     lines.append(f"# Follow-up ML Board - {round_id}")
     lines.append("")
-    lines.append(f"- State: `{ROUND_STATE_DRAFT_T0}`")
+    lines.append(f"- State: `{round_state}`")
     lines.append(f"- Generated at: `{generated_at}`")
     lines.append(f"- Forecast horizon (FH): `{fh}`")
-    lines.append("- Accuracy/scoring fields: `Pending +3 actual values`")
+    if round_state == ROUND_STATE_DRAFT_T0:
+        lines.append("- Accuracy/scoring fields: `Pending +3 actual values`")
+    elif round_state == ROUND_STATE_PARTIAL_ACTUALS:
+        lines.append("- Accuracy/scoring fields: `Partial +3 actual values available`")
+    elif round_state == ROUND_STATE_FINAL_TPLUS3:
+        lines.append("- Accuracy/scoring fields: `+3 actual values complete`")
+    else:
+        lines.append("- Accuracy/scoring fields: `Updated after revision`")
     lines.append("")
     lines.append(f"## T0 Forecast Matrix (Day {fh})")
     lines.append("")
@@ -456,17 +475,276 @@ def _render_t0_markdown(
             row_vals.append(_fmt_number(mm.get("day3_spread"), ndp=4))
             lines.append("| " + " | ".join(row_vals) + " |")
 
+    if actuals_df is not None and not actuals_df.empty:
+        lines.append("")
+        lines.append("## +3 Actuals Ingestion")
+        lines.append("")
+        header2 = ["Ticker", "Expected", "Actual", "Status"]
+        lines.append("| " + " | ".join(header2) + " |")
+        lines.append("|" + "|".join([":--" for _ in header2]) + "|")
+        for _, rec in actuals_df.iterrows():
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(rec.get("ticker", "")),
+                        str(rec.get("expected_actual_date", "")),
+                        _fmt_number(rec.get("actual_close"), ndp=4),
+                        str(rec.get("status", "")),
+                    ]
+                )
+                + " |"
+            )
+
     lines.append("")
     lines.append("## Notes")
     lines.append("")
-    lines.append("- This is a draft dashboard at T0; no post-event accuracy is computed yet.")
-    lines.append("- Final scoring should be computed after +3-day actual values are available.")
+    lines.append("- This board is generated from persisted round artifacts under out/i_calc.")
+    lines.append(
+        "- Final scoring transformation and AVR feedback are applied in the finalization stage."
+    )
     lines.append("")
     return "\n".join(lines)
 
 
+def _render_t0_markdown(
+    *,
+    round_id: str,
+    generated_at: str,
+    fh: int,
+    dayn_df: pd.DataFrame,
+    metrics_df: pd.DataFrame,
+) -> str:
+    return _render_round_markdown(
+        round_id=round_id,
+        round_state=ROUND_STATE_DRAFT_T0,
+        generated_at=generated_at,
+        fh=fh,
+        dayn_df=dayn_df,
+        metrics_df=metrics_df,
+        actuals_df=None,
+    )
+
+
+def _write_nonempty_text(path: Path, content: str) -> None:
+    """Write text content and guarantee non-empty file output."""
+    safe = content
+    if not isinstance(safe, str) or not safe.strip():
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        safe = (
+            "# Follow-up ML Board\n\n"
+            f"- Generated at: `{now}`\n"
+            "- Note: renderer produced empty content; fallback body written.\n"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(safe, encoding="utf-8")
+
+
 def _round_dir(round_id: str) -> Path:
     return (paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR / str(round_id)).resolve()
+
+
+def _round_actuals_path(round_id: str) -> Path:
+    return _round_dir(round_id) / "actuals_tplus3.csv"
+
+
+def _global_actuals_path(round_id: str) -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_ACTUALS_DIR / f"{round_id}_actuals.csv"
+
+
+def _expected_actual_dates_by_ticker(
+    forecasts_df: pd.DataFrame,
+    *,
+    fh: int,
+    tickers: Sequence[str],
+) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for t in tickers:
+        sub = cast(
+            pd.DataFrame,
+            forecasts_df[
+                (forecasts_df["ticker"] == t)
+                & (forecasts_df["fh_step"] == int(fh))
+                & (forecasts_df["forecast_date"].astype(str).str.len() > 0)
+            ][["forecast_date"]],
+        )
+        if sub.empty:
+            out[t] = ""
+            continue
+        vc = cast(pd.Series, sub["forecast_date"].astype(str).value_counts())
+        out[t] = str(vc.index[0]) if len(vc.index) > 0 else ""
+    return out
+
+
+def _lookup_actual_close_for_date(runtime_ticker: str, expected_date: str) -> Tuple[float, str, str]:
+    csv_path = resolve_raw_csv_path(runtime_ticker)
+    df = fetch_data(runtime_ticker, csv_path=csv_path)
+    if df is None or df.empty or "Close" not in df.columns:
+        return np.nan, "data_unavailable", str(csv_path)
+
+    xdf = _to_datetime_index(df)
+    if xdf.empty:
+        return np.nan, "data_unavailable", str(csv_path)
+
+    idx_date = cast(pd.Series, xdf.index.to_series().dt.strftime("%Y-%m-%d"))
+    mask = idx_date == str(expected_date)
+    if not bool(mask.any()):
+        return np.nan, "actual_missing", str(csv_path)
+
+    matched = cast(pd.DataFrame, xdf.loc[mask.values].copy())
+    if matched.empty:
+        return np.nan, "actual_missing", str(csv_path)
+
+    close_v = _to_float_or_nan(cast(pd.Series, matched["Close"]).iloc[-1])
+    if not np.isfinite(close_v):
+        return np.nan, "actual_nan", str(csv_path)
+
+    return float(close_v), "ok", str(csv_path)
+
+
+def _actuals_changed(prev_df: pd.DataFrame, new_df: pd.DataFrame) -> bool:
+    base_cols = ["ticker", "expected_actual_date", "status", "actual_close"]
+    p = cast(pd.DataFrame, prev_df.loc[:, [c for c in base_cols if c in prev_df.columns]].copy())
+    n = cast(pd.DataFrame, new_df.loc[:, [c for c in base_cols if c in new_df.columns]].copy())
+    if "actual_close" in p.columns:
+        p["actual_close"] = pd.to_numeric(p["actual_close"], errors="coerce").round(8)
+    if "actual_close" in n.columns:
+        n["actual_close"] = pd.to_numeric(n["actual_close"], errors="coerce").round(8)
+    p = cast(pd.DataFrame, p.sort_values(by=["ticker"]).reset_index(drop=True))
+    n = cast(pd.DataFrame, n.sort_values(by=["ticker"]).reset_index(drop=True))
+    return not p.equals(n)
+
+
+def run_tplus3_finalize_round(
+    *,
+    round_id: str,
+    tickers: Optional[Iterable[str]] = None,
+) -> FinalizeArtifacts:
+    """
+    Ingest +3 actual values for a round and update round state.
+
+    State policy:
+    - no actuals found: DRAFT_T0
+    - partial actuals: PARTIAL_ACTUALS
+    - all actuals found: FINAL_TPLUS3
+    - if previously FINAL/REVISED and values changed: REVISED
+    """
+    paths.ensure_directories()
+
+    round_dir = _round_dir(round_id)
+    context_json = round_dir / "round_context.json"
+    forecasts_csv = round_dir / "t0_forecasts.csv"
+    draft_metrics_csv = round_dir / "t0_draft_metrics.csv"
+
+    if not context_json.exists() or not forecasts_csv.exists() or not draft_metrics_csv.exists():
+        raise FileNotFoundError(
+            f"Round artifacts missing for {round_id}. Expected files in {round_dir}."
+        )
+
+    context = json.loads(context_json.read_text(encoding="utf-8"))
+    prev_state = str(context.get("round_state", ROUND_STATE_DRAFT_T0))
+    fh_i = int(context.get("fh", DEFAULT_FH))
+
+    forecasts_df = pd.read_csv(forecasts_csv)
+    ticker_list = _canonical_tickers(tickers or context.get("tickers", TICKER_ORDER_DEFAULT))
+    expected_dates = _expected_actual_dates_by_ticker(
+        cast(pd.DataFrame, forecasts_df), fh=fh_i, tickers=ticker_list
+    )
+
+    rows: List[Dict[str, Any]] = []
+    for t in ticker_list:
+        runtime_t = _runtime_ticker(t)
+        expected_date = str(expected_dates.get(t, ""))
+        if not expected_date:
+            rows.append(
+                {
+                    "round_id": str(round_id),
+                    "ticker": t,
+                    "runtime_ticker": runtime_t,
+                    "expected_actual_date": "",
+                    "actual_close": np.nan,
+                    "status": "no_expected_date",
+                    "source_csv": "",
+                }
+            )
+            continue
+
+        actual_v, status, source_csv = _lookup_actual_close_for_date(runtime_t, expected_date)
+        rows.append(
+            {
+                "round_id": str(round_id),
+                "ticker": t,
+                "runtime_ticker": runtime_t,
+                "expected_actual_date": expected_date,
+                "actual_close": actual_v,
+                "status": status,
+                "source_csv": source_csv,
+            }
+        )
+
+    actuals_df = pd.DataFrame(rows)
+    ok_count = int((actuals_df["status"] == "ok").sum()) if not actuals_df.empty else 0
+    total = int(len(actuals_df))
+
+    if ok_count <= 0:
+        round_state = ROUND_STATE_DRAFT_T0
+    elif ok_count < total:
+        round_state = ROUND_STATE_PARTIAL_ACTUALS
+    else:
+        round_state = ROUND_STATE_FINAL_TPLUS3
+
+    prev_actuals_path = _round_actuals_path(round_id)
+    if (
+        prev_actuals_path.exists()
+        and prev_state in {ROUND_STATE_FINAL_TPLUS3, ROUND_STATE_REVISED}
+        and round_state == ROUND_STATE_FINAL_TPLUS3
+    ):
+        prev_actuals_df = pd.read_csv(prev_actuals_path)
+        if _actuals_changed(cast(pd.DataFrame, prev_actuals_df), cast(pd.DataFrame, actuals_df)):
+            round_state = ROUND_STATE_REVISED
+
+    round_actuals_csv = _round_actuals_path(round_id)
+    global_actuals_csv = _global_actuals_path(round_id)
+    round_actuals_csv.parent.mkdir(parents=True, exist_ok=True)
+    global_actuals_csv.parent.mkdir(parents=True, exist_ok=True)
+    cast(pd.DataFrame, actuals_df).to_csv(round_actuals_csv, index=False)
+    cast(pd.DataFrame, actuals_df).to_csv(global_actuals_csv, index=False)
+
+    context["round_state"] = round_state
+    context["finalized_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    context["actuals"] = {
+        "ok_count": ok_count,
+        "total": total,
+        "actuals_csv": str(round_actuals_csv),
+        "global_actuals_csv": str(global_actuals_csv),
+    }
+    context_outputs = cast(Dict[str, Any], context.get("outputs", {}))
+    context_outputs["actuals_csv"] = str(round_actuals_csv)
+    context_outputs["global_actuals_csv"] = str(global_actuals_csv)
+    context["outputs"] = context_outputs
+    context_json.write_text(json.dumps(context, indent=2), encoding="utf-8")
+
+    metrics_df = pd.read_csv(draft_metrics_csv)
+    dayn_df = _build_dayn_matrix(cast(pd.DataFrame, forecasts_df), fh_step=fh_i)
+    dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
+    md = _render_round_markdown(
+        round_id=str(round_id),
+        round_state=round_state,
+        generated_at=str(context.get("generated_at", "")),
+        fh=fh_i,
+        dayn_df=cast(pd.DataFrame, dayn_df),
+        metrics_df=cast(pd.DataFrame, metrics_df),
+        actuals_df=cast(pd.DataFrame, actuals_df),
+    )
+    _write_nonempty_text(dashboard_md, md)
+
+    return FinalizeArtifacts(
+        round_id=str(round_id),
+        round_state=round_state,
+        actuals_csv=round_actuals_csv,
+        context_json=context_json,
+        dashboard_md=dashboard_md,
+    )
 
 
 def run_t0_draft_round(
@@ -551,7 +829,7 @@ def run_t0_draft_round(
         dayn_df=cast(pd.DataFrame, dayn_df),
         metrics_df=cast(pd.DataFrame, metrics_df),
     )
-    dashboard_md.write_text(md, encoding="utf-8")
+    _write_nonempty_text(dashboard_md, md)
 
     return DraftArtifacts(
         round_id=str(round_id),
@@ -581,19 +859,25 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
     context = json.loads(context_json.read_text(encoding="utf-8"))
     fh_i = int(context.get("fh", DEFAULT_FH))
     generated_at = str(context.get("generated_at", ""))
+    round_state = str(context.get("round_state", ROUND_STATE_DRAFT_T0))
 
     forecasts_df = pd.read_csv(forecasts_csv)
     metrics_df = pd.read_csv(draft_metrics_csv)
     dayn_df = _build_dayn_matrix(cast(pd.DataFrame, forecasts_df), fh_step=fh_i)
+    actuals_path = _round_actuals_path(round_id)
+    actuals_df: Optional[pd.DataFrame] = None
+    if actuals_path.exists():
+        actuals_df = pd.read_csv(actuals_path)
 
-    md = _render_t0_markdown(
+    md = _render_round_markdown(
         round_id=str(round_id),
+        round_state=round_state,
         generated_at=generated_at,
         fh=fh_i,
         dayn_df=cast(pd.DataFrame, dayn_df),
         metrics_df=cast(pd.DataFrame, metrics_df),
+        actuals_df=cast(Optional[pd.DataFrame], actuals_df),
     )
     dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
-    dashboard_md.parent.mkdir(parents=True, exist_ok=True)
-    dashboard_md.write_text(md, encoding="utf-8")
+    _write_nonempty_text(dashboard_md, md)
     return dashboard_md

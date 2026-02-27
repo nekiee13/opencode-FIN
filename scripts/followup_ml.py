@@ -28,7 +28,7 @@ APP_ROOT = _bootstrap_sys_path()
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="followup_ml.py",
-        description="Follow-up ML pipeline tools (T0 draft and dashboard rendering).",
+        description="Follow-up ML pipeline tools (draft, finalize, dashboard).",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -44,6 +44,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_board = sub.add_parser("board", help="Re-render dashboard from persisted round data")
     p_board.add_argument("--round-id", required=True, help="Round identifier")
+
+    p_finalize = sub.add_parser(
+        "finalize",
+        help="Ingest +3 actuals and update round state (draft/partial/final/revised)",
+    )
+    p_finalize.add_argument("--round-id", required=True, help="Round identifier")
+    p_finalize.add_argument(
+        "--tickers",
+        nargs="*",
+        default=None,
+        help="Optional logical tickers override",
+    )
 
     return p
 
@@ -65,6 +77,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"  {artifacts.draft_metrics_csv}")
         print(f"  {artifacts.day3_matrix_csv}")
         print(f"  {artifacts.dashboard_md}")
+        try:
+            print(f"  dashboard_size_bytes={artifacts.dashboard_md.stat().st_size}")
+        except OSError:
+            pass
         return 0
 
     if args.cmd == "board":
@@ -73,6 +89,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         out = render_t0_dashboard_for_round(str(args.round_id))
         print("[followup-ml] Dashboard rendered:")
         print(f"  {out}")
+        try:
+            print(f"  dashboard_size_bytes={out.stat().st_size}")
+        except OSError:
+            pass
+        return 0
+
+    if args.cmd == "finalize":
+        from src.followup_ml import run_tplus3_finalize_round
+
+        artifacts = run_tplus3_finalize_round(
+            round_id=str(args.round_id),
+            tickers=args.tickers,
+        )
+        print("[followup-ml] Round finalized:")
+        print(f"  state={artifacts.round_state}")
+        print(f"  {artifacts.actuals_csv}")
+        print(f"  {artifacts.context_json}")
+        print(f"  {artifacts.dashboard_md}")
+        try:
+            print(f"  dashboard_size_bytes={artifacts.dashboard_md.stat().st_size}")
+        except OSError:
+            pass
         return 0
 
     return 2
