@@ -122,6 +122,29 @@ def _load_exo_config_optional(fh: int) -> Optional[Any]:
         return None
 
 
+def _extract_forecast_df(obj: Any) -> Optional[pd.DataFrame]:
+    """
+    Normalize heterogeneous model return types to a forecast DataFrame.
+
+    Known shapes from compat_api include:
+    - DataFrame
+    - tuple(DataFrame, ...)
+    - None
+    """
+    if obj is None:
+        return None
+
+    if isinstance(obj, pd.DataFrame):
+        return obj
+
+    if isinstance(obj, tuple):
+        for item in obj:
+            if isinstance(item, pd.DataFrame):
+                return item
+
+    return None
+
+
 def _run_models_for_ticker(
     logical_ticker: str,
     *,
@@ -132,7 +155,9 @@ def _run_models_for_ticker(
     out: Dict[str, Optional[pd.DataFrame]] = {k: None for k in MODEL_ORDER}
 
     try:
-        out["Torch"] = models_api.run_external_torch_forecasting(runtime_ticker)
+        out["Torch"] = _extract_forecast_df(
+            models_api.run_external_torch_forecasting(runtime_ticker)
+        )
     except Exception as e:
         log.warning("Torch failed for %s: %s", logical_ticker, e)
 
@@ -147,8 +172,10 @@ def _run_models_for_ticker(
         return out
 
     try:
-        out["DYNAMIX"] = models_api.predict_dynamix(
-            enriched, ticker=runtime_ticker, fh=fh, fit_nonstationary=False
+        out["DYNAMIX"] = _extract_forecast_df(
+            models_api.predict_dynamix(
+                enriched, ticker=runtime_ticker, fh=fh, fit_nonstationary=False
+            )
         )
     except Exception as e:
         log.warning("DYNAMIX failed for %s: %s", logical_ticker, e)
@@ -157,43 +184,47 @@ def _run_models_for_ticker(
         arimax_df, _, _ = models_api.predict_arima(
             enriched, ticker=runtime_ticker, exo_config=exo_config
         )
-        out["ARIMAX"] = arimax_df
+        out["ARIMAX"] = _extract_forecast_df(arimax_df)
     except Exception as e:
         log.warning("ARIMAX failed for %s: %s", logical_ticker, e)
 
     try:
-        out["PCE"] = models_api.predict_pce_narx(
-            enriched, ticker=runtime_ticker, exo_config=exo_config
+        out["PCE"] = _extract_forecast_df(
+            models_api.predict_pce_narx(
+                enriched, ticker=runtime_ticker, exo_config=exo_config
+            )
         )
     except Exception as e:
         log.warning("PCE failed for %s: %s", logical_ticker, e)
 
     try:
-        out["LSTM"] = models_api.predict_lstm(
-            enriched, ticker=runtime_ticker, exo_config=exo_config
+        out["LSTM"] = _extract_forecast_df(
+            models_api.predict_lstm(enriched, ticker=runtime_ticker, exo_config=exo_config)
         )
     except Exception as e:
         log.warning("LSTM failed for %s: %s", logical_ticker, e)
 
     try:
-        out["GARCH"] = models_api.predict_arch_model(
-            enriched, ticker=runtime_ticker, exo_config=exo_config
+        out["GARCH"] = _extract_forecast_df(
+            models_api.predict_arch_model(
+                enriched, ticker=runtime_ticker, exo_config=exo_config
+            )
         )
     except Exception as e:
         log.warning("GARCH failed for %s: %s", logical_ticker, e)
 
     try:
-        out["VAR"] = models_api.predict_var(enriched)
+        out["VAR"] = _extract_forecast_df(models_api.predict_var(enriched))
     except Exception as e:
         log.warning("VAR failed for %s: %s", logical_ticker, e)
 
     try:
-        out["RW"] = models_api.predict_random_walk(enriched)
+        out["RW"] = _extract_forecast_df(models_api.predict_random_walk(enriched))
     except Exception as e:
         log.warning("RW failed for %s: %s", logical_ticker, e)
 
     try:
-        out["ETS"] = models_api.predict_exp_smoothing(enriched)
+        out["ETS"] = _extract_forecast_df(models_api.predict_exp_smoothing(enriched))
     except Exception as e:
         log.warning("ETS failed for %s: %s", logical_ticker, e)
 
