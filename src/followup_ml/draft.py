@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import re
 import statistics
 from bisect import bisect_right
 from dataclasses import dataclass
@@ -81,6 +82,8 @@ class FinalizeArtifacts:
     actuals_csv: Path
     partial_scores_csv: Path
     model_summary_csv: Path
+    avr_history_csv: Path
+    avr_summary_csv: Path
     context_json: Path
     dashboard_md: Path
 
@@ -549,6 +552,8 @@ def _render_round_markdown(
     actuals_df: Optional[pd.DataFrame] = None,
     score_summary_df: Optional[pd.DataFrame] = None,
     score_stats: Optional[Dict[str, Any]] = None,
+    avr_summary_df: Optional[pd.DataFrame] = None,
+    avr_stats: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines: List[str] = []
     lines.append(f"# Follow-up ML Board - {round_id}")
@@ -659,6 +664,47 @@ def _render_round_markdown(
                 + " |"
             )
 
+    if avr_summary_df is not None and not avr_summary_df.empty:
+        lines.append("")
+        lines.append("## AVR Memory (Scaffold)")
+        lines.append("")
+        if avr_stats is not None:
+            lines.append(
+                "- History rows: "
+                f"`{_to_int_or_zero(avr_stats.get('history_rows', 0))}`"
+            )
+            lines.append(
+                "- Models with history: "
+                f"`{_to_int_or_zero(avr_stats.get('models_with_history', 0))}`"
+            )
+            lines.append("")
+
+        header4 = [
+            "Model",
+            "Latest",
+            "AVR4",
+            "AVR6",
+            "Rounds",
+            "Next Weight",
+        ]
+        lines.append("| " + " | ".join(header4) + " |")
+        lines.append("|" + "|".join([":--" for _ in header4]) + "|")
+        for _, rec in avr_summary_df.iterrows():
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(rec.get("model", "")),
+                        _fmt_number(rec.get("latest_round_score"), ndp=4),
+                        _fmt_number(rec.get("avr4"), ndp=4),
+                        _fmt_number(rec.get("avr6"), ndp=4),
+                        str(_to_int_or_zero(rec.get("rounds_count"))),
+                        _fmt_number(rec.get("next_weight_suggested"), ndp=4),
+                    ]
+                )
+                + " |"
+            )
+
     lines.append("")
     lines.append("## Notes")
     lines.append("")
@@ -721,6 +767,189 @@ def _global_partial_scores_path(round_id: str) -> Path:
 
 def _global_model_summary_path(round_id: str) -> Path:
     return paths.OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR / f"{round_id}_model_summary.csv"
+
+
+def _avr_history_path() -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_AVR_DIR / "avr_history.csv"
+
+
+def _avr_summary_path(round_id: str) -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_AVR_DIR / f"{round_id}_avr_summary.csv"
+
+
+def _round_sort_key(round_id: Any) -> Tuple[int, ...]:
+    s = str(round_id)
+    nums = [int(x) for x in re.findall(r"\d+", s)]
+    if not nums:
+        return (9999, 9999, 9999)
+    if len(nums) == 1:
+        return (nums[0], 0, 0)
+    if len(nums) == 2:
+        return (nums[0], nums[1], 0)
+    return (nums[0], nums[1], nums[2])
+
+
+def _load_avr_history() -> pd.DataFrame:
+    p = _avr_history_path()
+    if not p.exists():
+        return pd.DataFrame(
+            columns=[
+                "round_id",
+                "ticker",
+                "model",
+                "accuracy_pct",
+                "transformed_score",
+                "score_status",
+                "transform_status",
+                "updated_at",
+            ]
+        )
+    try:
+        df = pd.read_csv(p)
+        required = [
+            "round_id",
+            "ticker",
+            "model",
+            "accuracy_pct",
+            "transformed_score",
+            "score_status",
+            "transform_status",
+            "updated_at",
+        ]
+        for c in required:
+            if c not in df.columns:
+                df[c] = "" if c in {"round_id", "ticker", "model", "score_status", "transform_status", "updated_at"} else NAN
+        return cast(pd.DataFrame, df[required].copy())
+    except Exception as e:
+        log.warning("Failed loading AVR history at %s: %s", p, e)
+        return pd.DataFrame(
+            columns=[
+                "round_id",
+                "ticker",
+                "model",
+                "accuracy_pct",
+                "transformed_score",
+                "score_status",
+                "transform_status",
+                "updated_at",
+            ]
+        )
+
+
+def _upsert_avr_history(history_df: pd.DataFrame, scores_df: pd.DataFrame, *, round_id: str) -> pd.DataFrame:
+    h = cast(pd.DataFrame, history_df.copy())
+    s = cast(
+        pd.DataFrame,
+        scores_df[
+            [
+                "round_id",
+                "ticker",
+                "model",
+                "accuracy_pct",
+                "transformed_score",
+                "score_status",
+                "transform_status",
+            ]
+        ].copy(),
+    )
+    s["round_id"] = str(round_id)
+    s["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if not h.empty:
+        h = cast(pd.DataFrame, h[h["round_id"].astype(str) != str(round_id)].copy())
+
+    out = cast(pd.DataFrame, pd.concat([h, s], ignore_index=True))
+    out["accuracy_pct"] = pd.to_numeric(out["accuracy_pct"], errors="coerce")
+    out["transformed_score"] = pd.to_numeric(out["transformed_score"], errors="coerce")
+    out = cast(pd.DataFrame, out.drop_duplicates(subset=["round_id", "ticker", "model"], keep="last"))
+    return out
+
+
+def _compute_avr_summary(history_df: pd.DataFrame, *, round_id: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    def _blank_summary() -> pd.DataFrame:
+        rows = [
+            {
+                "model": m,
+                "latest_round_score": NAN,
+                "avr4": NAN,
+                "avr6": NAN,
+                "rounds_count": 0,
+                "next_weight_suggested": NAN,
+            }
+            for m in MODEL_ORDER
+        ]
+        return pd.DataFrame(rows)
+
+    if history_df.empty:
+        empty = _blank_summary()
+        return empty, {"history_rows": 0, "models_with_history": 0}
+
+    h = cast(pd.DataFrame, history_df.copy())
+    scored = cast(
+        pd.DataFrame,
+        h[(h["transform_status"] == "mapped") & (pd.notna(h["transformed_score"]))].copy(),
+    )
+    if scored.empty:
+        empty = _blank_summary()
+        return empty, {"history_rows": int(len(history_df)), "models_with_history": 0}
+
+    round_model = cast(
+        pd.DataFrame,
+        scored.groupby(["round_id", "model"], as_index=False)
+        .agg(round_score=("transformed_score", "mean"), scored_tickers=("ticker", "nunique")),
+    )
+
+    summary_rows: List[Dict[str, Any]] = []
+    for model in MODEL_ORDER:
+        mdf = cast(pd.DataFrame, round_model[round_model["model"] == model].copy())
+        if mdf.empty:
+            summary_rows.append(
+                {
+                    "model": model,
+                    "latest_round_score": NAN,
+                    "avr4": NAN,
+                    "avr6": NAN,
+                    "rounds_count": 0,
+                    "next_weight_suggested": NAN,
+                }
+            )
+            continue
+
+        mdf["_rk"] = mdf["round_id"].map(_round_sort_key)
+        mdf = cast(pd.DataFrame, mdf.sort_values(by=["_rk"]).reset_index(drop=True))
+
+        vals = [float(v) for v in list(mdf["round_score"]) if _isfinite(v)]
+        rounds_count = len(vals)
+        latest_round_score = vals[-1] if vals else NAN
+        avr4 = float(sum(vals[-4:]) / min(4, len(vals))) if vals else NAN
+        avr6 = float(sum(vals[-6:]) / min(6, len(vals))) if vals else NAN
+
+        next_weight = avr6 if _isfinite(avr6) else avr4
+        summary_rows.append(
+            {
+                "model": model,
+                "latest_round_score": latest_round_score,
+                "avr4": avr4,
+                "avr6": avr6,
+                "rounds_count": rounds_count,
+                "next_weight_suggested": next_weight,
+            }
+        )
+
+    summary_df = pd.DataFrame(summary_rows)
+    summary_df = cast(
+        pd.DataFrame,
+        summary_df.sort_values(
+            by=["next_weight_suggested", "avr6", "avr4"],
+            ascending=[False, False, False],
+        ).reset_index(drop=True),
+    )
+    stats = {
+        "history_rows": int(len(history_df)),
+        "models_with_history": int(sum(1 for v in list(summary_df["rounds_count"]) if _to_int_or_zero(v) > 0)),
+        "current_round": str(round_id),
+    }
+    return summary_df, stats
 
 
 def _compute_partial_scores(
@@ -1085,6 +1314,25 @@ def run_tplus3_finalize_round(
     cast(pd.DataFrame, scores_df).to_csv(partial_scores_csv, index=False)
     cast(pd.DataFrame, score_summary_df).to_csv(model_summary_csv, index=False)
 
+    avr_history_csv = _avr_history_path()
+    avr_summary_csv = _avr_summary_path(str(round_id))
+    avr_history_csv.parent.mkdir(parents=True, exist_ok=True)
+    avr_summary_csv.parent.mkdir(parents=True, exist_ok=True)
+
+    avr_history_prev = _load_avr_history()
+    avr_history_df = _upsert_avr_history(
+        cast(pd.DataFrame, avr_history_prev),
+        cast(pd.DataFrame, scores_df),
+        round_id=str(round_id),
+    )
+    cast(pd.DataFrame, avr_history_df).to_csv(avr_history_csv, index=False)
+
+    avr_summary_df, avr_stats = _compute_avr_summary(
+        cast(pd.DataFrame, avr_history_df),
+        round_id=str(round_id),
+    )
+    cast(pd.DataFrame, avr_summary_df).to_csv(avr_summary_csv, index=False)
+
     context["round_state"] = round_state
     context["finalized_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     context["actuals"] = {
@@ -1104,6 +1352,12 @@ def run_tplus3_finalize_round(
         "partial_scores_csv": str(partial_scores_csv),
         "model_summary_csv": str(model_summary_csv),
     }
+    context["avr"] = {
+        "history_rows": int(avr_stats.get("history_rows", 0)),
+        "models_with_history": int(avr_stats.get("models_with_history", 0)),
+        "avr_history_csv": str(avr_history_csv),
+        "avr_summary_csv": str(avr_summary_csv),
+    }
     scoring_cfg = cast(Dict[str, Any], context.get("scoring_config", {}))
     scoring_cfg["value_assign_table_path"] = str(mapping_path)
     context["scoring_config"] = scoring_cfg
@@ -1112,6 +1366,8 @@ def run_tplus3_finalize_round(
     context_outputs["global_actuals_csv"] = str(global_actuals_csv)
     context_outputs["partial_scores_csv"] = str(partial_scores_csv)
     context_outputs["model_summary_csv"] = str(model_summary_csv)
+    context_outputs["avr_history_csv"] = str(avr_history_csv)
+    context_outputs["avr_summary_csv"] = str(avr_summary_csv)
     context["outputs"] = context_outputs
     context_json.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
@@ -1128,6 +1384,8 @@ def run_tplus3_finalize_round(
         actuals_df=cast(pd.DataFrame, actuals_df),
         score_summary_df=cast(pd.DataFrame, score_summary_df),
         score_stats=cast(Dict[str, Any], score_stats),
+        avr_summary_df=cast(pd.DataFrame, avr_summary_df),
+        avr_stats=cast(Dict[str, Any], avr_stats),
     )
     _write_nonempty_text(dashboard_md, md)
 
@@ -1143,6 +1401,8 @@ def run_tplus3_finalize_round(
         actuals_csv=round_actuals_csv,
         partial_scores_csv=partial_scores_csv,
         model_summary_csv=model_summary_csv,
+        avr_history_csv=avr_history_csv,
+        avr_summary_csv=avr_summary_csv,
         context_json=context_json,
         dashboard_md=dashboard_md,
     )
@@ -1275,14 +1535,23 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
 
     score_summary_df: Optional[pd.DataFrame] = None
     score_stats: Optional[Dict[str, Any]] = None
+    avr_summary_df: Optional[pd.DataFrame] = None
+    avr_stats: Optional[Dict[str, Any]] = None
     outputs = cast(Dict[str, Any], context.get("outputs", {}))
     score_summary_path = outputs.get("model_summary_csv")
     if score_summary_path:
         p = Path(str(score_summary_path))
         if p.exists():
             score_summary_df = pd.read_csv(p)
+    avr_summary_path = outputs.get("avr_summary_csv")
+    if avr_summary_path:
+        p2 = Path(str(avr_summary_path))
+        if p2.exists():
+            avr_summary_df = pd.read_csv(p2)
     if isinstance(context.get("scores"), dict):
         score_stats = cast(Dict[str, Any], context.get("scores"))
+    if isinstance(context.get("avr"), dict):
+        avr_stats = cast(Dict[str, Any], context.get("avr"))
 
     md = _render_round_markdown(
         round_id=str(round_id),
@@ -1294,6 +1563,8 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
         actuals_df=cast(Optional[pd.DataFrame], actuals_df),
         score_summary_df=cast(Optional[pd.DataFrame], score_summary_df),
         score_stats=cast(Optional[Dict[str, Any]], score_stats),
+        avr_summary_df=cast(Optional[pd.DataFrame], avr_summary_df),
+        avr_stats=cast(Optional[Dict[str, Any]], avr_stats),
     )
     dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
     _write_nonempty_text(dashboard_md, md)

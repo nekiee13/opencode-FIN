@@ -137,6 +137,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"  {artifacts.actuals_csv}")
         print(f"  {artifacts.partial_scores_csv}")
         print(f"  {artifacts.model_summary_csv}")
+        print(f"  {artifacts.avr_history_csv}")
+        print(f"  {artifacts.avr_summary_csv}")
         print(f"  {artifacts.context_json}")
         print(f"  {artifacts.dashboard_md}")
         try:
