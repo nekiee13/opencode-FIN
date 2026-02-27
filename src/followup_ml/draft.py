@@ -567,7 +567,10 @@ def _expected_actual_dates_by_ticker(
             forecasts_df[
                 (forecasts_df["ticker"] == t)
                 & (forecasts_df["fh_step"] == int(fh))
-                & (forecasts_df["forecast_date"].astype(str).str.len() > 0)
+                & (forecasts_df["status"] == "ok")
+                & (forecasts_df["forecast_date"].notna())
+                & (forecasts_df["forecast_date"].astype(str).str.strip() != "")
+                & (forecasts_df["forecast_date"].astype(str).str.lower() != "nan")
             ][["forecast_date"]],
         )
         if sub.empty:
