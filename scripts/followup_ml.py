@@ -69,6 +69,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional logical tickers override",
     )
+    p_finalize.add_argument(
+        "--actual-lookup-date",
+        type=str,
+        default=None,
+        help="Optional fixed lookup date override for all tickers (yyyy-mm-dd).",
+    )
 
     return p
 
@@ -120,8 +126,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         artifacts = mod.run_tplus3_finalize_round(
             round_id=str(args.round_id),
             tickers=args.tickers,
+            actual_lookup_date=args.actual_lookup_date,
         )
         print("[followup-ml] Round finalized:")
+        print(f"  lookup_date_override={args.actual_lookup_date or '-'}")
         print(f"  state={artifacts.round_state}")
         print(f"  actuals_ok={artifacts.ok_actuals}/{artifacts.total_actuals}")
         print(

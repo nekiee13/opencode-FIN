@@ -598,7 +598,7 @@ def _render_round_markdown(
         lines.append("")
         lines.append("## +3 Actuals Ingestion")
         lines.append("")
-        header2 = ["Ticker", "Expected", "Actual", "Status"]
+        header2 = ["Ticker", "Expected", "Lookup", "Actual", "Status"]
         lines.append("| " + " | ".join(header2) + " |")
         lines.append("|" + "|".join([":--" for _ in header2]) + "|")
         for _, rec in actuals_df.iterrows():
@@ -608,6 +608,7 @@ def _render_round_markdown(
                     [
                         str(rec.get("ticker", "")),
                         str(rec.get("expected_actual_date", "")),
+                        str(rec.get("lookup_actual_date", "")),
                         _fmt_number(rec.get("actual_close"), ndp=4),
                         str(rec.get("status", "")),
                     ]
@@ -972,6 +973,7 @@ def _compute_partial_scores(
                 "model",
                 "forecast_date",
                 "expected_actual_date",
+                "lookup_actual_date",
                 "pred_value",
                 "actual_close",
                 "accuracy_pct",
@@ -1015,6 +1017,7 @@ def _compute_partial_scores(
         actual_rec = actuals_by_ticker.get(ticker, {})
         actual_status = str(actual_rec.get("status", "pending_actual"))
         expected_actual_date = str(actual_rec.get("expected_actual_date", ""))
+        lookup_actual_date = str(actual_rec.get("lookup_actual_date", expected_actual_date))
         actual_close = _to_float_or_nan(actual_rec.get("actual_close"))
 
         accuracy_pct = NAN
@@ -1059,6 +1062,7 @@ def _compute_partial_scores(
                 "model": model,
                 "forecast_date": forecast_date,
                 "expected_actual_date": expected_actual_date,
+                "lookup_actual_date": lookup_actual_date,
                 "pred_value": pred_value,
                 "actual_close": actual_close,
                 "accuracy_pct": accuracy_pct,
@@ -1165,7 +1169,15 @@ def _expected_actual_dates_by_ticker(
     return out
 
 
-def _lookup_actual_close_for_date(runtime_ticker: str, expected_date: str) -> Tuple[float, str, str]:
+def _normalize_yyyy_mm_dd(date_text: str) -> str:
+    try:
+        dt = pd.Timestamp(str(date_text))
+        return str(dt.strftime("%Y-%m-%d"))
+    except Exception:
+        raise ValueError(f"Invalid date format: {date_text!r}. Expected yyyy-mm-dd.")
+
+
+def _lookup_actual_close_for_date(runtime_ticker: str, lookup_date: str) -> Tuple[float, str, str]:
     csv_path = resolve_raw_csv_path(runtime_ticker)
     df = fetch_data(runtime_ticker, csv_path=csv_path)
     if df is None or df.empty or "Close" not in df.columns:
@@ -1176,7 +1188,7 @@ def _lookup_actual_close_for_date(runtime_ticker: str, expected_date: str) -> Tu
         return NAN, "data_unavailable", str(csv_path)
 
     idx_date = cast(pd.Series, xdf.index.to_series().dt.strftime("%Y-%m-%d"))
-    mask = idx_date == str(expected_date)
+    mask = idx_date == str(lookup_date)
     if not bool(mask.any()):
         return NAN, "actual_missing", str(csv_path)
 
@@ -1192,7 +1204,13 @@ def _lookup_actual_close_for_date(runtime_ticker: str, expected_date: str) -> Tu
 
 
 def _actuals_changed(prev_df: pd.DataFrame, new_df: pd.DataFrame) -> bool:
-    base_cols = ["ticker", "expected_actual_date", "status", "actual_close"]
+    base_cols = [
+        "ticker",
+        "expected_actual_date",
+        "lookup_actual_date",
+        "status",
+        "actual_close",
+    ]
     p = cast(pd.DataFrame, prev_df.loc[:, [c for c in base_cols if c in prev_df.columns]].copy())
     n = cast(pd.DataFrame, new_df.loc[:, [c for c in base_cols if c in new_df.columns]].copy())
     if "actual_close" in p.columns:
@@ -1208,9 +1226,13 @@ def run_tplus3_finalize_round(
     *,
     round_id: str,
     tickers: Optional[Iterable[str]] = None,
+    actual_lookup_date: Optional[str] = None,
 ) -> FinalizeArtifacts:
     """
     Ingest +3 actual values for a round and update round state.
+
+    By default, strict matching is used (lookup date == expected +3 date).
+    For testing/evaluation, a fixed lookup date override can be supplied.
 
     State policy:
     - no actuals found: DRAFT_T0
@@ -1233,6 +1255,11 @@ def run_tplus3_finalize_round(
     context = json.loads(context_json.read_text(encoding="utf-8"))
     prev_state = str(context.get("round_state", ROUND_STATE_DRAFT_T0))
     fh_i = int(context.get("fh", DEFAULT_FH))
+    lookup_override = (
+        _normalize_yyyy_mm_dd(actual_lookup_date)
+        if actual_lookup_date is not None and str(actual_lookup_date).strip() != ""
+        else ""
+    )
 
     forecasts_df = pd.read_csv(forecasts_csv)
     ticker_list = _canonical_tickers(tickers or context.get("tickers", TICKER_ORDER_DEFAULT))
@@ -1251,6 +1278,7 @@ def run_tplus3_finalize_round(
                     "ticker": t,
                     "runtime_ticker": runtime_t,
                     "expected_actual_date": "",
+                    "lookup_actual_date": "",
                     "actual_close": NAN,
                     "status": "no_expected_date",
                     "source_csv": "",
@@ -1258,13 +1286,15 @@ def run_tplus3_finalize_round(
             )
             continue
 
-        actual_v, status, source_csv = _lookup_actual_close_for_date(runtime_t, expected_date)
+        lookup_date = lookup_override if lookup_override else expected_date
+        actual_v, status, source_csv = _lookup_actual_close_for_date(runtime_t, lookup_date)
         rows.append(
             {
                 "round_id": str(round_id),
                 "ticker": t,
                 "runtime_ticker": runtime_t,
                 "expected_actual_date": expected_date,
+                "lookup_actual_date": lookup_date,
                 "actual_close": actual_v,
                 "status": status,
                 "source_csv": source_csv,
@@ -1338,6 +1368,8 @@ def run_tplus3_finalize_round(
     context["actuals"] = {
         "ok_count": ok_count,
         "total": total,
+        "strict_date_matching": bool(lookup_override == ""),
+        "lookup_date_override": lookup_override,
         "actuals_csv": str(round_actuals_csv),
         "global_actuals_csv": str(global_actuals_csv),
     }
