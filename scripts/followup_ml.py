@@ -25,6 +25,19 @@ def _bootstrap_sys_path() -> Path:
 APP_ROOT = _bootstrap_sys_path()
 
 
+def _import_followup_module():
+    try:
+        import src.followup_ml as followup_ml  # type: ignore
+
+        return followup_ml
+    except ModuleNotFoundError as e:
+        print("[followup-ml] Missing Python dependency.")
+        print(f"  {e}")
+        print("[followup-ml] Activate project venv and install requirements, then retry.")
+        print("  Example: python -m pip install -r requirements.txt")
+        return None
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="followup_ml.py",
@@ -64,9 +77,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
 
     if args.cmd == "draft":
-        from src.followup_ml import run_t0_draft_round
+        mod = _import_followup_module()
+        if mod is None:
+            return 3
 
-        artifacts = run_t0_draft_round(
+        artifacts = mod.run_t0_draft_round(
             round_id=str(args.round_id),
             tickers=args.tickers,
             fh=args.fh,
@@ -84,9 +99,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     if args.cmd == "board":
-        from src.followup_ml import render_t0_dashboard_for_round
+        mod = _import_followup_module()
+        if mod is None:
+            return 3
 
-        out = render_t0_dashboard_for_round(str(args.round_id))
+        out = mod.render_t0_dashboard_for_round(str(args.round_id))
         print("[followup-ml] Dashboard rendered:")
         print(f"  {out}")
         try:
@@ -96,9 +113,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     if args.cmd == "finalize":
-        from src.followup_ml import run_tplus3_finalize_round
+        mod = _import_followup_module()
+        if mod is None:
+            return 3
 
-        artifacts = run_tplus3_finalize_round(
+        artifacts = mod.run_tplus3_finalize_round(
             round_id=str(args.round_id),
             tickers=args.tickers,
         )

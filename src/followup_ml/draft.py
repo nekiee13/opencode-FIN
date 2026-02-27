@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import statistics
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
-import numpy as np
 import pandas as pd
 
 from src.config import paths
@@ -76,6 +77,23 @@ class FinalizeArtifacts:
     dashboard_md: Path
 
 
+NAN = float("nan")
+
+
+def _isfinite(v: Any) -> bool:
+    try:
+        return math.isfinite(float(v))
+    except Exception:
+        return False
+
+
+def _median(vals: Sequence[float]) -> float:
+    try:
+        return float(statistics.median([float(v) for v in vals]))
+    except Exception:
+        return NAN
+
+
 def _discover_fh() -> int:
     try:
         import Constants as C  # type: ignore
@@ -116,11 +134,11 @@ def _to_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
 def _to_float_or_nan(v: Any) -> float:
     try:
         f = float(v)
-        if np.isfinite(f):
+        if _isfinite(f):
             return f
     except Exception:
         pass
-    return float("nan")
+    return NAN
 
 
 def _load_exo_config_optional(fh: int) -> Optional[Any]:
@@ -268,9 +286,9 @@ def _rows_for_model_forecast(
                     "model": model,
                     "fh_step": step,
                     "forecast_date": "",
-                    "pred_value": np.nan,
-                    "lower_ci": np.nan,
-                    "upper_ci": np.nan,
+                    "pred_value": NAN,
+                    "lower_ci": NAN,
+                    "upper_ci": NAN,
                     "status": "model_unavailable",
                     "generated_at": generated_at,
                 }
@@ -289,9 +307,9 @@ def _rows_for_model_forecast(
                     "model": model,
                     "fh_step": step,
                     "forecast_date": "",
-                    "pred_value": np.nan,
-                    "lower_ci": np.nan,
-                    "upper_ci": np.nan,
+                    "pred_value": NAN,
+                    "lower_ci": NAN,
+                    "upper_ci": NAN,
                     "status": f"missing_col:{pred_col}",
                     "generated_at": generated_at,
                 }
@@ -310,9 +328,9 @@ def _rows_for_model_forecast(
                     "model": model,
                     "fh_step": step,
                     "forecast_date": "",
-                    "pred_value": np.nan,
-                    "lower_ci": np.nan,
-                    "upper_ci": np.nan,
+                    "pred_value": NAN,
+                    "lower_ci": NAN,
+                    "upper_ci": NAN,
                     "status": "short_horizon",
                     "generated_at": generated_at,
                 }
@@ -322,9 +340,9 @@ def _rows_for_model_forecast(
         row = cast(pd.Series, xdf.iloc[i])
         dt = cast(pd.Timestamp, xdf.index[i])
         pred_v = _to_float_or_nan(row.get(pred_col))
-        low_v = _to_float_or_nan(row.get(lower_col)) if lower_col else np.nan
-        up_v = _to_float_or_nan(row.get(upper_col)) if upper_col else np.nan
-        status = "ok" if np.isfinite(pred_v) else "nan_pred"
+        low_v = _to_float_or_nan(row.get(lower_col)) if lower_col else NAN
+        up_v = _to_float_or_nan(row.get(upper_col)) if upper_col else NAN
+        status = "ok" if _isfinite(pred_v) else "nan_pred"
 
         rows.append(
             {
@@ -363,7 +381,7 @@ def _build_dayn_matrix(forecasts_df: pd.DataFrame, *, fh_step: int) -> pd.DataFr
     )
     for m in MODEL_ORDER:
         if m not in piv.columns:
-            piv[m] = np.nan
+            piv[m] = NAN
     cols = ["ticker", *MODEL_ORDER]
     piv = cast(pd.DataFrame, piv[cols].copy())
     return piv
@@ -388,19 +406,19 @@ def _build_draft_metrics(dayn_df: pd.DataFrame) -> pd.DataFrame:
         vals = [
             float(rec[m])
             for m in MODEL_ORDER
-            if m in rec and pd.notna(rec[m]) and np.isfinite(float(rec[m]))
+            if m in rec and pd.notna(rec[m]) and _isfinite(float(rec[m]))
         ]
         if vals:
             vmin = float(min(vals))
             vmax = float(max(vals))
             spread = float(vmax - vmin)
-            median = float(np.median(np.array(vals, dtype=float)))
+            median = _median(vals)
             available = int(len(vals))
         else:
-            vmin = np.nan
-            vmax = np.nan
-            spread = np.nan
-            median = np.nan
+            vmin = NAN
+            vmax = NAN
+            spread = NAN
+            median = NAN
             available = 0
 
         rows.append(
@@ -421,7 +439,7 @@ def _build_draft_metrics(dayn_df: pd.DataFrame) -> pd.DataFrame:
 def _fmt_number(v: Any, ndp: int = 4) -> str:
     try:
         f = float(v)
-        if np.isfinite(f):
+        if _isfinite(f):
             return f"{f:.{ndp}f}"
     except Exception:
         pass
@@ -585,24 +603,24 @@ def _lookup_actual_close_for_date(runtime_ticker: str, expected_date: str) -> Tu
     csv_path = resolve_raw_csv_path(runtime_ticker)
     df = fetch_data(runtime_ticker, csv_path=csv_path)
     if df is None or df.empty or "Close" not in df.columns:
-        return np.nan, "data_unavailable", str(csv_path)
+        return NAN, "data_unavailable", str(csv_path)
 
     xdf = _to_datetime_index(df)
     if xdf.empty:
-        return np.nan, "data_unavailable", str(csv_path)
+        return NAN, "data_unavailable", str(csv_path)
 
     idx_date = cast(pd.Series, xdf.index.to_series().dt.strftime("%Y-%m-%d"))
     mask = idx_date == str(expected_date)
     if not bool(mask.any()):
-        return np.nan, "actual_missing", str(csv_path)
+        return NAN, "actual_missing", str(csv_path)
 
     matched = cast(pd.DataFrame, xdf.loc[mask.values].copy())
     if matched.empty:
-        return np.nan, "actual_missing", str(csv_path)
+        return NAN, "actual_missing", str(csv_path)
 
     close_v = _to_float_or_nan(cast(pd.Series, matched["Close"]).iloc[-1])
-    if not np.isfinite(close_v):
-        return np.nan, "actual_nan", str(csv_path)
+    if not _isfinite(close_v):
+        return NAN, "actual_nan", str(csv_path)
 
     return float(close_v), "ok", str(csv_path)
 
@@ -667,7 +685,7 @@ def run_tplus3_finalize_round(
                     "ticker": t,
                     "runtime_ticker": runtime_t,
                     "expected_actual_date": "",
-                    "actual_close": np.nan,
+                    "actual_close": NAN,
                     "status": "no_expected_date",
                     "source_csv": "",
                 }
