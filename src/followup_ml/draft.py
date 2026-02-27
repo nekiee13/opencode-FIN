@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import statistics
+from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -73,6 +75,7 @@ class FinalizeArtifacts:
     ok_actuals: int
     total_actuals: int
     scored_rows: int
+    mapped_rows: int
     total_score_rows: int
     model_coverage_avg: float
     actuals_csv: Path
@@ -155,6 +158,80 @@ def _load_exo_config_optional(fh: int) -> Optional[Any]:
     except Exception as e:
         log.warning("Failed to load exogenous config at %s: %s", exo_path, e)
         return None
+
+
+def _resolve_value_assign_path() -> Path:
+    env_path = os.getenv("FIN_FOLLOWUP_VALUE_ASSIGN")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return paths.FOLLOWUP_ML_VALUE_ASSIGN_PATH.resolve()
+
+
+def _default_value_assign_table() -> pd.DataFrame:
+    rows = [
+        (0.0, 0.0),
+        (50.0, 50.0),
+        (70.0, 70.0),
+        (80.0, 80.0),
+        (90.0, 90.0),
+        (95.0, 95.0),
+        (97.0, 97.0),
+        (98.0, 98.0),
+        (99.0, 99.0),
+        (99.5, 99.5),
+        (99.75, 99.75),
+        (99.9, 99.9),
+        (99.99, 100.0),
+    ]
+    return pd.DataFrame(rows, columns=["value", "assign"])
+
+
+def _load_value_assign_table() -> Tuple[pd.DataFrame, Path]:
+    map_path = _resolve_value_assign_path()
+    df: pd.DataFrame
+    try:
+        if map_path.exists():
+            loaded = pd.read_csv(map_path)
+            if "value" in loaded.columns and "assign" in loaded.columns:
+                df = cast(pd.DataFrame, loaded[["value", "assign"]].copy())
+            else:
+                log.warning(
+                    "Value->Assign table missing columns at %s; using defaults.", map_path
+                )
+                df = _default_value_assign_table()
+        else:
+            log.warning("Value->Assign table not found at %s; using defaults.", map_path)
+            df = _default_value_assign_table()
+    except Exception as e:
+        log.warning("Failed loading Value->Assign table at %s: %s", map_path, e)
+        df = _default_value_assign_table()
+
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df["assign"] = pd.to_numeric(df["assign"], errors="coerce")
+    df = cast(pd.DataFrame, df.dropna(subset=["value", "assign"]))
+    if df.empty:
+        df = _default_value_assign_table()
+    df = cast(pd.DataFrame, df.sort_values(by=["value"]).drop_duplicates(subset=["value"], keep="last"))
+    return df.reset_index(drop=True), map_path
+
+
+def _lookup_assign_value(metric_value: float, mapping_df: pd.DataFrame) -> float:
+    if not _isfinite(metric_value):
+        return NAN
+    if mapping_df.empty:
+        return metric_value
+
+    values = [float(v) for v in list(mapping_df["value"])]
+    assigns = [float(a) for a in list(mapping_df["assign"])]
+    if not values:
+        return metric_value
+
+    i = bisect_right(values, float(metric_value)) - 1
+    if i < 0:
+        i = 0
+    if i >= len(assigns):
+        i = len(assigns) - 1
+    return float(assigns[i])
 
 
 def _extract_forecast_df(obj: Any) -> Optional[pd.DataFrame]:
@@ -556,6 +633,7 @@ def _render_round_markdown(
         header3 = [
             "Model",
             "Mean Accuracy",
+            "Mean Assign",
             "Scored",
             "Expected",
             "Coverage",
@@ -572,6 +650,7 @@ def _render_round_markdown(
                     [
                         str(rec.get("model", "")),
                         _fmt_number(rec.get("mean_accuracy_pct"), ndp=4),
+                        _fmt_number(rec.get("mean_transformed_score"), ndp=4),
                         str(_to_int_or_zero(rec.get("scored_tickers"))),
                         str(_to_int_or_zero(rec.get("expected_tickers"))),
                         cov_cell,
@@ -650,6 +729,7 @@ def _compute_partial_scores(
     forecasts_df: pd.DataFrame,
     actuals_df: pd.DataFrame,
     fh: int,
+    mapping_df: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
     fsub = cast(
         pd.DataFrame,
@@ -666,13 +746,16 @@ def _compute_partial_scores(
                 "pred_value",
                 "actual_close",
                 "accuracy_pct",
+                "transformed_score",
                 "score_status",
+                "transform_status",
             ]
         )
         empty_summary = pd.DataFrame(
             columns=[
                 "model",
                 "mean_accuracy_pct",
+                "mean_transformed_score",
                 "scored_tickers",
                 "expected_tickers",
                 "coverage_ratio",
@@ -684,6 +767,7 @@ def _compute_partial_scores(
             "scored_tickers": 0,
             "total_tickers": 0,
             "model_coverage_avg": 0.0,
+            "mapped_rows": 0,
         }
 
     actuals_by_ticker: Dict[str, Dict[str, Any]] = {}
@@ -705,7 +789,9 @@ def _compute_partial_scores(
         actual_close = _to_float_or_nan(actual_rec.get("actual_close"))
 
         accuracy_pct = NAN
+        transformed_score = NAN
         score_status = "pending_actual"
+        transform_status = "pending_actual"
 
         if forecast_status != "ok":
             if forecast_status == "nan_pred":
@@ -715,13 +801,27 @@ def _compute_partial_scores(
         else:
             if actual_status == "ok" and _isfinite(actual_close) and abs(actual_close) > 0:
                 accuracy_pct = 100.0 - abs((actual_close - pred_value) / actual_close * 100.0)
-                score_status = "scored" if _isfinite(accuracy_pct) else "nan_pred"
+                if _isfinite(accuracy_pct):
+                    score_status = "scored"
+                    transformed_score = _lookup_assign_value(accuracy_pct, mapping_df)
+                    transform_status = "mapped" if _isfinite(transformed_score) else "nan_pred"
+                else:
+                    score_status = "nan_pred"
+                    transform_status = "nan_pred"
             elif actual_status == "no_expected_date":
                 score_status = "no_expected_date"
+                transform_status = "no_expected_date"
             elif actual_status == "actual_missing":
                 score_status = "actual_missing"
+                transform_status = "actual_missing"
             else:
                 score_status = "pending_actual"
+                transform_status = "pending_actual"
+
+        if score_status == "model_unavailable":
+            transform_status = "model_unavailable"
+        if score_status == "nan_pred":
+            transform_status = "nan_pred"
 
         score_rows.append(
             {
@@ -733,7 +833,9 @@ def _compute_partial_scores(
                 "pred_value": pred_value,
                 "actual_close": actual_close,
                 "accuracy_pct": accuracy_pct,
+                "transformed_score": transformed_score,
                 "score_status": score_status,
+                "transform_status": transform_status,
             }
         )
 
@@ -749,8 +851,14 @@ def _compute_partial_scores(
             _to_float_or_nan(v)
             for v in list(scored["accuracy_pct"]) if "accuracy_pct" in scored.columns
         ]
+        vals_t = [
+            _to_float_or_nan(v)
+            for v in list(scored["transformed_score"]) if "transformed_score" in scored.columns
+        ]
         vals_f = [v for v in vals if _isfinite(v)]
+        vals_t_f = [v for v in vals_t if _isfinite(v)]
         mean_acc = float(sum(vals_f) / len(vals_f)) if vals_f else NAN
+        mean_tr = float(sum(vals_t_f) / len(vals_t_f)) if vals_t_f else NAN
         scored_tickers = int(cast(pd.Series, scored["ticker"]).nunique()) if not scored.empty else 0
         coverage_ratio = (
             float(scored_tickers / expected_tickers) if expected_tickers > 0 else 0.0
@@ -760,6 +868,7 @@ def _compute_partial_scores(
             {
                 "model": model,
                 "mean_accuracy_pct": mean_acc,
+                "mean_transformed_score": mean_tr,
                 "scored_tickers": scored_tickers,
                 "expected_tickers": expected_tickers,
                 "coverage_ratio": coverage_ratio,
@@ -769,10 +878,14 @@ def _compute_partial_scores(
     summary_df = pd.DataFrame(summary_rows)
     summary_df = cast(
         pd.DataFrame,
-        summary_df.sort_values(by=["mean_accuracy_pct", "coverage_ratio"], ascending=[False, False]).reset_index(drop=True),
+        summary_df.sort_values(
+            by=["mean_transformed_score", "coverage_ratio", "mean_accuracy_pct"],
+            ascending=[False, False, False],
+        ).reset_index(drop=True),
     )
 
     scored_rows = int((scores_df["score_status"] == "scored").sum())
+    mapped_rows = int((scores_df["transform_status"] == "mapped").sum())
     total_rows = int(len(scores_df))
     scored_tickers = int(
         cast(pd.Series, scores_df[scores_df["score_status"] == "scored"]["ticker"]).nunique()
@@ -791,6 +904,7 @@ def _compute_partial_scores(
         "scored_tickers": scored_tickers,
         "total_tickers": total_tickers,
         "model_coverage_avg": model_cov_avg,
+        "mapped_rows": mapped_rows,
     }
     return scores_df, summary_df, stats
 
@@ -959,11 +1073,14 @@ def run_tplus3_finalize_round(
     cast(pd.DataFrame, actuals_df).to_csv(round_actuals_csv, index=False)
     cast(pd.DataFrame, actuals_df).to_csv(global_actuals_csv, index=False)
 
+    mapping_df, mapping_path = _load_value_assign_table()
+
     scores_df, score_summary_df, score_stats = _compute_partial_scores(
         round_id=str(round_id),
         forecasts_df=cast(pd.DataFrame, forecasts_df),
         actuals_df=cast(pd.DataFrame, actuals_df),
         fh=fh_i,
+        mapping_df=cast(pd.DataFrame, mapping_df),
     )
     cast(pd.DataFrame, scores_df).to_csv(partial_scores_csv, index=False)
     cast(pd.DataFrame, score_summary_df).to_csv(model_summary_csv, index=False)
@@ -982,9 +1099,14 @@ def run_tplus3_finalize_round(
         "scored_tickers": int(score_stats.get("scored_tickers", 0)),
         "total_tickers": int(score_stats.get("total_tickers", 0)),
         "model_coverage_avg": float(score_stats.get("model_coverage_avg", 0.0)),
+        "mapped_rows": int(score_stats.get("mapped_rows", 0)),
+        "value_assign_table_path": str(mapping_path),
         "partial_scores_csv": str(partial_scores_csv),
         "model_summary_csv": str(model_summary_csv),
     }
+    scoring_cfg = cast(Dict[str, Any], context.get("scoring_config", {}))
+    scoring_cfg["value_assign_table_path"] = str(mapping_path)
+    context["scoring_config"] = scoring_cfg
     context_outputs = cast(Dict[str, Any], context.get("outputs", {}))
     context_outputs["actuals_csv"] = str(round_actuals_csv)
     context_outputs["global_actuals_csv"] = str(global_actuals_csv)
@@ -1015,6 +1137,7 @@ def run_tplus3_finalize_round(
         ok_actuals=ok_count,
         total_actuals=total,
         scored_rows=int(score_stats.get("scored_rows", 0)),
+        mapped_rows=int(score_stats.get("mapped_rows", 0)),
         total_score_rows=int(score_stats.get("total_rows", 0)),
         model_coverage_avg=float(score_stats.get("model_coverage_avg", 0.0)),
         actuals_csv=round_actuals_csv,
@@ -1090,6 +1213,9 @@ def run_t0_draft_round(
         "tickers": ticker_list,
         "models": list(MODEL_ORDER),
         "exo_config_path": str(paths.get_exo_config_path()),
+        "scoring_config": {
+            "value_assign_table_path": str(_resolve_value_assign_path()),
+        },
         "outputs": {
             "forecasts_csv": str(forecasts_csv),
             "draft_metrics_csv": str(draft_metrics_csv),

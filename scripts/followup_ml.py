@@ -128,6 +128,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"  scores_computed={artifacts.scored_rows}/{artifacts.total_score_rows}"
         )
         print(
+            f"  transforms_mapped={artifacts.mapped_rows}/{artifacts.total_score_rows}"
+        )
+        print(
             "  model_coverage_avg="
             f"{artifacts.model_coverage_avg:.3f}"
         )

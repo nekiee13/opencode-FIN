@@ -103,6 +103,7 @@ SRC_DIR: Path = APP_ROOT / "src"
 CONFIG_DIR: Path = APP_ROOT / "config"
 # Transitional/compat config location
 LEGACY_CONFIG_DIR: Path = APP_ROOT
+FOLLOWUP_ML_VALUE_ASSIGN_PATH: Path = CONFIG_DIR / "followup_ml_value_assign.csv"
 
 DATA_DIR: Path = APP_ROOT / "data"
 DATA_RAW_DIR: Path = DATA_DIR / "raw"
@@ -321,6 +322,7 @@ PATHS = {
     "APP_ROOT": APP_ROOT,
     "SRC_DIR": SRC_DIR,
     "CONFIG_DIR": CONFIG_DIR,
+    "FOLLOWUP_ML_VALUE_ASSIGN_PATH": FOLLOWUP_ML_VALUE_ASSIGN_PATH,
     "EXO_CONFIG_PATH": EXO_CONFIG_PATH,
     "DATA_DIR": DATA_DIR,
     "DATA_RAW_DIR": DATA_RAW_DIR,
@@ -352,6 +354,7 @@ __all__ = [
     "APP_ROOT",
     "SRC_DIR",
     "CONFIG_DIR",
+    "FOLLOWUP_ML_VALUE_ASSIGN_PATH",
     "DATA_DIR",
     "DATA_RAW_DIR",
     "DATA_TICKERS_DIR",
