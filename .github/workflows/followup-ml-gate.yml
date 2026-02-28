@@ -1,0 +1,39 @@
+name: followup-ml-gate
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  followup-ml:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Verify followup scripts compile
+        run: |
+          python -m py_compile scripts/followup_ml.py
+          python -m py_compile scripts/followup_ml_parity.py
+          python -m py_compile src/followup_ml/draft.py
+
+      - name: Run followup policy/parity unit tests
+        run: |
+          python -m pytest tests/test_followup_ml_parity_tool.py tests/test_followup_ml_policy.py -q
+
+      - name: Run loader regression for comma-numeric parsing
+        run: |
+          python -m pytest tests/test_infra.py::test_fetch_data_parses_comma_thousands_numeric_fields -q
