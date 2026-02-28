@@ -32,3 +32,13 @@ python scripts/followup_ml_parity.py snapshot --round-id 26-1-09
 
 This copies current artifacts from `out/i_calc/followup_ml/...` into
 `tests/fixtures/followup_ml/parity/<round_id>/` and updates `manifest.json`.
+
+## Compare current artifacts against fixture
+
+```bash
+python scripts/followup_ml_parity.py compare --round-id 26-1-09
+```
+
+Outputs a parity report to:
+
+- `out/i_calc/followup_ml/reports/parity_<round_id>.md`
