@@ -65,6 +65,7 @@ class DraftArtifacts:
     forecasts_csv: Path
     draft_metrics_csv: Path
     day3_matrix_csv: Path
+    weighted_ensemble_csv: Path
     context_json: Path
     dashboard_md: Path
 
@@ -84,6 +85,7 @@ class FinalizeArtifacts:
     model_summary_csv: Path
     avr_history_csv: Path
     avr_summary_csv: Path
+    next_weights_csv: Path
     context_json: Path
     dashboard_md: Path
 
@@ -554,6 +556,8 @@ def _render_round_markdown(
     score_stats: Optional[Dict[str, Any]] = None,
     avr_summary_df: Optional[pd.DataFrame] = None,
     avr_stats: Optional[Dict[str, Any]] = None,
+    weighted_ensemble_df: Optional[pd.DataFrame] = None,
+    weights_source: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines: List[str] = []
     lines.append(f"# Follow-up ML Board - {round_id}")
@@ -593,6 +597,35 @@ def _render_round_markdown(
             row_vals.append(str(mm.get("available_models", 0)))
             row_vals.append(_fmt_number(mm.get("day3_spread"), ndp=4))
             lines.append("| " + " | ".join(row_vals) + " |")
+
+    if weighted_ensemble_df is not None and not weighted_ensemble_df.empty:
+        lines.append("")
+        lines.append("## Prior-Round Weighted Ensemble")
+        lines.append("")
+        if weights_source is not None:
+            src_round = str(weights_source.get("source_round_id", ""))
+            src_status = str(weights_source.get("weights_status", ""))
+            if src_round:
+                lines.append(f"- Source round: `{src_round}`")
+            if src_status:
+                lines.append(f"- Source status: `{src_status}`")
+            lines.append("")
+
+        header_we = ["Ticker", "Weighted FH", "Weights Used"]
+        lines.append("| " + " | ".join(header_we) + " |")
+        lines.append("|" + "|".join([":--" for _ in header_we]) + "|")
+        for _, rec in weighted_ensemble_df.iterrows():
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(rec.get("ticker", "")),
+                        _fmt_number(rec.get("weighted_ensemble"), ndp=4),
+                        _fmt_number(rec.get("weights_used_sum"), ndp=4),
+                    ]
+                )
+                + " |"
+            )
 
     if actuals_df is not None and not actuals_df.empty:
         lines.append("")
@@ -733,6 +766,8 @@ def _render_t0_markdown(
         dayn_df=dayn_df,
         metrics_df=metrics_df,
         actuals_df=None,
+        weighted_ensemble_df=None,
+        weights_source=None,
     )
 
 
@@ -776,6 +811,18 @@ def _avr_history_path() -> Path:
 
 def _avr_summary_path(round_id: str) -> Path:
     return paths.OUT_I_CALC_FOLLOWUP_ML_AVR_DIR / f"{round_id}_avr_summary.csv"
+
+
+def _weights_path(round_id: str) -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_WEIGHTS_DIR / f"{round_id}_next_weights.csv"
+
+
+def _latest_weights_path() -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_WEIGHTS_DIR / "latest_next_weights.csv"
+
+
+def _latest_final_weights_path() -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_WEIGHTS_DIR / "latest_final_next_weights.csv"
 
 
 def _round_sort_key(round_id: Any) -> Tuple[int, ...]:
@@ -951,6 +998,147 @@ def _compute_avr_summary(history_df: pd.DataFrame, *, round_id: str) -> Tuple[pd
         "current_round": str(round_id),
     }
     return summary_df, stats
+
+
+def _export_next_weights(
+    *,
+    round_id: str,
+    round_state: str,
+    avr_summary_df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, Path, Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for model in MODEL_ORDER:
+        sub = cast(pd.DataFrame, avr_summary_df[avr_summary_df["model"] == model].copy())
+        raw = NAN
+        avr4 = NAN
+        avr6 = NAN
+        rounds_count = 0
+        if not sub.empty:
+            rec = cast(pd.Series, sub.iloc[0])
+            raw = _to_float_or_nan(rec.get("next_weight_suggested"))
+            avr4 = _to_float_or_nan(rec.get("avr4"))
+            avr6 = _to_float_or_nan(rec.get("avr6"))
+            rounds_count = _to_int_or_zero(rec.get("rounds_count"))
+        weight_raw = raw if _isfinite(raw) and raw > 0 else 0.0
+        rows.append(
+            {
+                "round_id": str(round_id),
+                "model": model,
+                "weight_raw": float(weight_raw),
+                "weight_norm": 0.0,
+                "avr4": avr4,
+                "avr6": avr6,
+                "rounds_count": rounds_count,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    total_raw = float(cast(pd.Series, df["weight_raw"]).sum()) if not df.empty else 0.0
+    if total_raw > 0:
+        df["weight_norm"] = cast(pd.Series, df["weight_raw"]) / total_raw
+    elif not df.empty:
+        eq = 1.0 / float(len(df))
+        df["weight_norm"] = eq
+
+    df["rank"] = cast(pd.Series, df["weight_raw"]).rank(ascending=False, method="min")
+
+    is_final = round_state in {ROUND_STATE_FINAL_TPLUS3, ROUND_STATE_REVISED}
+    weights_status = "final" if is_final else "provisional"
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df["weights_status"] = weights_status
+    df["source_round_state"] = str(round_state)
+    df["generated_at"] = generated_at
+
+    out_path = _weights_path(str(round_id))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cast(pd.DataFrame, df).to_csv(out_path, index=False)
+    cast(pd.DataFrame, df).to_csv(_latest_weights_path(), index=False)
+    if is_final:
+        cast(pd.DataFrame, df).to_csv(_latest_final_weights_path(), index=False)
+
+    stats = {
+        "weights_status": weights_status,
+        "models": int(len(df)),
+        "total_raw": total_raw,
+        "generated_at": generated_at,
+        "weights_path": str(out_path),
+    }
+    return df, out_path, stats
+
+
+def _load_prior_weights_for_round(
+    round_id: str,
+) -> Tuple[Dict[str, float], str, str, str]:
+    """Load latest prior exported weights for consumption in draft rounds."""
+    wdir = paths.OUT_I_CALC_FOLLOWUP_ML_WEIGHTS_DIR
+    if not wdir.exists():
+        return {}, "", "", ""
+
+    current_key = _round_sort_key(round_id)
+    candidates: List[Tuple[Tuple[int, ...], str, Path]] = []
+    for p in wdir.glob("*_next_weights.csv"):
+        stem = p.stem
+        if not stem.endswith("_next_weights"):
+            continue
+        rid = stem[: -len("_next_weights")]
+        key = _round_sort_key(rid)
+        if key < current_key:
+            candidates.append((key, rid, p))
+
+    if not candidates:
+        return {}, "", "", ""
+
+    candidates.sort(key=lambda x: x[0])
+    _, src_round, src_path = candidates[-1]
+
+    try:
+        df = pd.read_csv(src_path)
+    except Exception:
+        return {}, "", "", ""
+
+    if "model" not in df.columns or "weight_norm" not in df.columns:
+        return {}, "", "", ""
+
+    weights_map: Dict[str, float] = {}
+    for _, r in df.iterrows():
+        m = str(r.get("model", ""))
+        w = _to_float_or_nan(r.get("weight_norm"))
+        if m and _isfinite(w) and w > 0:
+            weights_map[m] = float(w)
+
+    status = str(df.get("weights_status").iloc[0]) if "weights_status" in df.columns and not df.empty else ""
+    return weights_map, src_round, str(src_path), status
+
+
+def _build_weighted_ensemble(dayn_df: pd.DataFrame, weights_map: Dict[str, float]) -> pd.DataFrame:
+    if dayn_df.empty or not weights_map:
+        return pd.DataFrame(columns=["ticker", "weighted_ensemble", "weights_used_sum"])
+
+    rows: List[Dict[str, Any]] = []
+    for _, rec in dayn_df.iterrows():
+        ticker = str(rec.get("ticker", ""))
+        num = 0.0
+        den = 0.0
+        for model in MODEL_ORDER:
+            w = float(weights_map.get(model, 0.0))
+            if w <= 0:
+                continue
+            v = _to_float_or_nan(rec.get(model))
+            if not _isfinite(v):
+                continue
+            num += float(v) * w
+            den += w
+
+        pred = float(num / den) if den > 0 else NAN
+        rows.append(
+            {
+                "ticker": ticker,
+                "weighted_ensemble": pred,
+                "weights_used_sum": float(den),
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def _compute_partial_scores(
@@ -1363,6 +1551,12 @@ def run_tplus3_finalize_round(
     )
     cast(pd.DataFrame, avr_summary_df).to_csv(avr_summary_csv, index=False)
 
+    weights_df, next_weights_csv, weight_stats = _export_next_weights(
+        round_id=str(round_id),
+        round_state=round_state,
+        avr_summary_df=cast(pd.DataFrame, avr_summary_df),
+    )
+
     context["round_state"] = round_state
     context["finalized_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     context["actuals"] = {
@@ -1390,6 +1584,13 @@ def run_tplus3_finalize_round(
         "avr_history_csv": str(avr_history_csv),
         "avr_summary_csv": str(avr_summary_csv),
     }
+    context["weights"] = {
+        "weights_status": str(weight_stats.get("weights_status", "")),
+        "models": int(weight_stats.get("models", 0)),
+        "total_raw": float(weight_stats.get("total_raw", 0.0)),
+        "generated_at": str(weight_stats.get("generated_at", "")),
+        "next_weights_csv": str(next_weights_csv),
+    }
     scoring_cfg = cast(Dict[str, Any], context.get("scoring_config", {}))
     scoring_cfg["value_assign_table_path"] = str(mapping_path)
     context["scoring_config"] = scoring_cfg
@@ -1400,6 +1601,7 @@ def run_tplus3_finalize_round(
     context_outputs["model_summary_csv"] = str(model_summary_csv)
     context_outputs["avr_history_csv"] = str(avr_history_csv)
     context_outputs["avr_summary_csv"] = str(avr_summary_csv)
+    context_outputs["next_weights_csv"] = str(next_weights_csv)
     context["outputs"] = context_outputs
     context_json.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
@@ -1418,6 +1620,8 @@ def run_tplus3_finalize_round(
         score_stats=cast(Dict[str, Any], score_stats),
         avr_summary_df=cast(pd.DataFrame, avr_summary_df),
         avr_stats=cast(Dict[str, Any], avr_stats),
+        weighted_ensemble_df=cast(Optional[pd.DataFrame], None),
+        weights_source=cast(Optional[Dict[str, Any]], context.get("weights_applied")),
     )
     _write_nonempty_text(dashboard_md, md)
 
@@ -1435,6 +1639,7 @@ def run_tplus3_finalize_round(
         model_summary_csv=model_summary_csv,
         avr_history_csv=avr_history_csv,
         avr_summary_csv=avr_summary_csv,
+        next_weights_csv=next_weights_csv,
         context_json=context_json,
         dashboard_md=dashboard_md,
     )
@@ -1483,18 +1688,26 @@ def run_t0_draft_round(
     dayn_df = _build_dayn_matrix(forecasts_df, fh_step=fh_i)
     metrics_df = _build_draft_metrics(dayn_df)
 
+    weights_map, src_round, src_path, src_status = _load_prior_weights_for_round(str(round_id))
+    weighted_ensemble_df = _build_weighted_ensemble(
+        cast(pd.DataFrame, dayn_df),
+        weights_map,
+    )
+
     round_dir = _round_dir(round_id)
     round_dir.mkdir(parents=True, exist_ok=True)
 
     forecasts_csv = round_dir / "t0_forecasts.csv"
     draft_metrics_csv = round_dir / "t0_draft_metrics.csv"
     day3_matrix_csv = round_dir / f"t0_day{fh_i}_matrix.csv"
+    weighted_ensemble_csv = round_dir / f"t0_day{fh_i}_weighted_ensemble.csv"
     context_json = round_dir / "round_context.json"
     dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
 
     cast(pd.DataFrame, forecasts_df).to_csv(forecasts_csv, index=False)
     cast(pd.DataFrame, metrics_df).to_csv(draft_metrics_csv, index=False)
     cast(pd.DataFrame, dayn_df).to_csv(day3_matrix_csv, index=False)
+    cast(pd.DataFrame, weighted_ensemble_df).to_csv(weighted_ensemble_csv, index=False)
 
     context: Dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -1508,10 +1721,17 @@ def run_t0_draft_round(
         "scoring_config": {
             "value_assign_table_path": str(_resolve_value_assign_path()),
         },
+        "weights_applied": {
+            "source_round_id": src_round,
+            "source_path": src_path,
+            "weights_status": src_status,
+            "models": int(len(weights_map)),
+        },
         "outputs": {
             "forecasts_csv": str(forecasts_csv),
             "draft_metrics_csv": str(draft_metrics_csv),
             "dayn_matrix_csv": str(day3_matrix_csv),
+            "weighted_ensemble_csv": str(weighted_ensemble_csv),
             "dashboard_md": str(dashboard_md),
         },
     }
@@ -1525,6 +1745,21 @@ def run_t0_draft_round(
         dayn_df=cast(pd.DataFrame, dayn_df),
         metrics_df=cast(pd.DataFrame, metrics_df),
     )
+    if not weighted_ensemble_df.empty:
+        md = _render_round_markdown(
+            round_id=round_id,
+            round_state=ROUND_STATE_DRAFT_T0,
+            generated_at=generated_at,
+            fh=fh_i,
+            dayn_df=cast(pd.DataFrame, dayn_df),
+            metrics_df=cast(pd.DataFrame, metrics_df),
+            actuals_df=None,
+            weighted_ensemble_df=cast(pd.DataFrame, weighted_ensemble_df),
+            weights_source={
+                "source_round_id": src_round,
+                "weights_status": src_status,
+            },
+        )
     _write_nonempty_text(dashboard_md, md)
 
     return DraftArtifacts(
@@ -1533,6 +1768,7 @@ def run_t0_draft_round(
         forecasts_csv=forecasts_csv,
         draft_metrics_csv=draft_metrics_csv,
         day3_matrix_csv=day3_matrix_csv,
+        weighted_ensemble_csv=weighted_ensemble_csv,
         context_json=context_json,
         dashboard_md=dashboard_md,
     )
@@ -1560,6 +1796,20 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
     forecasts_df = pd.read_csv(forecasts_csv)
     metrics_df = pd.read_csv(draft_metrics_csv)
     dayn_df = _build_dayn_matrix(cast(pd.DataFrame, forecasts_df), fh_step=fh_i)
+    weighted_ensemble_df: Optional[pd.DataFrame] = None
+    weights_source: Optional[Dict[str, Any]] = None
+
+    weights_applied = context.get("weights_applied")
+    if isinstance(weights_applied, dict):
+        weights_source = cast(Dict[str, Any], weights_applied)
+
+    outputs = cast(Dict[str, Any], context.get("outputs", {}))
+    weighted_path = outputs.get("weighted_ensemble_csv")
+    if weighted_path:
+        pw = Path(str(weighted_path))
+        if pw.exists():
+            weighted_ensemble_df = pd.read_csv(pw)
+
     actuals_path = _round_actuals_path(round_id)
     actuals_df: Optional[pd.DataFrame] = None
     if actuals_path.exists():
@@ -1569,7 +1819,6 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
     score_stats: Optional[Dict[str, Any]] = None
     avr_summary_df: Optional[pd.DataFrame] = None
     avr_stats: Optional[Dict[str, Any]] = None
-    outputs = cast(Dict[str, Any], context.get("outputs", {}))
     score_summary_path = outputs.get("model_summary_csv")
     if score_summary_path:
         p = Path(str(score_summary_path))
@@ -1597,6 +1846,8 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
         score_stats=cast(Optional[Dict[str, Any]], score_stats),
         avr_summary_df=cast(Optional[pd.DataFrame], avr_summary_df),
         avr_stats=cast(Optional[Dict[str, Any]], avr_stats),
+        weighted_ensemble_df=cast(Optional[pd.DataFrame], weighted_ensemble_df),
+        weights_source=cast(Optional[Dict[str, Any]], weights_source),
     )
     dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
     _write_nonempty_text(dashboard_md, md)

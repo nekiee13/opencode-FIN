@@ -97,6 +97,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"  {artifacts.forecasts_csv}")
         print(f"  {artifacts.draft_metrics_csv}")
         print(f"  {artifacts.day3_matrix_csv}")
+        print(f"  {artifacts.weighted_ensemble_csv}")
         print(f"  {artifacts.dashboard_md}")
         try:
             print(f"  dashboard_size_bytes={artifacts.dashboard_md.stat().st_size}")
@@ -147,6 +148,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"  {artifacts.model_summary_csv}")
         print(f"  {artifacts.avr_history_csv}")
         print(f"  {artifacts.avr_summary_csv}")
+        print(f"  {artifacts.next_weights_csv}")
         print(f"  {artifacts.context_json}")
         print(f"  {artifacts.dashboard_md}")
         try:
