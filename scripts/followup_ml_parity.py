@@ -56,6 +56,21 @@ def _artifact_plan(round_id: str) -> List[Tuple[Path, str, bool]]:
     ]
 
 
+def _resolve_snapshot_source(src: Path, dst_name: str, round_id: str) -> Path:
+    """Resolve artifact source with backwards-compatible fallbacks."""
+    if src.exists():
+        return src
+
+    rid = str(round_id)
+    # Legacy dashboard naming used earlier in the migration.
+    if dst_name == "dashboard.md":
+        legacy = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{rid}_draft.md"
+        if legacy.exists():
+            return legacy
+
+    return src
+
+
 def _load_manifest(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {
@@ -95,14 +110,15 @@ def snapshot_round(round_id: str, fixture_root: Path) -> int:
     missing_optional: List[str] = []
 
     for src, dst_name, required in plan:
+        src_resolved = _resolve_snapshot_source(src, dst_name, round_id)
         dst = round_fixture_dir / dst_name
-        if src.exists():
-            shutil.copy2(src, dst)
+        if src_resolved.exists():
+            shutil.copy2(src_resolved, dst)
             copied.append(dst_name)
         elif required:
-            missing_required.append(str(src))
+            missing_required.append(str(src_resolved))
         else:
-            missing_optional.append(str(src))
+            missing_optional.append(str(src_resolved))
 
     if missing_required:
         print("[followup-ml-parity] Missing required artifacts:")
