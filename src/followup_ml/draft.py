@@ -74,6 +74,8 @@ class DraftArtifacts:
 class FinalizeArtifacts:
     round_id: str
     round_state: str
+    run_mode: str
+    lookup_date_override: str
     ok_actuals: int
     total_actuals: int
     scored_rows: int
@@ -558,6 +560,8 @@ def _render_round_markdown(
     avr_stats: Optional[Dict[str, Any]] = None,
     weighted_ensemble_df: Optional[pd.DataFrame] = None,
     weights_source: Optional[Dict[str, Any]] = None,
+    run_mode: str = "strict_production",
+    lookup_date_override: str = "",
 ) -> str:
     lines: List[str] = []
     lines.append(f"# Follow-up ML Board - {round_id}")
@@ -565,6 +569,12 @@ def _render_round_markdown(
     lines.append(f"- State: `{round_state}`")
     lines.append(f"- Generated at: `{generated_at}`")
     lines.append(f"- Forecast horizon (FH): `{fh}`")
+    lines.append(f"- Run mode: `{run_mode}`")
+    if lookup_date_override:
+        lines.append(
+            "- Override notice: "
+            f"`lookup_date={lookup_date_override}` (backtest/evaluation mode, not strict production)"
+        )
     if round_state == ROUND_STATE_DRAFT_T0:
         lines.append("- Accuracy/scoring fields: `Pending +3 actual values`")
     elif round_state == ROUND_STATE_PARTIAL_ACTUALS:
@@ -1464,6 +1474,7 @@ def run_tplus3_finalize_round(
         if actual_lookup_date is not None and str(actual_lookup_date).strip() != ""
         else ""
     )
+    run_mode = "strict_production" if lookup_override == "" else "lookup_override_test"
 
     forecasts_df = pd.read_csv(forecasts_csv)
     ticker_list = _canonical_tickers(tickers or context.get("tickers", TICKER_ORDER_DEFAULT))
@@ -1574,12 +1585,14 @@ def run_tplus3_finalize_round(
     )
 
     context["round_state"] = round_state
+    context["run_mode"] = run_mode
     context["finalized_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     context["actuals"] = {
         "ok_count": ok_count,
         "total": total,
         "strict_date_matching": bool(lookup_override == ""),
         "lookup_date_override": lookup_override,
+        "run_mode": run_mode,
         "actuals_csv": str(round_actuals_csv),
         "global_actuals_csv": str(global_actuals_csv),
     }
@@ -1638,12 +1651,16 @@ def run_tplus3_finalize_round(
         avr_stats=cast(Dict[str, Any], avr_stats),
         weighted_ensemble_df=cast(Optional[pd.DataFrame], None),
         weights_source=cast(Optional[Dict[str, Any]], context.get("weights_applied")),
+        run_mode=run_mode,
+        lookup_date_override=lookup_override,
     )
     dashboard_md = _write_dashboard(str(round_id), md)
 
     return FinalizeArtifacts(
         round_id=str(round_id),
         round_state=round_state,
+        run_mode=run_mode,
+        lookup_date_override=lookup_override,
         ok_actuals=ok_count,
         total_actuals=total,
         scored_rows=int(score_stats.get("scored_rows", 0)),
@@ -1849,6 +1866,12 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
     if isinstance(context.get("avr"), dict):
         avr_stats = cast(Dict[str, Any], context.get("avr"))
 
+    run_mode = str(context.get("run_mode", "strict_production"))
+    lookup_date_override = ""
+    actuals_meta = context.get("actuals")
+    if isinstance(actuals_meta, dict):
+        lookup_date_override = str(actuals_meta.get("lookup_date_override", ""))
+
     md = _render_round_markdown(
         round_id=str(round_id),
         round_state=round_state,
@@ -1863,6 +1886,8 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
         avr_stats=cast(Optional[Dict[str, Any]], avr_stats),
         weighted_ensemble_df=cast(Optional[pd.DataFrame], weighted_ensemble_df),
         weights_source=cast(Optional[Dict[str, Any]], weights_source),
+        run_mode=run_mode,
+        lookup_date_override=lookup_date_override,
     )
     dashboard_md = _write_dashboard(str(round_id), md)
     return dashboard_md

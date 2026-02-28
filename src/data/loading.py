@@ -231,7 +231,9 @@ def fetch_data(
 
         # Volume '-' replacement (TS behavior)
         if "Volume" in df.columns and df["Volume"].dtype == "object":
-            vol = cast(pd.Series, df["Volume"]).replace("-", np.nan)
+            vol_raw = cast(pd.Series, df["Volume"])
+            vol_text = cast(pd.Series, vol_raw.astype(str).str.strip())
+            vol = cast(pd.Series, vol_raw.where(vol_text != "-", np.nan))
             df["Volume"] = vol
             log.info("Replaced '-' with NaN in 'Volume' column.")
 

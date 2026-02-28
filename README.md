@@ -15,6 +15,7 @@ Phase-1 establishes non-negotiable architectural invariants before any deeper re
 * [`docs/refactor/phase1_rules.md`](docs/refactor/phase1_rules.md)
 * [`docs/refactor/decisions/0001-lstm-backend-pytorch-cutover.md`](docs/refactor/decisions/0001-lstm-backend-pytorch-cutover.md)
 * [`docs/refactor/decisions/0002-dynamix-cpu-worker-integration.md`](docs/refactor/decisions/0002-dynamix-cpu-worker-integration.md)
+* [`docs/followup_ml_runbook.md`](docs/followup_ml_runbook.md)
 
 This document defines:
 

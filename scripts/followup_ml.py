@@ -131,6 +131,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         print("[followup-ml] Round finalized:")
         print(f"  lookup_date_override={args.actual_lookup_date or '-'}")
+        print(f"  run_mode={artifacts.run_mode}")
         print(f"  state={artifacts.round_state}")
         print(f"  actuals_ok={artifacts.ok_actuals}/{artifacts.total_actuals}")
         print(
