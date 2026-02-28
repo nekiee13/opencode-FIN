@@ -105,6 +105,19 @@ def normalize_ohlcv_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _coerce_numeric_series(series: pd.Series) -> pd.Series:
+    """Coerce mixed numeric text (including comma thousands separators) to float."""
+    s = cast(pd.Series, series)
+
+    # Fast path for already-numeric dtypes.
+    if pd.api.types.is_numeric_dtype(s):
+        return cast(pd.Series, pd.to_numeric(s, errors="coerce"))
+
+    s_text = cast(pd.Series, s.astype(str).str.strip())
+    s_text = cast(pd.Series, s_text.str.replace(",", "", regex=False))
+    return cast(pd.Series, pd.to_numeric(s_text, errors="coerce"))
+
+
 def _parse_datetime_column(series: pd.Series) -> pd.Series:
     """
     Parse datetime using TS preference (format first, fallback to default).
@@ -229,7 +242,7 @@ def fetch_data(
         numeric_columns = ["Close", "High", "Low", "Open", "Volume"]
         for col in numeric_columns:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
+                df[col] = _coerce_numeric_series(cast(pd.Series, df[col]))
             elif col != "Volume":
                 log.warning("Expected numeric column '%s' not found in data for %s.", col, ticker)
 

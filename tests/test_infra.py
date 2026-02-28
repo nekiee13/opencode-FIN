@@ -192,6 +192,33 @@ def test_fetch_data_handles_duplicate_dates_keeps_last(tmp_path: Path) -> None:
     assert last_close > 50.0
 
 
+def test_fetch_data_parses_comma_thousands_numeric_fields(tmp_path: Path) -> None:
+    """
+    CSV values like "41,000.20" should parse as numeric, not NaN.
+    """
+    from src.data.loading import fetch_data
+
+    csv_path = tmp_path / "DJI_data.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(
+        "\n".join(
+            [
+                "Date,Open,High,Low,Close,Volume",
+                '"May 06, 2025","41,000.20","41,164.33","40,759.41","40,829.00","416,112,116"',
+                '"May 07, 2025","40,956.08","41,266.91","40,829.29","41,113.97","533,870,000"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    df = fetch_data("DJI", csv_path=csv_path)
+    assert df is not None
+    assert len(df) == 2
+    assert float(df.iloc[0]["Open"]) > 40000.0
+    assert float(df.iloc[0]["Close"]) > 40000.0
+    assert float(df.iloc[0]["Volume"]) > 1_000_000.0
+
+
 # ---------------------------------------------------------------------
 # src.utils.pivots behavior
 # ---------------------------------------------------------------------

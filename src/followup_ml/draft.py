@@ -785,6 +785,22 @@ def _write_nonempty_text(path: Path, content: str) -> None:
     path.write_text(safe, encoding="utf-8")
 
 
+def _dashboard_path(round_id: str) -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}.md"
+
+
+def _latest_dashboard_path() -> Path:
+    return paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / "latest.md"
+
+
+def _write_dashboard(round_id: str, content: str) -> Path:
+    p = _dashboard_path(round_id)
+    _write_nonempty_text(p, content)
+    latest = _latest_dashboard_path()
+    _write_nonempty_text(latest, p.read_text(encoding="utf-8"))
+    return p
+
+
 def _round_dir(round_id: str) -> Path:
     return (paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR / str(round_id)).resolve()
 
@@ -1607,7 +1623,7 @@ def run_tplus3_finalize_round(
 
     metrics_df = pd.read_csv(draft_metrics_csv)
     dayn_df = _build_dayn_matrix(cast(pd.DataFrame, forecasts_df), fh_step=fh_i)
-    dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
+    dashboard_md = _dashboard_path(str(round_id))
     md = _render_round_markdown(
         round_id=str(round_id),
         round_state=round_state,
@@ -1623,7 +1639,7 @@ def run_tplus3_finalize_round(
         weighted_ensemble_df=cast(Optional[pd.DataFrame], None),
         weights_source=cast(Optional[Dict[str, Any]], context.get("weights_applied")),
     )
-    _write_nonempty_text(dashboard_md, md)
+    dashboard_md = _write_dashboard(str(round_id), md)
 
     return FinalizeArtifacts(
         round_id=str(round_id),
@@ -1702,7 +1718,7 @@ def run_t0_draft_round(
     day3_matrix_csv = round_dir / f"t0_day{fh_i}_matrix.csv"
     weighted_ensemble_csv = round_dir / f"t0_day{fh_i}_weighted_ensemble.csv"
     context_json = round_dir / "round_context.json"
-    dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
+    dashboard_md = _dashboard_path(str(round_id))
 
     cast(pd.DataFrame, forecasts_df).to_csv(forecasts_csv, index=False)
     cast(pd.DataFrame, metrics_df).to_csv(draft_metrics_csv, index=False)
@@ -1737,7 +1753,6 @@ def run_t0_draft_round(
     }
     context_json.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
-    dashboard_md.parent.mkdir(parents=True, exist_ok=True)
     md = _render_t0_markdown(
         round_id=round_id,
         generated_at=generated_at,
@@ -1760,7 +1775,7 @@ def run_t0_draft_round(
                 "weights_status": src_status,
             },
         )
-    _write_nonempty_text(dashboard_md, md)
+    dashboard_md = _write_dashboard(str(round_id), md)
 
     return DraftArtifacts(
         round_id=str(round_id),
@@ -1849,6 +1864,5 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
         weighted_ensemble_df=cast(Optional[pd.DataFrame], weighted_ensemble_df),
         weights_source=cast(Optional[Dict[str, Any]], weights_source),
     )
-    dashboard_md = paths.OUT_I_CALC_FOLLOWUP_ML_DASHBOARD_DIR / f"{round_id}_draft.md"
-    _write_nonempty_text(dashboard_md, md)
+    dashboard_md = _write_dashboard(str(round_id), md)
     return dashboard_md
