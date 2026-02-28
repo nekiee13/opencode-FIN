@@ -307,16 +307,17 @@ def compare_round(round_id: str, fixture_root: Path, tol: float) -> int:
     failures = 0
 
     for actual_path, fixture_name, _required in plan:
+        actual_resolved = _resolve_snapshot_source(actual_path, fixture_name, round_id)
         fixture_path = round_fixture_dir / fixture_name
         if not fixture_path.exists():
             report_rows.append({"file": fixture_name, "status": "SKIP", "detail": "fixture_missing"})
             continue
-        if not actual_path.exists():
+        if not actual_resolved.exists():
             report_rows.append({"file": fixture_name, "status": "FAIL", "detail": "actual_missing"})
             failures += 1
             continue
 
-        ok, detail = _compare_file(actual_path, fixture_path, tol)
+        ok, detail = _compare_file(actual_resolved, fixture_path, tol)
         if ok:
             report_rows.append({"file": fixture_name, "status": "PASS", "detail": detail})
         else:
