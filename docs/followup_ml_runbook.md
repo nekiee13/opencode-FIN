@@ -72,6 +72,18 @@ Override mode is marked in context/dashboard as test mode.
 python scripts/followup_ml.py board --round-id 26-1-11
 ```
 
+### 4) Parity compare against fixture
+
+```bash
+python scripts/followup_ml_parity.py compare --round-id 26-1-11
+```
+
+### 5) Publish
+
+- Publish `dashboard/latest.md` and round artifacts after parity pass.
+- Do not publish when parity fails or CI gate is red.
+- For override/backtest runs, do not publish to production destinations.
+
 ## Core Artifacts and Columns
 
 ### `scores/<round_id>_partial_scores.csv`
@@ -147,6 +159,17 @@ python scripts/followup_ml_parity.py compare --round-id 26-1-11
 Compare report:
 
 - `out/i_calc/followup_ml/reports/parity_<round_id>.md`
+
+## Stop Expansion Governance (M5)
+
+- Policy reference: `docs/followup_ml_stop_expansion_rules.md`
+- PRs must carry exactly one scope label: `m5-scope` or `m5-expansion-exception`.
+- Exception PRs require complete exception fields and dual approval.
+
+Weekly audit:
+
+- verify unapproved expansion merges = 0
+- record exceptions and approvals in evidence pack
 
 ## Troubleshooting
 

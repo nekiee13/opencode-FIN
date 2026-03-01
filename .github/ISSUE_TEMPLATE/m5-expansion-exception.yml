@@ -1,0 +1,58 @@
+name: M5 Expansion Exception
+description: Request temporary scope expansion during M5 freeze.
+title: "M5 exception: <short description>"
+labels:
+  - m5-expansion-exception
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form only when deferral to post-M5 is not acceptable.
+  - type: textarea
+    id: business_reason
+    attributes:
+      label: Business reason
+      description: Why this cannot wait until after M5 sign-off.
+      placeholder: Customer/operational risk, blocker, and urgency.
+    validations:
+      required: true
+  - type: textarea
+    id: scope_delta
+    attributes:
+      label: Scope delta
+      description: Exact changes proposed (files, commands, artifacts).
+      placeholder: Paths touched, behavior changes, and impacted outputs.
+    validations:
+      required: true
+  - type: textarea
+    id: parity_impact
+    attributes:
+      label: Parity impact analysis
+      description: Expected impact to benchmark parity and CI determinism.
+      placeholder: Risk level, affected rounds, mitigation plan.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback_plan
+    attributes:
+      label: Rollback plan
+      description: Exact rollback trigger and rollback procedure.
+      placeholder: Trigger thresholds and command sequence.
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: Owner
+      description: Single accountable owner for this exception.
+      placeholder: "@username"
+    validations:
+      required: true
+  - type: input
+    id: approvers
+    attributes:
+      label: Approver(s)
+      description: Engineering Owner and Operations Owner.
+      placeholder: "@eng-owner, @ops-owner"
+    validations:
+      required: true

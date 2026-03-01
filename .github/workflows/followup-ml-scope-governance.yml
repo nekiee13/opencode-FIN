@@ -1,0 +1,85 @@
+name: followup-ml-scope-governance
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scope-governance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce M5 scope labels and exception fields
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+
+            function escapeRegex(value) {
+              return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }
+
+            function extractSection(body, heading) {
+              const escaped = escapeRegex(heading);
+              const re = new RegExp(`##\\s*${escaped}\\s*\\n([\\s\\S]*?)(\\n##\\s|$)`, 'i');
+              const match = body.match(re);
+              if (!match) {
+                return '';
+              }
+              return match[1].trim();
+            }
+
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('pull_request payload missing');
+              return;
+            }
+
+            const labels = (pr.labels || []).map((item) => item.name);
+            const scopeLabel = 'm5-scope';
+            const exceptionLabel = 'm5-expansion-exception';
+            const hasScope = labels.includes(scopeLabel);
+            const hasException = labels.includes(exceptionLabel);
+
+            const errors = [];
+
+            if (!hasScope && !hasException) {
+              errors.push(`Missing required label: add either '${scopeLabel}' or '${exceptionLabel}'.`);
+            }
+
+            if (hasScope && hasException) {
+              errors.push(`Labels '${scopeLabel}' and '${exceptionLabel}' are mutually exclusive.`);
+            }
+
+            if (hasException) {
+              const body = String(pr.body || '');
+              const requiredHeadings = [
+                'Business reason',
+                'Scope delta',
+                'Parity impact analysis',
+                'Rollback plan',
+                'Owner',
+                'Approver(s)',
+              ];
+
+              const missing = [];
+              for (const heading of requiredHeadings) {
+                if (!extractSection(body, heading)) {
+                  missing.push(heading);
+                }
+              }
+
+              if (missing.length > 0) {
+                errors.push(`Exception details missing content for: ${missing.join(', ')}`);
+              }
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(errors.join('\n'));
+              return;
+            }
+
+            core.info(`Scope governance check passed with label(s): ${labels.join(', ')}`);
