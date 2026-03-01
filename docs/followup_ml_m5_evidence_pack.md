@@ -69,3 +69,10 @@ Links:
 - Violations: 0
 - Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981292133
 
+## CI Recovery Update 2026-03-01
+
+- followup-ml-gate run 22555556573: PASS
+- Commit: a09d728
+- Fix: requirements.txt pin numpoly==1.2.14 (numpy 1.26 compatible)
+- Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981324453
+
