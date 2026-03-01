@@ -1,5 +1,64 @@
 {
   "schema": "followup-ml-parity-v1",
-  "updated_at": "",
-  "rounds": {}
+  "updated_at": "2026-02-28 18:43:47",
+  "rounds": {
+    "26-1-11": {
+      "state": "FINAL_TPLUS3",
+      "captured_at": "2026-02-28 16:05:56",
+      "fixture_dir": "26-1-11",
+      "files": [
+        "round_context.json",
+        "t0_forecasts.csv",
+        "t0_draft_metrics.csv",
+        "t0_day3_matrix.csv",
+        "t0_day3_weighted_ensemble.csv",
+        "actuals_tplus3.csv",
+        "partial_scores.csv",
+        "model_summary.csv",
+        "avr_summary.csv",
+        "next_weights.csv",
+        "dashboard.md"
+      ],
+      "missing_optional": []
+    },
+    "26-1-09": {
+      "state": "FINAL_TPLUS3",
+      "captured_at": "2026-02-28 16:08:31",
+      "fixture_dir": "26-1-09",
+      "files": [
+        "round_context.json",
+        "t0_forecasts.csv",
+        "t0_draft_metrics.csv",
+        "t0_day3_matrix.csv",
+        "actuals_tplus3.csv",
+        "partial_scores.csv",
+        "model_summary.csv",
+        "avr_summary.csv",
+        "next_weights.csv",
+        "dashboard.md"
+      ],
+      "missing_optional": [
+        "t0_day3_weighted_ensemble.csv"
+      ]
+    },
+    "26-1-06": {
+      "state": "FINAL_TPLUS3",
+      "captured_at": "2026-02-28 18:43:47",
+      "fixture_dir": "26-1-06",
+      "files": [
+        "round_context.json",
+        "t0_forecasts.csv",
+        "t0_draft_metrics.csv",
+        "t0_day3_matrix.csv",
+        "t0_day3_weighted_ensemble.csv",
+        "actuals_tplus3.csv",
+        "partial_scores.csv",
+        "model_summary.csv",
+        "avr_summary.csv",
+        "next_weights.csv",
+        "dashboard.md"
+      ],
+      "missing_optional": []
+    }
+  }
 }

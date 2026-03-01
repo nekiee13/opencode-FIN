@@ -1,0 +1,85 @@
+{
+  "schema_version": "followup-ml-v1",
+  "round_id": "26-1-06",
+  "round_state": "FINAL_TPLUS3",
+  "generated_at": "2026-02-28 18:40:13",
+  "fh": 3,
+  "tickers": [
+    "TNX",
+    "DJI",
+    "SPX",
+    "VIX",
+    "QQQ",
+    "AAPL"
+  ],
+  "models": [
+    "Torch",
+    "DYNAMIX",
+    "ARIMAX",
+    "PCE",
+    "LSTM",
+    "GARCH",
+    "VAR",
+    "RW",
+    "ETS"
+  ],
+  "exo_config_path": "F:\\xPy\\FIN-Git\\opencode-FIN\\data\\raw\\exoregressors\\Exo_regressors.csv",
+  "scoring_config": {
+    "value_assign_table_path": "F:\\xPy\\FIN-Git\\opencode-FIN\\config\\followup_ml_value_assign.csv"
+  },
+  "weights_applied": {
+    "source_round_id": "",
+    "source_path": "",
+    "weights_status": "",
+    "models": 0
+  },
+  "outputs": {
+    "forecasts_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\rounds\\26-1-06\\t0_forecasts.csv",
+    "draft_metrics_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\rounds\\26-1-06\\t0_draft_metrics.csv",
+    "dayn_matrix_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\rounds\\26-1-06\\t0_day3_matrix.csv",
+    "weighted_ensemble_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\rounds\\26-1-06\\t0_day3_weighted_ensemble.csv",
+    "dashboard_md": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\dashboard\\26-1-06.md",
+    "actuals_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\rounds\\26-1-06\\actuals_tplus3.csv",
+    "global_actuals_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\actuals\\26-1-06_actuals.csv",
+    "partial_scores_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\scores\\26-1-06_partial_scores.csv",
+    "model_summary_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\scores\\26-1-06_model_summary.csv",
+    "avr_history_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\avr\\avr_history.csv",
+    "avr_summary_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\avr\\26-1-06_avr_summary.csv",
+    "next_weights_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\weights\\26-1-06_next_weights.csv"
+  },
+  "run_mode": "lookup_override_test",
+  "finalized_at": "2026-02-28 18:43:00",
+  "actuals": {
+    "ok_count": 6,
+    "total": 6,
+    "strict_date_matching": false,
+    "lookup_date_override": "2026-02-10",
+    "run_mode": "lookup_override_test",
+    "actuals_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\rounds\\26-1-06\\actuals_tplus3.csv",
+    "global_actuals_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\actuals\\26-1-06_actuals.csv"
+  },
+  "scores": {
+    "scored_rows": 53,
+    "total_rows": 54,
+    "scored_tickers": 6,
+    "total_tickers": 6,
+    "model_coverage_avg": 0.9814814814814815,
+    "mapped_rows": 53,
+    "value_assign_table_path": "F:\\xPy\\FIN-Git\\opencode-FIN\\config\\followup_ml_value_assign.csv",
+    "partial_scores_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\scores\\26-1-06_partial_scores.csv",
+    "model_summary_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\scores\\26-1-06_model_summary.csv"
+  },
+  "avr": {
+    "history_rows": 162,
+    "models_with_history": 9,
+    "avr_history_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\avr\\avr_history.csv",
+    "avr_summary_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\avr\\26-1-06_avr_summary.csv"
+  },
+  "weights": {
+    "weights_status": "final",
+    "models": 9,
+    "total_raw": 848.1961111111111,
+    "generated_at": "2026-02-28 18:43:00",
+    "next_weights_csv": "F:\\xPy\\FIN-Git\\opencode-FIN\\out\\i_calc\\followup_ml\\weights\\26-1-06_next_weights.csv"
+  }
+}

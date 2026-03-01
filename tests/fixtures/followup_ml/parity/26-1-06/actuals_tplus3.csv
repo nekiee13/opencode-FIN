@@ -1,0 +1,7 @@
+round_id,ticker,runtime_ticker,expected_actual_date,lookup_actual_date,actual_close,status,source_csv
+26-1-06,TNX,TNX,2026-02-27,2026-02-10,4.147,ok,F:\xPy\FIN-Git\opencode-FIN\data\raw\tickers\TNX_data.csv
+26-1-06,DJI,DJI,2026-02-27,2026-02-10,50188.14,ok,F:\xPy\FIN-Git\opencode-FIN\data\raw\tickers\DJI_data.csv
+26-1-06,SPX,GSPC,2026-02-27,2026-02-10,6941.81,ok,F:\xPy\FIN-Git\opencode-FIN\data\raw\tickers\GSPC_data.csv
+26-1-06,VIX,VIX,2026-02-27,2026-02-10,17.79,ok,F:\xPy\FIN-Git\opencode-FIN\data\raw\tickers\VIX_data.csv
+26-1-06,QQQ,QQQ,2026-02-27,2026-02-10,611.47,ok,F:\xPy\FIN-Git\opencode-FIN\data\raw\tickers\QQQ_data.csv
+26-1-06,AAPL,AAPL,2026-02-27,2026-02-10,273.68,ok,F:\xPy\FIN-Git\opencode-FIN\data\raw\tickers\AAPL_data.csv
