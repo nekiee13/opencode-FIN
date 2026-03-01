@@ -61,3 +61,11 @@ Links:
 - Operations Owner:
 - Sign-off date:
 - Decision: GO / NO-GO
+
+## Weekly Audit Update 2026-03-01
+
+- Exception merges: 0
+- Merged PRs missing both scope labels: 0
+- Violations: 0
+- Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981292133
+
