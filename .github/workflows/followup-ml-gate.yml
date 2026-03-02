@@ -28,11 +28,32 @@ jobs:
         run: |
           python -m py_compile scripts/followup_ml.py
           python -m py_compile scripts/followup_ml_parity.py
+          python -m py_compile scripts/followup_ml_ci_parity_gate.py
           python -m py_compile src/followup_ml/draft.py
 
       - name: Run followup policy/parity unit tests
         run: |
           python -m pytest tests/test_followup_ml_parity_tool.py tests/test_followup_ml_policy.py -q
+
+      - name: Run deterministic fixture parity gate
+        run: |
+          python scripts/followup_ml_ci_parity_gate.py --round-id 26-1-06 --round-id 26-1-09 --round-id 26-1-11
+
+      - name: Upload parity artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: followup-ml-parity-failure-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            out/i_calc/followup_ml/reports
+            out/i_calc/followup_ml/rounds/26-1-06
+            out/i_calc/followup_ml/rounds/26-1-09
+            out/i_calc/followup_ml/rounds/26-1-11
+            out/i_calc/followup_ml/scores
+            out/i_calc/followup_ml/avr
+            out/i_calc/followup_ml/weights
+            out/i_calc/followup_ml/dashboard
 
       - name: Run loader regression for comma-numeric parsing
         run: |
