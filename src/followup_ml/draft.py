@@ -1436,17 +1436,60 @@ def _actuals_changed(prev_df: pd.DataFrame, new_df: pd.DataFrame) -> bool:
     return not p.equals(n)
 
 
+
+def _finalize_override_policy(
+    *,
+    actual_lookup_date: Optional[str],
+    allow_lookup_override: bool,
+    override_reason: Optional[str],
+    override_ticket: Optional[str],
+    override_approver: Optional[str],
+) -> Tuple[str, str, Dict[str, str]]:
+    lookup_override = (
+        _normalize_yyyy_mm_dd(actual_lookup_date)
+        if actual_lookup_date is not None and str(actual_lookup_date).strip() != ""
+        else ""
+    )
+    if lookup_override == "":
+        return "", "strict_production", {"reason": "", "ticket": "", "approver": ""}
+
+    if not allow_lookup_override:
+        raise ValueError(
+            "Override lookup date is blocked by production policy. "
+            "Re-run with --allow-lookup-override and all required override ack fields."
+        )
+
+    ack = {
+        "reason": str(override_reason or "").strip(),
+        "ticket": str(override_ticket or "").strip(),
+        "approver": str(override_approver or "").strip(),
+    }
+    missing = [k for k, v in ack.items() if v == ""]
+    if missing:
+        raise ValueError(
+            "Override lookup date requires ack fields: override_reason, "
+            "override_ticket, override_approver. Missing: " + ", ".join(missing)
+        )
+
+    return lookup_override, "lookup_override_test", ack
+
+
 def run_tplus3_finalize_round(
     *,
     round_id: str,
     tickers: Optional[Iterable[str]] = None,
     actual_lookup_date: Optional[str] = None,
+    allow_lookup_override: bool = False,
+    override_reason: Optional[str] = None,
+    override_ticket: Optional[str] = None,
+    override_approver: Optional[str] = None,
 ) -> FinalizeArtifacts:
     """
     Ingest +3 actual values for a round and update round state.
 
     By default, strict matching is used (lookup date == expected +3 date).
-    For testing/evaluation, a fixed lookup date override can be supplied.
+    A fixed lookup date override is blocked by default and requires explicit
+    break-glass acknowledgment fields.
 
     State policy:
     - no actuals found: DRAFT_T0
@@ -1469,12 +1512,13 @@ def run_tplus3_finalize_round(
     context = json.loads(context_json.read_text(encoding="utf-8"))
     prev_state = str(context.get("round_state", ROUND_STATE_DRAFT_T0))
     fh_i = int(context.get("fh", DEFAULT_FH))
-    lookup_override = (
-        _normalize_yyyy_mm_dd(actual_lookup_date)
-        if actual_lookup_date is not None and str(actual_lookup_date).strip() != ""
-        else ""
+    lookup_override, run_mode, override_ack = _finalize_override_policy(
+        actual_lookup_date=actual_lookup_date,
+        allow_lookup_override=allow_lookup_override,
+        override_reason=override_reason,
+        override_ticket=override_ticket,
+        override_approver=override_approver,
     )
-    run_mode = "strict_production" if lookup_override == "" else "lookup_override_test"
 
     forecasts_df = pd.read_csv(forecasts_csv)
     ticker_list = _canonical_tickers(tickers or context.get("tickers", TICKER_ORDER_DEFAULT))
@@ -1593,6 +1637,10 @@ def run_tplus3_finalize_round(
         "strict_date_matching": bool(lookup_override == ""),
         "lookup_date_override": lookup_override,
         "run_mode": run_mode,
+        "override_ack_required": bool(lookup_override != ""),
+        "override_reason": str(override_ack.get("reason", "")),
+        "override_ticket": str(override_ack.get("ticket", "")),
+        "override_approver": str(override_ack.get("approver", "")),
         "actuals_csv": str(round_actuals_csv),
         "global_actuals_csv": str(global_actuals_csv),
     }

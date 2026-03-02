@@ -75,6 +75,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional fixed lookup date override for all tickers (yyyy-mm-dd).",
     )
+    p_finalize.add_argument(
+        "--allow-lookup-override",
+        action="store_true",
+        help="Require explicit opt-in when using --actual-lookup-date.",
+    )
+    p_finalize.add_argument(
+        "--override-reason",
+        type=str,
+        default=None,
+        help="Break-glass reason for override mode.",
+    )
+    p_finalize.add_argument(
+        "--override-ticket",
+        type=str,
+        default=None,
+        help="Change/ticket reference for override mode.",
+    )
+    p_finalize.add_argument(
+        "--override-approver",
+        type=str,
+        default=None,
+        help="Approver identity for override mode.",
+    )
 
     return p
 
@@ -128,6 +151,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             round_id=str(args.round_id),
             tickers=args.tickers,
             actual_lookup_date=args.actual_lookup_date,
+            allow_lookup_override=bool(args.allow_lookup_override),
+            override_reason=args.override_reason,
+            override_ticket=args.override_ticket,
+            override_approver=args.override_approver,
         )
         print("[followup-ml] Round finalized:")
         print(f"  lookup_date_override={args.actual_lookup_date or '-'}")
