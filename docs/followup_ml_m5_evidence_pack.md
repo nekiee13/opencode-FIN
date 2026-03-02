@@ -38,6 +38,13 @@ Links:
 - Outcome:
 - Issues found and fixes:
 
+## Ownership and Escalation Matrix Approval
+
+- Matrix document: `docs/followup_ml_ownership_escalation_matrix.md`
+- Engineering owner approved:
+- Operations owner approved:
+- Approval evidence link:
+
 ## Go-live Checklist
 
 - [ ] CI gate green
@@ -89,4 +96,3 @@ Links:
 - Latest followup-ml-gate run 22555978831: PASS
 - Sandbox -> GitHub -> non-sandbox sync: complete
 - Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981357925
-

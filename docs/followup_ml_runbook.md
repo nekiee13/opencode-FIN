@@ -164,6 +164,7 @@ Compare report:
 ## Stop Expansion Governance (M5)
 
 - Policy reference: `docs/followup_ml_stop_expansion_rules.md`
+- Ownership/escalation matrix: `docs/followup_ml_ownership_escalation_matrix.md`
 - PRs must carry exactly one scope label: `m5-scope` or `m5-expansion-exception`.
 - Exception PRs require complete exception fields and dual approval.
 
