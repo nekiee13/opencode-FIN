@@ -13,6 +13,7 @@ This runbook describes the weekly no-Excel operating flow for Follow-up ML artif
 
 - Run from repo root.
 - Use active project virtual environment.
+- Use the venv interpreter explicitly when needed: `/repo/.venv/bin/python`.
 - Raw ticker CSVs present in `data/raw/tickers`.
 
 ## Paths
@@ -84,6 +85,34 @@ python scripts/followup_ml_parity.py compare --round-id 26-1-11
 - Publish `dashboard/latest.md` and round artifacts after parity pass.
 - Do not publish when parity fails or CI gate is red.
 - For override/backtest runs, do not publish to production destinations.
+
+## SOP Execution Checklist (M5)
+
+Use this checklist for the required weekly sequence:
+
+```bash
+ROUND_ID=26-1-11
+PYTHON=${PYTHON:-/repo/.venv/bin/python}
+"$PYTHON" scripts/followup_ml.py draft --round-id "$ROUND_ID"
+"$PYTHON" scripts/followup_ml.py finalize --round-id "$ROUND_ID"
+"$PYTHON" scripts/followup_ml.py board --round-id "$ROUND_ID"
+"$PYTHON" scripts/followup_ml_parity.py compare --round-id "$ROUND_ID"
+```
+
+Required validations before publish:
+
+- `draft` produced round artifacts and dashboard markdown for `ROUND_ID`.
+- `finalize` produced partial/final scores with no production override flags.
+- `board` refreshed `dashboard/<round_id>.md` and `dashboard/latest.md`.
+- parity compare report exists and indicates pass for required fixtures.
+- CI gate `followup-ml-gate` is green for the commit being published.
+
+Required evidence capture (non-author run):
+
+- A non-author operator executes the full sequence above.
+- Record operator, date, commit SHA, and exact commands in `docs/followup_ml_m5_evidence_pack.md`.
+- Attach links to parity report, CI run, and publish proof in the same evidence entry.
+- If any step fails, stop publish and log issue/fix notes before retry.
 
 ## Core Artifacts and Columns
 
