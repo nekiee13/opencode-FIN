@@ -83,3 +83,10 @@ Links:
 - Head commit: 892742d
 - Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981340619
 
+## Checkpoint Update 2026-03-01 (Post-Sync)
+
+- Head commit: 2b5f662
+- Latest followup-ml-gate run 22555978831: PASS
+- Sandbox -> GitHub -> non-sandbox sync: complete
+- Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981357925
+
