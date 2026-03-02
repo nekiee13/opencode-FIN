@@ -58,12 +58,13 @@ Default behavior:
 
 - strict date matching (`actual_date == expected +3 date`)
 
-Optional evaluation/backtest override:
+Optional evaluation/backtest override (break-glass, explicit ack required):
 
 ```bash
-python scripts/followup_ml.py finalize --round-id 26-1-11 --actual-lookup-date 2026-02-17
+python scripts/followup_ml.py finalize --round-id 26-1-11 --actual-lookup-date 2026-02-17 --allow-lookup-override --override-reason "benchmark backtest" --override-ticket CHG-123 --override-approver ops_lead
 ```
 
+Override mode is blocked by default unless `--allow-lookup-override` and all ack fields are provided.
 Override mode is marked in context/dashboard as test mode.
 
 ### 3) Board re-render
