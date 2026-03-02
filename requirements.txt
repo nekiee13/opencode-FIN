@@ -33,4 +33,5 @@ ruptures==1.1.9
 # Test and quality tooling
 pytest==8.4.2
 pytest-timeout==2.4.0
+pytest-cov==6.0.0
 ruff==0.11.2
