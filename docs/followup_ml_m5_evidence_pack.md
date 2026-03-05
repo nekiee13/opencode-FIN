@@ -96,3 +96,26 @@ Links:
 - Latest followup-ml-gate run 22555978831: PASS
 - Sandbox -> GitHub -> non-sandbox sync: complete
 - Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981357925
+
+## M5 Closure Update 2026-03-05
+
+### Work item status
+- #5 Go-live checklist and rollback procedure: done
+- #5 Rollback drill validation: done
+- #6 Consecutive cycle pass criteria: pending evidence
+- #6 Drift closure criteria: pending evidence
+- #6 Final owner sign-off: pending
+
+### Rollback drill record
+- Date: 2026-03-05
+- Round: 26-1-11
+- Method: snapshot, simulated corruption, restore, checksum compare, parity compare
+- Recovery time: less than 1 second
+- Evidence: out/i_calc/followup_ml/reports/rollback_drill_20260305T230207Z
+
+### Final sign-off gate
+- At least two consecutive cycles with CI PASS and parity PASS
+- No unresolved benchmark drift
+- No open scope-governance violations
+- Non-author runbook validation link recorded
+- Engineering and Operations GO decision recorded
