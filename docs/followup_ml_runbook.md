@@ -186,3 +186,29 @@ Weekly audit:
 - **Parity compare fails on expected dynamic fields**
   - Timestamps and path-like fields are normalized by parity tool.
   - Inspect report row details for first differing file/column.
+
+## M5 Go-live Checklist and Rollback Procedure
+
+### Go-live checklist
+- CI gate is green for target commit.
+- Parity passes for rounds 26-1-06, 26-1-09, and 26-1-11.
+- Benchmark drift register has no open items.
+- Non-author runbook validation evidence is recorded.
+- Ownership and escalation approvals are recorded.
+- Publish destination and rollback targets are verified.
+
+### Weekly export bundle
+- `board.md` from `dashboard/<round_id>.md`
+- `scores.csv` from `scores/<round_id>_partial_scores.csv`
+- `weights.csv` from `weights/<round_id>_next_weights.csv`
+- `state.json` from `rounds/<round_id>/round_context.json`
+
+### Rollback procedure
+- Snapshot round context, weights files, and dashboard files.
+- Restore snapshot files when corruption is detected.
+- Verify checksum match before and after restore.
+- Re-run parity compare for the affected round.
+
+### Rollback drill evidence
+- `out/i_calc/followup_ml/reports/rollback_drill_20260305T230207Z`
+- `out/i_calc/followup_ml/reports/parity_26-1-11.md`
