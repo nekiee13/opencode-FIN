@@ -19,7 +19,7 @@ Links:
 | Cycle | CI Gate | Parity | Drift on benchmark rounds | Notes |
 |:--|:--|:--|:--|:--|
 | 2026-03-06 | PASS | PASS | none | PR #14 checks passed (`https://github.com/nekiee13/opencode-FIN/pull/14/checks`); merge commit `82c1ab0`. |
-| YYYY-MM-DD | PASS/FAIL | PASS/FAIL | none/resolved/open | |
+| 2026-03-06 | PASS | PASS | none | PR #15 checks passed (`https://github.com/nekiee13/opencode-FIN/pull/15/checks`); merge commit `a0b3325`. |
 | YYYY-MM-DD | PASS/FAIL | PASS/FAIL | none/resolved/open | |
 
 ## Benchmark Drift Register
@@ -41,9 +41,9 @@ Links:
 ## Ownership and Escalation Matrix Approval
 
 - Matrix document: `docs/followup_ml_ownership_escalation_matrix.md`
-- Engineering owner approved:
-- Operations owner approved:
-- Approval evidence link:
+- Engineering owner approved: Robert (2026-03-16)
+- Operations owner approved: Robert (2026-03-16)
+- Approval evidence link: https://github.com/nekiee13/opencode-FIN/issues/6#issuecomment-4064151942
 
 ## Go-live Checklist
 
@@ -51,7 +51,7 @@ Links:
 - [x] Parity pass on required rounds (evidence: deterministic fixture parity gate in `PR #14` checks)
 - [x] No unresolved benchmark drift (evidence: Benchmark Drift Register entries for `26-1-06`, `26-1-09`, `26-1-11`)
 - [x] Runbook validated by non-author user (evidence: `https://github.com/nekiee13/opencode-FIN/pull/13`)
-- [ ] Ownership and escalation matrix confirmed (evidence: owner approval fields pending)
+- [x] Ownership and escalation matrix confirmed (evidence: `https://github.com/nekiee13/opencode-FIN/issues/6#issuecomment-4064151942`)
 - [x] Publish destination and rollback targets verified (evidence: `out/i_calc/followup_ml/reports/rollback_drill_20260305T230207Z/summary.txt`)
 
 ## Rollback Drill
@@ -64,10 +64,10 @@ Links:
 
 ## Final Approval
 
-- Engineering Owner: pending
-- Operations Owner: pending
-- Sign-off date: pending
-- Decision: NO-GO (pending second consecutive cycle PASS and owner approvals)
+- Engineering Owner: Robert
+- Operations Owner: Robert
+- Sign-off date: 2026-03-16
+- Decision: GO (criteria satisfied: two consecutive cycle PASS records + owner approvals)
 
 ## Weekly Audit Update 2026-03-01
 
@@ -102,16 +102,20 @@ Links:
 ### Work item status
 - #5 Go-live checklist and rollback procedure: done
 - #5 Rollback drill validation: done
-- #6 Consecutive cycle pass criteria: in progress (1 of 2 cycles recorded)
-- #6 Drift closure criteria: done for current cycle (no unresolved benchmark drift)
-- #6 Final owner sign-off: pending
+- #6 Consecutive cycle pass criteria: done (2 of 2 cycles recorded)
+- #6 Drift closure criteria: done (no unresolved benchmark drift)
+- #6 Final owner sign-off: done
 
 ### Evidence links
-- PR: `https://github.com/nekiee13/opencode-FIN/pull/14`
-- Checks: `https://github.com/nekiee13/opencode-FIN/pull/14/checks`
-- Merge commit: `https://github.com/nekiee13/opencode-FIN/commit/82c1ab0`
+- PR cycle-1: `https://github.com/nekiee13/opencode-FIN/pull/14`
+- PR cycle-1 checks: `https://github.com/nekiee13/opencode-FIN/pull/14/checks`
+- PR cycle-1 merge commit: `https://github.com/nekiee13/opencode-FIN/commit/82c1ab0`
+- PR cycle-2: `https://github.com/nekiee13/opencode-FIN/pull/15`
+- PR cycle-2 checks: `https://github.com/nekiee13/opencode-FIN/pull/15/checks`
+- PR cycle-2 merge commit: `https://github.com/nekiee13/opencode-FIN/commit/a0b3325`
+- Owner approvals: `https://github.com/nekiee13/opencode-FIN/issues/6#issuecomment-4064151942`
 - Rollback drill: `out/i_calc/followup_ml/reports/rollback_drill_20260305T230207Z`
 
 ### Next closure condition
-- Record one additional consecutive cycle with CI PASS + parity PASS, then collect owner approvals and update Final Approval to GO.
+- Closure criteria satisfied on 2026-03-16. Evidence pack is ready for final closure PR and tracker close-out.
 
