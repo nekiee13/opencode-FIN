@@ -65,6 +65,21 @@ Violations of these rules should fail CI.
 
 ---
 
+## Environment and Testing Restriction
+
+This repository uses a split workflow for `oc-fin-opencode`:
+
+1. Implement code changes in the sandbox repository.
+2. Push branch changes to GitHub.
+3. Pull merged/target branch updates into the local project location that has the run-ready full vEnv.
+4. Run functional tests in that local full vEnv.
+
+Important restriction:
+
+- The sandbox runtime is not the authoritative full environment for end-to-end validation.
+- Dependency installation must be performed only in the intended local run-ready vEnv.
+- Do not install project dependencies into unrelated/base interpreters (for example, a generic Miniconda base environment) when validating this project.
+
 ## Runtime Dependency Notes
 
 LSTM backend migration is torch-first in Phase-1.
