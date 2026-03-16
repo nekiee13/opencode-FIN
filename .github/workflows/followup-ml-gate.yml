@@ -27,13 +27,15 @@ jobs:
       - name: Verify followup scripts compile
         run: |
           python -m py_compile scripts/followup_ml.py
+          python -m py_compile scripts/followup_ml_scope_audit.py
           python -m py_compile scripts/followup_ml_parity.py
           python -m py_compile scripts/followup_ml_ci_parity_gate.py
           python -m py_compile src/followup_ml/draft.py
+          python -m py_compile src/followup_ml/scope_audit.py
 
       - name: Run followup policy/parity unit tests
         run: |
-          python -m pytest tests/test_followup_ml_parity_tool.py tests/test_followup_ml_policy.py -q
+          python -m pytest tests/test_followup_ml_parity_tool.py tests/test_followup_ml_policy.py tests/test_followup_ml_scope_audit.py -q
 
       - name: Run deterministic fixture parity gate
         run: |

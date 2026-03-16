@@ -170,8 +170,16 @@ Compare report:
 
 Weekly audit:
 
-- verify unapproved expansion merges = 0
-- record exceptions and approvals in evidence pack
+- run scope-audit automation:
+
+```bash
+python scripts/followup_ml_scope_audit.py --since 2026-03-01 --write-report
+```
+
+- verify `violations=0` in command output
+- review generated report:
+  - `out/i_calc/followup_ml/reports/scope_audit_YYYYMMDD.md`
+- record results in `docs/followup_ml_m5_evidence_pack.md`
 
 ## Troubleshooting
 
