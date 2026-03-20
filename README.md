@@ -197,3 +197,6 @@ git push origin main
 Divergence recovery command: git reset --hard origin/main
 Environment guardrail: use the intended interpreter and virtual environment (venv) only.
 
+
+Governance transition note: docs/governance-transition.md
+
