@@ -85,7 +85,7 @@ Links:
 
 ## Final Sync Update 2026-03-01
 
-- Non-sandbox status: clean (master...origin/master)
+- Non-sandbox status: clean (main...origin/main)
 - Latest followup-ml-gate run 22555798195: PASS
 - Head commit: 892742d
 - Tracker comment: https://github.com/nekiee13/opencode-FIN/issues/2#issuecomment-3981340619
