@@ -186,3 +186,14 @@ The forecast table shows both DynaMix values in a single cell (`<br>` separated)
 - no routine feature branches are allowed.
 - active runtime: oc-fin-opencode.
 - paused runtime: oc-fin.
+
+## Single-User Trunk Sync Workflow
+Daily sync commands:
+git fetch origin --prune
+git rev-parse HEAD
+git rev-parse origin/main
+git pull --ff-only origin main
+git push origin main
+Divergence recovery command: git reset --hard origin/main
+Environment guardrail: use the intended interpreter and virtual environment (venv) only.
+
