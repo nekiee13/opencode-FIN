@@ -180,3 +180,9 @@ The forecast table shows both DynaMix values in a single cell (`<br>` separated)
 ## License / Usage
 
 (Define as appropriate for your project)
+## Trunk Workflow Policy
+- trunk-only workflow is active.
+- direct development on main is required.
+- no routine feature branches are allowed.
+- active runtime: oc-fin-opencode.
+- paused runtime: oc-fin.
