@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "name": "hello-stack",
+    "description": "Minimal OAC flow using retrieval, discipline, and semantic edits",
+    "version": "0.1.0"
+  },
+  "components": [
+    {
+      "type": "command",
+      "name": "retrieve_code_context",
+      "description": "Resolve symbols with jCodeMunch",
+      "exec": "TODO: call jcodemunch search_symbols then get_symbol"
+    },
+    {
+      "type": "command",
+      "name": "retrieve_doc_context",
+      "description": "Resolve docs sections with jDocMunch",
+      "exec": "TODO: call jdocmunch search_sections then get_section"
+    },
+    {
+      "type": "command",
+      "name": "enforce_superpowers_preflight",
+      "description": "Require planning and TDD preflight",
+      "exec": "TODO: verify using-superpowers, brainstorming, writing-plans, test-driven-development"
+    },
+    {
+      "type": "command",
+      "name": "semantic_edit",
+      "description": "Perform approved edits via Serena-backed client tools",
+      "exec": "TODO: apply approved edits using Serena symbol-aware operations"
+    },
+    {
+      "type": "command",
+      "name": "verify_and_report",
+      "description": "Run tests and publish evaluation results",
+      "exec": "python -m pytest -q"
+    }
+  ],
+  "flow": [
+    "retrieve_code_context",
+    "retrieve_doc_context",
+    "enforce_superpowers_preflight",
+    "semantic_edit",
+    "verify_and_report"
+  ],
+  "approval": {
+    "required_between_steps": true,
+    "owner": "oac"
+  }
+}
