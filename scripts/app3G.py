@@ -304,6 +304,99 @@ def _to_float_array(obj: Any) -> np.ndarray:
         return np.asarray([np.nan], dtype=float)
 
 
+def _compute_regime_breakpoints(
+    close_series: pd.Series, compat_mod: Any, constants_mod: Any
+) -> Tuple[list[int], str]:
+    """
+    Compute regime breakpoints (1-based end indices) over close_series.
+
+    Preferred path uses ruptures PELT when available.
+    Fallback path uses rolling shifts in return mean/volatility so regime
+    overlays remain available even when ruptures is unavailable.
+    """
+    n = int(len(close_series))
+    if n <= 1:
+        return [n], "degenerate"
+
+    if bool(getattr(compat_mod, "HAS_RUPTURES", False)):
+        rpt = getattr(compat_mod, "rpt", None)
+        if rpt is not None:
+            try:
+                points = np.asarray(close_series.values, dtype=float)
+                algo = rpt.Pelt(model=str(constants_mod.REGIME_METHOD)).fit(points)
+                bkps = [
+                    int(x) for x in algo.predict(pen=float(constants_mod.PELT_PENALTY))
+                ]
+                bkps = sorted(set(x for x in bkps if 0 < x <= n))
+                if not bkps or bkps[-1] != n:
+                    bkps.append(n)
+                return bkps, "ruptures-pelt"
+            except Exception as e:
+                log.warning(
+                    "Regime detection via ruptures failed; using fallback. Error: %s",
+                    e,
+                )
+
+    if n < 12:
+        return [n], "fallback-single"
+
+    close_vals = np.asarray(close_series.values, dtype=float)
+    safe_close = np.clip(close_vals, 1e-12, None)
+    returns = np.diff(np.log(safe_close))
+    if returns.size == 0:
+        return [n], "fallback-single"
+
+    ret_series = pd.Series(returns)
+    window = max(5, min(20, n // 8))
+    rolling_mean = ret_series.rolling(window=window, min_periods=window).mean()
+    rolling_std = ret_series.rolling(window=window, min_periods=window).std()
+
+    change_score = rolling_mean.diff().abs().fillna(
+        0.0
+    ) + rolling_std.diff().abs().fillna(0.0)
+    score = change_score.to_numpy(dtype=float)
+    finite = score[np.isfinite(score)]
+    if finite.size == 0:
+        return [n], "fallback-single"
+    max_score = float(np.nanmax(finite))
+    if not np.isfinite(max_score) or max_score <= 0:
+        return [n], "fallback-single"
+
+    median = float(np.median(finite))
+    mad = float(np.median(np.abs(finite - median)))
+    if mad > 0:
+        threshold = median + 6.0 * mad
+    else:
+        threshold = median + 2.0 * float(np.std(finite))
+    if not np.isfinite(threshold) or threshold <= 0:
+        threshold = float(np.percentile(finite, 85))
+
+    min_segment = max(5, n // 10)
+    candidates = np.where(score > threshold)[0]
+
+    bkps: list[int] = []
+    last_bkp = 0
+    for idx in candidates:
+        bkp = int(idx) + 1
+        if bkp - last_bkp < min_segment:
+            continue
+        if n - bkp < min_segment:
+            continue
+        bkps.append(bkp)
+        last_bkp = bkp
+
+    if not bkps:
+        best_idx = int(np.nanargmax(score))
+        bkp = best_idx + 1
+        if min_segment <= bkp <= n - min_segment:
+            bkps.append(bkp)
+
+    bkps = sorted(set(x for x in bkps if 0 < x <= n))
+    if not bkps or bkps[-1] != n:
+        bkps.append(n)
+    return bkps, "fallback-rolling-shift"
+
+
 # ----------------------------
 # Plotting
 # ----------------------------
@@ -592,55 +685,51 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
                         zorder=12,
                     )
 
-        if show_regimes and getattr(compat, "HAS_RUPTURES", False):
-            rpt = getattr(compat, "rpt", None)
-            if rpt is not None:
-                points = np.array(close_series.values, dtype=float)
-                algo = rpt.Pelt(model=str(C.REGIME_METHOD)).fit(points)
-                result = algo.predict(pen=float(C.PELT_PENALTY))
-                print(f"\nRegime change points (end indices): {result}")
+        if show_regimes:
+            result, regime_method = _compute_regime_breakpoints(close_series, compat, C)
+            print(f"\nRegime change points (end indices, {regime_method}): {result}")
 
-                bkps = [0] + list(result)
-                for i in range(len(bkps) - 1):
-                    start_idx, end_idx = int(bkps[i]), int(bkps[i + 1])
-                    if start_idx < len(close_series) and end_idx <= len(close_series):
-                        start_date_reg = _safe_timestamp(
-                            _as_datetime_index(close_series.index)[start_idx]
-                        )
-                        end_date_reg = _safe_timestamp(
-                            _as_datetime_index(close_series.index)[end_idx - 1]
-                        )
+            bkps = [0] + list(result)
+            regime_colors = ["#EAD8B8", "#D8E6F2", "#E0F0D5", "#F3D7E6"]
 
-                        cast(Any, ax1).axvspan(
-                            _date2num_one(start_date_reg),
-                            _date2num_one(end_date_reg),
-                            alpha=0.2,
-                            color="orange" if i % 2 == 0 else "gray",
-                            label="_nolegend_",
-                        )
+            for i in range(len(bkps) - 1):
+                start_idx, end_idx = int(bkps[i]), int(bkps[i + 1])
+                if start_idx < len(close_series) and end_idx <= len(close_series):
+                    start_date_reg = _safe_timestamp(
+                        _as_datetime_index(close_series.index)[start_idx]
+                    )
+                    end_date_reg = _safe_timestamp(
+                        _as_datetime_index(close_series.index)[end_idx - 1]
+                    )
 
-                        label_x_pos = (
-                            start_date_reg + (end_date_reg - start_date_reg) / 2
-                        )
-                        y_min, y_max = ax1.get_ylim()
-                        label_y_pos = y_min + (y_max - y_min) * 0.03
+                    cast(Any, ax1).axvspan(
+                        _date2num_one(start_date_reg),
+                        _date2num_one(end_date_reg),
+                        alpha=0.24,
+                        color=regime_colors[i % len(regime_colors)],
+                        label="_nolegend_",
+                    )
 
-                        ax1.text(
-                            _date2num_one(label_x_pos),
-                            float(label_y_pos),
-                            f"Region {i + 1}",
-                            ha="center",
-                            va="bottom",
-                            fontsize=9,
-                            color="black",
-                            bbox=dict(
-                                facecolor="white",
-                                alpha=0.6,
-                                edgecolor="none",
-                                boxstyle="round,pad=0.2",
-                            ),
-                            zorder=12,
-                        )
+                    label_x_pos = start_date_reg + (end_date_reg - start_date_reg) / 2
+                    y_min, y_max = ax1.get_ylim()
+                    label_y_pos = y_min + (y_max - y_min) * 0.03
+
+                    ax1.text(
+                        _date2num_one(label_x_pos),
+                        float(label_y_pos),
+                        f"Region {i + 1}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=9,
+                        color="black",
+                        bbox=dict(
+                            facecolor="white",
+                            alpha=0.6,
+                            edgecolor="none",
+                            boxstyle="round,pad=0.2",
+                        ),
+                        zorder=12,
+                    )
 
         # Date axis formatting
         locator = mdates.AutoDateLocator()
@@ -700,7 +789,9 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         )
         fig.tight_layout(rect=(0, 0.05, 1, 0.97))
 
-        asof_tag = _safe_timestamp(cast(Any, plot_data.index.max())).strftime("%Y-%m-%d")
+        asof_tag = _safe_timestamp(cast(Any, plot_data.index.max())).strftime(
+            "%Y-%m-%d"
+        )
         graph_filename = (
             Path(C.GRAPHS_FOLDER) / f"{ticker}_{period}_plot_asof_{asof_tag}.png"
         )
@@ -1089,6 +1180,22 @@ def analysis_pipeline(
 
         progress_callback(90, "Creating plot...")
 
+        regime_support = bool(getattr(compat, "HAS_RUPTURES", False)) or (
+            bool(getattr(compat, "HAS_NUMPY", False))
+            and bool(getattr(compat, "HAS_PANDAS", False))
+        )
+        effective_show_regimes = bool(show_regimes)
+        if (
+            not effective_show_regimes
+            and regime_support
+            and not bool(getattr(compat, "HAS_RUPTURES", False))
+            and bool(getattr(C, "SHOW_REGIMES", False))
+        ):
+            effective_show_regimes = True
+            log.info(
+                "Regime overlays auto-enabled via fallback detector (ruptures unavailable)."
+            )
+
         plot_args = {
             "data": enriched_data,
             "ticker": ticker,
@@ -1096,7 +1203,7 @@ def analysis_pipeline(
             "model_results": model_results,
             "garch_vol_forecast": garch_vol_forecast,
             "show_peaks": show_peaks,
-            "show_regimes": show_regimes,
+            "show_regimes": effective_show_regimes,
             "pivot_data": pivot_data,
         }
         create_plot(plot_args)
