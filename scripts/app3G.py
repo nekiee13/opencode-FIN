@@ -67,6 +67,11 @@ APP_ROOT = _bootstrap_sys_path()
 
 try:
     from src.config import paths
+    from src.utils.calc_snapshots import (
+        persist_ml_snapshots,
+        persist_pp_snapshot,
+        persist_ti_snapshot,
+    )
 except Exception as e:
     raise RuntimeError(
         "Failed to import FIN path layer: from src.config import paths. "
@@ -1403,6 +1408,32 @@ def analysis_pipeline(
 
         latest_indicators = enriched_data.iloc[-1]
         pivot_data = Pivots.calculate_latest_pivot_points(enriched_data)
+        asof_date = _safe_timestamp(latest_indicators.name)
+
+        try:
+            ti_path = persist_ti_snapshot(
+                ticker=ticker,
+                asof_date=asof_date,
+                latest_indicators=cast(pd.Series, latest_indicators),
+                pivot_data=pivot_data,
+            )
+            log.info("Saved TI snapshot for %s to %s", ticker, ti_path)
+        except Exception as e:
+            log.warning(
+                "Failed to persist TI snapshot for %s: %s", ticker, e, exc_info=True
+            )
+
+        try:
+            pp_path = persist_pp_snapshot(
+                ticker=ticker,
+                asof_date=asof_date,
+                pivot_data=pivot_data,
+            )
+            log.info("Saved PP snapshot for %s to %s", ticker, pp_path)
+        except Exception as e:
+            log.warning(
+                "Failed to persist PP snapshot for %s: %s", ticker, e, exc_info=True
+            )
 
         print(
             "\n"
@@ -1528,6 +1559,25 @@ def analysis_pipeline(
             if getattr(compat, "HAS_STATSMODELS", False)
             else None,
         }
+
+        try:
+            ticker_order = tuple(str(t) for t in getattr(C, "TICKERS", []))
+            ml_csv_path, ml_md_path = persist_ml_snapshots(
+                ticker=ticker,
+                asof_date=asof_date,
+                model_results=model_results,
+                ticker_order=ticker_order,
+            )
+            log.info(
+                "Saved ML snapshots for %s to %s and %s",
+                ticker,
+                ml_csv_path,
+                ml_md_path,
+            )
+        except Exception as e:
+            log.warning(
+                "Failed to persist ML snapshots for %s: %s", ticker, e, exc_info=True
+            )
 
         print("\n" + format_forecast_table(ticker, model_results))
         if arimax_order:
