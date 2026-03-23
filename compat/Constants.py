@@ -122,6 +122,13 @@ INDICATORS_0_100 = [
 FH = 3  # Forecast Horizon in business days
 
 
+# --- Follow-up ML VBG Parameters ---
+VBG_DB_FILE: str = str(_paths.OUT_I_CALC_ML_VG_DB_PATH.resolve())
+VBG_MEMORY_TAIL = 4
+VBG_BOOTSTRAP_ENABLED = True
+VBG_BOOTSTRAP_SCORE = 99.0
+
+
 # --- Predictive Interval Harmonization (cross-model) ---
 # Target: calibrated central 86% predictive intervals.
 PI_COVERAGE = 0.86
@@ -220,6 +227,10 @@ __all__ = [
     "INDICATORS_0_100",
     # Parameters
     "FH",
+    "VBG_DB_FILE",
+    "VBG_MEMORY_TAIL",
+    "VBG_BOOTSTRAP_ENABLED",
+    "VBG_BOOTSTRAP_SCORE",
     "PI_COVERAGE",
     "PI_ALPHA",
     "PI_Q_LOW",

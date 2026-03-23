@@ -85,6 +85,37 @@ python scripts/followup_ml_parity.py compare --round-id 26-1-11
 - Do not publish when parity fails or CI gate is red.
 - For override/backtest runs, do not publish to production destinations.
 
+## VBG Database (Violet/Blue/Green)
+
+Canonical sqlite path:
+
+- `out/i_calc/ML/ML_VG_tables.sqlite`
+
+Initialize schema and seed default transform policy:
+
+```bash
+python scripts/followup_ml_vg.py init-db
+```
+
+Ingest one finalized round:
+
+```bash
+python scripts/followup_ml_vg.py ingest-round --round-id 26-1-11
+```
+
+Materialize violet/blue/green tables for one forecast date:
+
+```bash
+python scripts/followup_ml_vg.py materialize --forecast-date 2026-02-27 --write-dir out/i_calc/ML/vg_exports
+```
+
+Optional controls:
+
+- `--policy-name <name>`
+- `--memory-tail <N>`
+- `--bootstrap-enabled` / `--bootstrap-disabled`
+- `--bootstrap-score <float>`
+
 ## Core Artifacts and Columns
 
 ### `scores/<round_id>_partial_scores.csv`
