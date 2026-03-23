@@ -17,6 +17,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
+from matplotlib.patches import Rectangle
 from scipy.signal import find_peaks
 from statsmodels.stats.diagnostic import het_arch
 from tabulate import tabulate
@@ -741,12 +742,12 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         plt.setp(ax2.get_xticklabels(), visible=False)
 
         if garch_vol_forecast is not None and not garch_vol_forecast.empty:
-            garch_vol_forecast = garch_vol_forecast.copy()
-            garch_vol_forecast.index = _as_datetime_index(garch_vol_forecast.index)
-            if "Volatility_Forecast" in garch_vol_forecast.columns:
+            gvf = cast(pd.DataFrame, garch_vol_forecast.copy())
+            gvf.index = _as_datetime_index(gvf.index)
+            if "Volatility_Forecast" in gvf.columns:
                 ax2.plot(
-                    garch_vol_forecast.index,
-                    garch_vol_forecast["Volatility_Forecast"],
+                    gvf.index,
+                    gvf["Volatility_Forecast"],
                     color="tab:red",
                     linestyle="--",
                     marker="o",
@@ -797,6 +798,367 @@ def create_plot(plot_args: Dict[str, Any]) -> None:
         )
         plt.savefig(str(graph_filename), bbox_inches="tight", dpi=150)
         print(f"Plot saved to {graph_filename}")
+
+    finally:
+        if fig is not None:
+            plt.close(fig)
+
+
+def create_candlestick_plot(plot_args: Dict[str, Any]) -> None:
+    """
+    Generate and save a dedicated candlestick analysis image.
+
+    File naming:
+      {ticker}_{period}_plot_asof_CS_{YYYY-MM-DD}.png
+    """
+    fig = None
+    ticker_for_log = str(plot_args.get("ticker", "<ticker>"))
+
+    try:
+        data: pd.DataFrame = plot_args["data"]
+        ticker: str = plot_args["ticker"]
+        period: str = plot_args["period"]
+        model_results: Dict[str, Optional[pd.DataFrame]] = plot_args["model_results"]
+        show_regimes: bool = plot_args["show_regimes"]
+        pivot_data = plot_args["pivot_data"]
+
+        assert C is not None, "Constants not imported"
+        assert compat is not None, "compat not imported"
+
+        model_styles = {
+            "TorchForecast": {
+                "color": "#333333",
+                "marker": "x",
+                "linestyle": "--",
+                "label": "Torch",
+            },
+            "ARIMAX": {
+                "color": "#8A2BE2",
+                "marker": "s",
+                "linestyle": "--",
+                "label": "ARIMAX",
+                "ms": 5,
+                "fill_color": "#E6E6FA",
+            },
+            "DYNAMIX": {
+                "color": "#6B4E16",
+                "marker": "P",
+                "linestyle": "--",
+                "label": "DynaMix",
+                "ms": 5,
+            },
+            "PCE": {
+                "color": "#228B22",
+                "marker": "o",
+                "linestyle": "--",
+                "label": "PCE-NARX",
+                "ms": 5,
+                "fill_color": "#E0FFE0",
+            },
+            "LSTM": {
+                "color": "#FF8C00",
+                "marker": "o",
+                "linestyle": ":",
+                "label": "LSTM",
+                "ms": 5,
+                "fill_color": "#FFF5E1",
+            },
+            "GARCH": {
+                "color": "#DC143C",
+                "marker": "^",
+                "linestyle": ":",
+                "label": "GARCH",
+                "ms": 5,
+            },
+            "VAR": {
+                "color": "#008B8B",
+                "marker": "D",
+                "linestyle": "-.",
+                "label": "VAR",
+                "ms": 4,
+            },
+            "ETS": {
+                "color": "#00BFFF",
+                "marker": "+",
+                "linestyle": ":",
+                "label": "ETS",
+                "mew": 2,
+            },
+            "RW": {"color": "gray", "marker": None, "linestyle": "-.", "label": "RW"},
+        }
+
+        # Normalize index to DatetimeIndex to avoid mixed hashable labels
+        data = data.copy()
+        data.index = _as_datetime_index(data.index)
+        data = data.sort_index()
+
+        offset_map = {"1m": pd.DateOffset(months=1), "3m": pd.DateOffset(months=3)}
+        last_dt = _safe_timestamp(_as_datetime_index(data.index)[-1])
+        start_date = _safe_timestamp(last_dt) - offset_map.get(
+            period, pd.DateOffset(months=3)
+        )
+        plot_data = data.loc[start_date:].copy()
+
+        required_cols = ["Open", "High", "Low", "Close"]
+        missing_cols = [c for c in required_cols if c not in plot_data.columns]
+        if missing_cols:
+            log.warning(
+                "Candlestick plot skipped for %s: missing OHLC column(s): %s",
+                ticker,
+                missing_cols,
+            )
+            return
+
+        ohlc = plot_data[required_cols].apply(pd.to_numeric, errors="coerce")
+        ohlc = cast(pd.DataFrame, ohlc.dropna(how="any"))
+        if ohlc.empty:
+            log.warning("Candlestick plot skipped for %s: OHLC data is empty.", ticker)
+            return
+
+        close_series = cast(pd.Series, ohlc["Close"])
+
+        plt.close("all")
+        fig = plt.figure(figsize=(16, 9))
+        ax1 = fig.add_subplot(1, 1, 1)
+
+        ax1.set_title(
+            f"{ticker} Candlestick Analysis & {C.FH}-Day Forecast ({period} History)"
+        )
+        ax1.set_ylabel("Stock Price / Predictions", color="tab:blue")
+        ax1.tick_params(axis="y", labelcolor="tab:blue")
+        ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
+
+        x_vals = _date2num_index(ohlc.index)
+        candle_width = 0.6
+        if len(x_vals) > 1:
+            dx = np.diff(x_vals)
+            dx = dx[dx > 0]
+            if dx.size > 0:
+                candle_width = float(np.clip(np.median(dx) * 0.70, 0.20, 1.50))
+
+        high_vals = _to_float_array(ohlc["High"])
+        low_vals = _to_float_array(ohlc["Low"])
+        price_span = float(np.nanmax(high_vals) - np.nanmin(low_vals))
+        min_body = max(price_span * 0.003, 1e-6)
+
+        for i, x in enumerate(x_vals):
+            o = float(ohlc["Open"].iloc[i])
+            h = float(ohlc["High"].iloc[i])
+            l = float(ohlc["Low"].iloc[i])
+            c = float(ohlc["Close"].iloc[i])
+
+            is_up = c >= o
+            color = "#2ca02c" if is_up else "#d62728"
+
+            ax1.vlines(x, l, h, color=color, linewidth=1.1, alpha=0.95, zorder=6)
+
+            body_height = max(abs(c - o), min_body)
+            body_bottom = min(o, c)
+            if abs(c - o) < min_body:
+                body_bottom = 0.5 * (o + c) - 0.5 * body_height
+
+            ax1.add_patch(
+                Rectangle(
+                    (x - candle_width / 2.0, body_bottom),
+                    candle_width,
+                    body_height,
+                    facecolor=color,
+                    edgecolor=color,
+                    linewidth=0.8,
+                    alpha=0.80,
+                    zorder=7,
+                )
+            )
+
+        model_plot_order = [
+            "TorchForecast",
+            "DYNAMIX",
+            "ARIMAX",
+            "PCE",
+            "LSTM",
+            "GARCH",
+            "VAR",
+            "ETS",
+            "RW",
+        ]
+        forecast_dates: Optional[pd.Index] = None
+
+        for name in model_plot_order:
+            preds = model_results.get(name)
+            if preds is None or preds.empty:
+                continue
+
+            preds = preds.copy()
+            preds.index = _as_datetime_index(preds.index)
+            preds = preds.sort_index()
+
+            if forecast_dates is None:
+                forecast_dates = preds.index
+
+            pred_col = f"{name}_Pred"
+            lower_col = f"{name}_Lower"
+            upper_col = f"{name}_Upper"
+            if pred_col not in preds.columns:
+                continue
+
+            style = model_styles.get(name, {})
+            plot_style = {k: v for k, v in style.items() if k != "fill_color"}
+            ax1.plot(preds.index, preds[pred_col], **plot_style, zorder=10)
+
+            fill_color = style.get("fill_color", style.get("color", "gray"))
+
+            if lower_col in preds.columns and upper_col in preds.columns:
+                lower_arr = _to_float_array(preds[lower_col])
+                upper_arr = _to_float_array(preds[upper_col])
+                x_fill = _date2num_index(preds.index)
+
+                ok = (
+                    np.isfinite(lower_arr)
+                    & np.isfinite(upper_arr)
+                    & np.isfinite(x_fill)
+                )
+                if np.any(ok):
+                    cast(Any, ax1).fill_between(
+                        x_fill[ok],
+                        lower_arr[ok],
+                        upper_arr[ok],
+                        color=fill_color,
+                        alpha=0.25,
+                        zorder=2,
+                        edgecolor=style.get("color", "gray"),
+                        linewidth=0.5,
+                    )
+
+        if (
+            pivot_data
+            and "Classic" in pivot_data
+            and forecast_dates is not None
+            and len(forecast_dates) > 1
+        ):
+            pivot_levels = pivot_data["Classic"]
+            fd = _as_datetime_index(forecast_dates)
+
+            line_start_date = _safe_timestamp(ohlc.index[0]) + pd.DateOffset(days=2)
+            line_end_date = _safe_timestamp(fd[1])
+            label_date = _safe_timestamp(ohlc.index[0]) + pd.DateOffset(days=1)
+
+            pivot_colors = {
+                "R3": "darkred",
+                "R2": "red",
+                "R1": "lightcoral",
+                "Pivot": "black",
+                "S1": "palegreen",
+                "S2": "green",
+                "S3": "darkgreen",
+            }
+
+            for nm, value in pivot_levels.items():
+                if pd.notna(value):
+                    ax1.plot(
+                        [line_start_date, line_end_date],
+                        [value, value],
+                        color=pivot_colors.get(nm, "gray"),
+                        linestyle="--",
+                        linewidth=1.2,
+                        zorder=5,
+                    )
+                    ax1.text(
+                        _date2num_one(label_date),
+                        float(value),
+                        f" {nm}",
+                        color=pivot_colors.get(nm, "gray"),
+                        va="center",
+                        ha="left",
+                        fontsize=9,
+                        bbox=dict(
+                            facecolor="white",
+                            alpha=0.5,
+                            edgecolor="none",
+                            boxstyle="round,pad=0.1",
+                        ),
+                        zorder=12,
+                    )
+
+        if show_regimes:
+            result, regime_method = _compute_regime_breakpoints(close_series, compat, C)
+            print(
+                f"\nCandlestick regime change points (end indices, {regime_method}): {result}"
+            )
+
+            bkps = [0] + list(result)
+            regime_colors = ["#EAD8B8", "#D8E6F2", "#E0F0D5", "#F3D7E6"]
+
+            for i in range(len(bkps) - 1):
+                start_idx, end_idx = int(bkps[i]), int(bkps[i + 1])
+                if start_idx < len(close_series) and end_idx <= len(close_series):
+                    start_date_reg = _safe_timestamp(
+                        _as_datetime_index(close_series.index)[start_idx]
+                    )
+                    end_date_reg = _safe_timestamp(
+                        _as_datetime_index(close_series.index)[end_idx - 1]
+                    )
+
+                    cast(Any, ax1).axvspan(
+                        _date2num_one(start_date_reg),
+                        _date2num_one(end_date_reg),
+                        alpha=0.20,
+                        color=regime_colors[i % len(regime_colors)],
+                        label="_nolegend_",
+                        zorder=1,
+                    )
+
+                    label_x_pos = start_date_reg + (end_date_reg - start_date_reg) / 2
+                    y_min, y_max = ax1.get_ylim()
+                    label_y_pos = y_min + (y_max - y_min) * 0.03
+
+                    ax1.text(
+                        _date2num_one(label_x_pos),
+                        float(label_y_pos),
+                        f"Region {i + 1}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=9,
+                        color="black",
+                        bbox=dict(
+                            facecolor="white",
+                            alpha=0.6,
+                            edgecolor="none",
+                            boxstyle="round,pad=0.2",
+                        ),
+                        zorder=12,
+                    )
+
+        locator = mdates.AutoDateLocator()
+        ax1.xaxis.set_major_locator(locator)
+        ax1.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+
+        lines, labels = ax1.get_legend_handles_labels()
+        if lines:
+            fig.legend(
+                lines,
+                labels,
+                loc="lower center",
+                bbox_to_anchor=(0.5, 0.02),
+                ncol=8,
+            )
+            fig.tight_layout(rect=(0, 0.08, 1, 0.97))
+        else:
+            fig.tight_layout(rect=(0, 0.02, 1, 0.97))
+
+        asof_tag = _safe_timestamp(cast(Any, ohlc.index.max())).strftime("%Y-%m-%d")
+        graph_filename = (
+            Path(C.GRAPHS_FOLDER) / f"{ticker}_{period}_plot_asof_CS_{asof_tag}.png"
+        )
+        plt.savefig(str(graph_filename), bbox_inches="tight", dpi=150)
+        print(f"Candlestick plot saved to {graph_filename}")
+
+    except Exception as e:
+        log.warning(
+            "Candlestick plot generation failed for %s: %s",
+            ticker_for_log,
+            e,
+            exc_info=True,
+        )
 
     finally:
         if fig is not None:
@@ -1207,6 +1569,7 @@ def analysis_pipeline(
             "pivot_data": pivot_data,
         }
         create_plot(plot_args)
+        create_candlestick_plot(plot_args)
 
         progress_callback(100, "Analysis Complete.")
         return True, atr_change_std
