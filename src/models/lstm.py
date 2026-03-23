@@ -159,6 +159,7 @@ def predict_lstm_quantiles(
     exog_train: Optional[pd.DataFrame] = None,
     exog_future: Optional[pd.DataFrame] = None,
     quantiles: Optional[Tuple[float, float]] = None,
+    train_window: Optional[int] = None,
     lookback: int = 60,
     epochs: int = 60,
     batch_size: int = 32,
@@ -208,6 +209,9 @@ def predict_lstm_quantiles(
     pi = discover_pi_settings()
     lstm_pi_width_mult = float(_discover_num("LSTM_PI_WIDTH_MULT", 1.0))
     lstm_pi_width_mult = min(2.0, max(0.05, lstm_pi_width_mult))
+    lstm_scaled_clip = float(_discover_num("LSTM_SCALED_CLIP", 0.20))
+    if not np.isfinite(lstm_scaled_clip) or lstm_scaled_clip < 0.0:
+        lstm_scaled_clip = 0.20
     if quantiles is None:
         q_lo, q_hi = float(pi.q_low), float(pi.q_high)
     else:
@@ -280,6 +284,20 @@ def predict_lstm_quantiles(
     X_df = cast(pd.DataFrame, X_df.dropna(how="any"))
     y_ser = cast(pd.Series, X_df[tgt])
 
+    train_window_i = int(train_window) if train_window is not None else 0
+    if train_window_i > 0 and len(X_df) > train_window_i:
+        X_df_recent = cast(pd.DataFrame, X_df.iloc[-train_window_i:].copy())
+        if len(X_df_recent) >= min_need:
+            X_df = X_df_recent
+            y_ser = cast(pd.Series, X_df[tgt])
+        else:
+            log.warning(
+                "LSTM: train_window=%d too short after alignment (%d rows, need >= %d). Using full history.",
+                train_window_i,
+                len(X_df_recent),
+                min_need,
+            )
+
     if len(X_df) < min_need:
         log.warning(
             "LSTM: insufficient samples after alignment (%d) for %s.",
@@ -292,11 +310,19 @@ def predict_lstm_quantiles(
     X_raw = X_df.to_numpy(dtype=float)
     y_raw = y_ser.to_numpy(dtype=float)
 
+    # Scale target for stable quantile training on price-level series.
+    y_min = float(np.nanmin(y_raw))
+    y_max = float(np.nanmax(y_raw))
+    y_range = float(y_max - y_min)
+    if not np.isfinite(y_range) or y_range <= 0.0:
+        y_range = 1.0
+    y_scaled = (y_raw - y_min) / y_range
+
     # Scale features to [0,1]
     X_scaled, x_min, x_range = _scale_minmax_fit(X_raw)
 
     # Supervised windows
-    X_win, y_win = _build_supervised_windows(X_scaled, y_raw, lookback=int(lookback))
+    X_win, y_win = _build_supervised_windows(X_scaled, y_scaled, lookback=int(lookback))
     if X_win.size == 0 or y_win.size == 0:
         log.warning(
             "LSTM: could not build supervised windows for %s.", ticker or "<ticker>"
@@ -514,19 +540,30 @@ def predict_lstm_quantiles(
             )
             return None
 
-        y_lo = float(qlo_hat.detach().cpu().numpy().reshape(-1)[0])
-        y_hi = float(qhi_hat.detach().cpu().numpy().reshape(-1)[0])
-        if y_lo > y_hi:
-            y_lo, y_hi = y_hi, y_lo
+        y_lo_s = float(qlo_hat.detach().cpu().numpy().reshape(-1)[0])
+        y_hi_s = float(qhi_hat.detach().cpu().numpy().reshape(-1)[0])
+        if y_lo_s > y_hi_s:
+            y_lo_s, y_hi_s = y_hi_s, y_lo_s
         if qhat > 0.0 and np.isfinite(qhat):
-            y_lo -= float(qhat)
-            y_hi += float(qhat)
+            y_lo_s -= float(qhat)
+            y_hi_s += float(qhat)
 
         if lstm_pi_width_mult != 1.0:
-            mid = 0.5 * (y_lo + y_hi)
-            half_width = max(0.0, 0.5 * (y_hi - y_lo) * float(lstm_pi_width_mult))
-            y_lo = mid - half_width
-            y_hi = mid + half_width
+            mid_s = 0.5 * (y_lo_s + y_hi_s)
+            half_width_s = max(0.0, 0.5 * (y_hi_s - y_lo_s) * float(lstm_pi_width_mult))
+            y_lo_s = mid_s - half_width_s
+            y_hi_s = mid_s + half_width_s
+
+        # Guardrail: avoid runaway recursive collapse/explosion from unconstrained heads.
+        clip_lo = -float(lstm_scaled_clip)
+        clip_hi = 1.0 + float(lstm_scaled_clip)
+        y_lo_s = float(np.clip(y_lo_s, clip_lo, clip_hi))
+        y_hi_s = float(np.clip(y_hi_s, clip_lo, clip_hi))
+        if y_lo_s > y_hi_s:
+            y_lo_s, y_hi_s = y_hi_s, y_lo_s
+
+        y_lo = y_min + y_lo_s * y_range
+        y_hi = y_min + y_hi_s * y_range
 
         y_pred = 0.5 * (y_lo + y_hi)
 
@@ -554,6 +591,7 @@ def predict_lstm_quantiles(
         "target_col": tgt,
         "fh": int(fh_i),
         "lookback": int(lookback),
+        "train_window": int(train_window_i),
         "epochs": int(epochs),
         "batch_size": int(batch_size),
         "lstm_units": int(lstm_units),
@@ -567,6 +605,7 @@ def predict_lstm_quantiles(
         "pi_q_high": float(pi.q_high),
         "pi_calibration_enabled": bool(pi.calibration_enabled),
         "lstm_pi_width_mult": float(lstm_pi_width_mult),
+        "lstm_scaled_clip": float(lstm_scaled_clip),
         "pi_qhat": float(qhat),
         "n_features": int(X_raw.shape[1]),
         "n_samples": int(len(X_df)),

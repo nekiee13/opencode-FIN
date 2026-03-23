@@ -36,6 +36,7 @@ def test_compat_lstm_uses_harmonized_quantiles(monkeypatch) -> None:
 
     def _fake_predict_lstm_quantiles(*args, **kwargs):  # type: ignore[no-untyped-def]
         captured["quantiles"] = kwargs.get("quantiles")
+        captured["train_window"] = kwargs.get("train_window")
         out_idx = pd.bdate_range(idx[-1] + pd.offsets.BDay(1), periods=3, freq="B")
         out_df = pd.DataFrame(
             {
@@ -56,6 +57,7 @@ def test_compat_lstm_uses_harmonized_quantiles(monkeypatch) -> None:
     out = compat_api.predict_lstm(df, ticker="TEST", exo_config=None)
     assert out is not None
     assert captured["quantiles"] == (0.05, 0.95)
+    assert int(captured["train_window"]) == 450
 
 
 def test_compat_arima_pmdarima_uses_harmonized_alpha(monkeypatch) -> None:

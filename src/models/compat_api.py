@@ -746,6 +746,7 @@ def predict_lstm(
             exog_train=X_train_exog,
             exog_future=X_future_exog,
             quantiles=(q_lo, q_hi),
+            train_window=int(getattr(C, "LSTM_TRAIN_WINDOW", 0)),
             lookback=int(getattr(C, "LSTM_LOOKBACK", 60)),
             epochs=int(getattr(C, "LSTM_EPOCHS", 60)),
             batch_size=32,
