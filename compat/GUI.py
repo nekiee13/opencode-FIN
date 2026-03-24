@@ -29,25 +29,30 @@ def main(*args: Any, **kwargs: Any) -> None:
     """
     try:
         from src.ui.gui import main as _main  # type: ignore
-
-        return _main(*args, **kwargs)
     except Exception:
-        # Fallback: if src.ui.gui does not expose main(), attempt to run app directly.
-        if StockAnalysisApp is None:
-            raise
+        return _run_legacy_fallback(*args, **kwargs)
+    return _main(*args, **kwargs)
 
-        # Keep entrypoint smoke non-interactive under pytest.
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            return None
 
-        import tkinter as tk  # stdlib
+def _run_legacy_fallback(*args: Any, **kwargs: Any) -> None:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None
+    if StockAnalysisApp is None:
+        raise RuntimeError("src.ui.gui.StockAnalysisApp is not available")
 
-        try:
-            root = tk.Tk()
-        except Exception:
-            return None
-        StockAnalysisApp(root)  # type: ignore[misc]
-        root.mainloop()
+    analysis_callback = kwargs.get("analysis_callback")
+    if analysis_callback is None:
+        return None
+
+    import tkinter as tk  # stdlib
+
+    try:
+        root = tk.Tk()
+    except Exception:
+        return None
+    StockAnalysisApp(root, analysis_callback=analysis_callback)  # type: ignore[misc]
+    root.mainloop()
+    return None
 
 
 if __name__ == "__main__":  # pragma: no cover
