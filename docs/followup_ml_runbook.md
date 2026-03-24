@@ -116,6 +116,43 @@ Optional controls:
 - `--bootstrap-enabled` / `--bootstrap-disabled`
 - `--bootstrap-score <float>`
 
+## LLM VBG and Markers Databases
+
+Canonical sqlite paths:
+
+- `out/i_calc/LLM/LLM_VG_tables.sqlite`
+- `out/i_calc/Markers.sqlite`
+
+Initialize databases:
+
+```bash
+python scripts/followup_llm_vg.py init-db
+python scripts/followup_llm_vg.py init-markers-db
+```
+
+Ingest one LLM model markdown table (range+actual cells; actual value is extracted):
+
+```bash
+python scripts/followup_llm_vg.py ingest-model-table --forecast-date 2026-02-17 --round-id 26-1-06 --table-file /path/to/llm_table.md
+```
+
+Ingest one marker markdown table:
+
+```bash
+python scripts/followup_llm_vg.py ingest-markers-table --forecast-date 2026-02-17 --table-file /path/to/markers_table.md
+```
+
+Materialize LLM predicted/violet/blue/green outputs:
+
+```bash
+python scripts/followup_llm_vg.py materialize --forecast-date 2026-02-17 --write-dir out/i_calc/LLM/vg_exports
+```
+
+Policy note:
+
+- LLM green memory uses last `N` available scored observations per canonical model+ticker (missing weeks are skipped).
+- Bootstrap fill is applied only when available observations are fewer than `N`.
+
 ## Core Artifacts and Columns
 
 ### `scores/<round_id>_partial_scores.csv`

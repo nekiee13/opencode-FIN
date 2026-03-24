@@ -129,6 +129,17 @@ VBG_BOOTSTRAP_ENABLED = True
 VBG_BOOTSTRAP_SCORE = 99.0
 
 
+# --- Follow-up LLM VBG Parameters ---
+LLM_VG_DB_FILE: str = str(_paths.OUT_I_CALC_LLM_VG_DB_PATH.resolve())
+LLM_VBG_MEMORY_TAIL = 4
+LLM_VBG_BOOTSTRAP_ENABLED = True
+LLM_VBG_BOOTSTRAP_SCORE = 99.0
+
+
+# --- Marker Comparison Database ---
+MARKERS_DB_FILE: str = str(_paths.OUT_I_CALC_MARKERS_DB_PATH.resolve())
+
+
 # --- Predictive Interval Harmonization (cross-model) ---
 # Target: calibrated central 86% predictive intervals.
 PI_COVERAGE = 0.86
@@ -231,6 +242,11 @@ __all__ = [
     "VBG_MEMORY_TAIL",
     "VBG_BOOTSTRAP_ENABLED",
     "VBG_BOOTSTRAP_SCORE",
+    "LLM_VG_DB_FILE",
+    "LLM_VBG_MEMORY_TAIL",
+    "LLM_VBG_BOOTSTRAP_ENABLED",
+    "LLM_VBG_BOOTSTRAP_SCORE",
+    "MARKERS_DB_FILE",
     "PI_COVERAGE",
     "PI_ALPHA",
     "PI_Q_LOW",
