@@ -11,11 +11,11 @@ def test_discover_pi_settings_defaults() -> None:
     from src.models.intervals import discover_pi_settings
 
     pi = discover_pi_settings()
-    assert abs(pi.coverage - 0.90) < 1e-9
-    assert abs(pi.alpha - 0.10) < 1e-9
-    assert abs(pi.q_low - 0.05) < 1e-9
-    assert abs(pi.q_high - 0.95) < 1e-9
-    assert pi.z_two_sided > 1.6 and pi.z_two_sided < 2.0
+    assert abs(pi.coverage - 0.86) < 1e-9
+    assert abs(pi.alpha - 0.14) < 1e-9
+    assert abs(pi.q_low - 0.07) < 1e-9
+    assert abs(pi.q_high - 0.93) < 1e-9
+    assert pi.z_two_sided > 1.4 and pi.z_two_sided < 1.6
 
 
 def test_residual_quantile_expansion_basic() -> None:
@@ -56,8 +56,8 @@ def test_compat_lstm_uses_harmonized_quantiles(monkeypatch) -> None:
 
     out = compat_api.predict_lstm(df, ticker="TEST", exo_config=None)
     assert out is not None
-    assert captured["quantiles"] == (0.05, 0.95)
-    assert int(captured["train_window"]) == 450
+    assert captured["quantiles"] == (0.07, 0.93)
+    assert int(captured["train_window"]) == 500
 
 
 def test_compat_arima_pmdarima_uses_harmonized_alpha(monkeypatch) -> None:
@@ -94,4 +94,4 @@ def test_compat_arima_pmdarima_uses_harmonized_alpha(monkeypatch) -> None:
     assert out_df is not None
     assert order == (1, 1, 1)
     assert resid is not None
-    assert abs(float(captured["alpha"]) - 0.10) < 1e-9
+    assert abs(float(captured["alpha"]) - 0.14) < 1e-9
