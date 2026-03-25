@@ -44,10 +44,10 @@ if str(_FIN_ROOT) not in sys.path:
     sys.path.insert(0, str(_FIN_ROOT))
 
 from src.config import paths  # noqa: E402
+from src.data.loading import fetch_data  # noqa: E402
 
 # Import SVL engine functions from compat layer (Phase 1: StructuralIndicators remains legacy-compatible)
 from compat.StructuralIndicators import (  # noqa: E402
-    load_ohlcv_from_csv,
     compute_structural_context_for_ticker,
     export_structural_context_markdown,
     export_metrics_csv,
@@ -58,8 +58,11 @@ from compat.StructuralIndicators import (  # noqa: E402
 # CLI parsing
 # ----------------------------
 
+
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="SVL-v1.0 export utility (STRUCTURAL_CONTEXT + metrics) — FIN.")
+    p = argparse.ArgumentParser(
+        description="SVL-v1.0 export utility (STRUCTURAL_CONTEXT + metrics) — FIN."
+    )
 
     p.add_argument(
         "--csv-dir",
@@ -87,7 +90,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Optional JSON string or JSON file path mapping logical tickers to CSV prefixes. "
-            "Example: '{\"SPX\":\"GSPC\"}'"
+            'Example: \'{"SPX":"GSPC"}\''
         ),
     )
 
@@ -104,20 +107,41 @@ def parse_args() -> argparse.Namespace:
         help="Basename prefix for generated files (default: SVL).",
     )
 
-    p.add_argument("--write-metrics", action="store_true", help="Also write metrics CSV (recommended).")
+    p.add_argument(
+        "--write-metrics",
+        action="store_true",
+        help="Also write metrics CSV (recommended).",
+    )
     p.add_argument(
         "--write-prompt-header",
         action="store_true",
         help="Also write a browser-agent prompt header snippet referencing STRUCTURAL_CONTEXT.",
     )
 
-    p.add_argument("--print", action="store_true", help="Print STRUCTURAL_CONTEXT markdown to stdout.")
+    p.add_argument(
+        "--print",
+        action="store_true",
+        help="Print STRUCTURAL_CONTEXT markdown to stdout.",
+    )
 
     p.add_argument(
         "--method-notes",
         type=str,
         default="",
         help="Extra method notes appended to provenance in each ticker.",
+    )
+
+    p.add_argument(
+        "--history-mode",
+        choices=["live", "replay"],
+        default="live",
+        help="History scope mode. live=full history, replay=clip history to --as-of-date.",
+    )
+    p.add_argument(
+        "--as-of-date",
+        type=str,
+        default=None,
+        help="Cutoff date for replay mode (YYYY-MM-DD).",
     )
 
     return p.parse_args()
@@ -136,6 +160,7 @@ def load_mapping(map_json: Optional[str]) -> Dict[str, str]:
 # ----------------------------
 # Core workflow
 # ----------------------------
+
 
 def resolve_csv_path(csv_dir: Path, logical: str, mapped: str, suffix: str) -> Path:
     """
@@ -169,6 +194,9 @@ def compute_contexts_from_csv(
     mapping: Dict[str, str],
     csv_suffix: str,
     extra_method_notes: str = "",
+    *,
+    history_mode: str = "live",
+    as_of_date: Optional[str] = None,
 ):
     computed_on = datetime.now().strftime("%Y-%m-%d %H:%M")
     base_method_notes = (
@@ -186,7 +214,12 @@ def compute_contexts_from_csv(
         mapped = mapping.get(logical) or logical
         csv_path = resolve_csv_path(csv_dir, logical, mapped, csv_suffix)
 
-        df_raw = load_ohlcv_from_csv(csv_path)
+        effective_as_of = as_of_date if history_mode == "replay" else None
+        df_raw = fetch_data(logical, csv_path=csv_path, as_of_date=effective_as_of)
+        if df_raw is None or df_raw.empty:
+            raise RuntimeError(
+                f"No usable OHLCV data for {logical} after applying history mode '{history_mode}'."
+            )
 
         ctx = compute_structural_context_for_ticker(
             ticker=logical,
@@ -199,11 +232,17 @@ def compute_contexts_from_csv(
         asof_dates.append(pd.to_datetime(ctx.asof_date))
 
     # Global as-of: MIN across tickers to ensure common last close
-    global_asof = min(asof_dates).strftime("%Y-%m-%d") if asof_dates else datetime.now().strftime("%Y-%m-%d")
+    global_asof = (
+        min(asof_dates).strftime("%Y-%m-%d")
+        if asof_dates
+        else datetime.now().strftime("%Y-%m-%d")
+    )
     return contexts, global_asof
 
 
-def make_default_paths(out_dir: Path, basename: str, global_asof: str) -> Tuple[Path, Path, Path]:
+def make_default_paths(
+    out_dir: Path, basename: str, global_asof: str
+) -> Tuple[Path, Path, Path]:
     safe_date = global_asof.replace("-", "")
     md_path = out_dir / f"{basename}_CONTEXT_{safe_date}.md"
     csv_path = out_dir / f"{basename}_METRICS_{safe_date}.csv"
@@ -242,8 +281,13 @@ def main() -> None:
 
     mapping = load_mapping(args.map_json)
 
+    if args.history_mode == "replay" and not args.as_of_date:
+        raise SystemExit("--as-of-date is required when --history-mode replay is used.")
+
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)  # runtime side effect is allowed here (explicit in main)
+    out_dir.mkdir(
+        parents=True, exist_ok=True
+    )  # runtime side effect is allowed here (explicit in main)
 
     contexts, global_asof = compute_contexts_from_csv(
         csv_dir=csv_dir,
@@ -251,11 +295,15 @@ def main() -> None:
         mapping=mapping,
         csv_suffix=args.csv_suffix,
         extra_method_notes=args.method_notes,
+        history_mode=str(args.history_mode),
+        as_of_date=args.as_of_date,
     )
 
     md_text = export_structural_context_markdown(contexts, global_asof)
 
-    md_path, csv_path, hdr_path = make_default_paths(out_dir, args.basename, global_asof)
+    md_path, csv_path, hdr_path = make_default_paths(
+        out_dir, args.basename, global_asof
+    )
 
     md_path.write_text(md_text, encoding="utf-8")
 

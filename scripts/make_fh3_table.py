@@ -34,6 +34,7 @@ Assumptions
 
 from __future__ import annotations
 
+import argparse
 import logging
 import importlib
 import sys
@@ -144,6 +145,29 @@ def load_ticker_df_close_only(ticker: str) -> pd.DataFrame:
         raise ValueError(f"{ticker}: empty after asfreq('B')/ffill().")
 
     return df
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Build FH=3 table for configured tickers.")
+    p.add_argument(
+        "--tickers",
+        nargs="+",
+        default=list(TICKERS),
+        help="Logical tickers to process. Default: TNX DJI SPX VIX QQQ AAPL.",
+    )
+    p.add_argument(
+        "--history-mode",
+        choices=["live", "replay"],
+        default="live",
+        help="History scope mode. live=full history, replay=clip history to --as-of-date.",
+    )
+    p.add_argument(
+        "--as-of-date",
+        type=str,
+        default=None,
+        help="Cutoff date for replay mode (YYYY-MM-DD).",
+    )
+    return p.parse_args(list(argv) if argv is not None else None)
 
 
 def safe_run_arimax(df: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
@@ -270,15 +294,19 @@ def _as_dt_index(idx_like: Any, *, ticker: str) -> pd.DatetimeIndex:
     return dt_idx
 
 
-def _write_fh3_artifacts(out_df: pd.DataFrame, minimal_cols: List[str]) -> Tuple[Path, Path]:
+def _write_fh3_artifacts(
+    out_df: pd.DataFrame, minimal_cols: List[str]
+) -> Tuple[Path, Path]:
     out_dir = paths.OUT_I_CALC_FH3_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
     asof_tag = datetime.now().strftime("%Y%m%d")
     if "FH_Date1" in out_df.columns:
         try:
-            asof_tag = pd.to_datetime(out_df["FH_Date1"], errors="coerce").min().strftime(
-                "%Y%m%d"
+            asof_tag = (
+                pd.to_datetime(out_df["FH_Date1"], errors="coerce")
+                .min()
+                .strftime("%Y%m%d")
             )
         except Exception:
             pass
@@ -295,7 +323,11 @@ def _write_fh3_artifacts(out_df: pd.DataFrame, minimal_cols: List[str]) -> Tuple
 # ---------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------
-def main() -> int:
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(argv)
+    if args.history_mode == "replay" and not args.as_of_date:
+        raise SystemExit("--as-of-date is required when --history-mode replay is used.")
+
     fh = discover_fh()
     if fh != 3:
         log.warning(
@@ -305,9 +337,22 @@ def main() -> int:
 
     rows: List[Dict[str, Any]] = []
 
-    for ticker in TICKERS:
+    selected_tickers: Sequence[str] = tuple(str(t).upper() for t in args.tickers)
+
+    for ticker in selected_tickers:
         log.info("Processing %s ...", ticker)
-        df = load_ticker_df_close_only(ticker)
+        as_of_date = args.as_of_date if args.history_mode == "replay" else None
+        df = fetch_data(
+            ticker,
+            csv_path=_resolve_raw_path_for_logical_ticker(ticker),
+            as_of_date=as_of_date,
+        )
+        if df is None or df.empty:
+            raise RuntimeError(
+                f"{ticker}: no data available after applying history mode '{args.history_mode}'."
+            )
+        df = cast(pd.DataFrame, df.copy())
+        df = cast(pd.DataFrame, df.asfreq("B").ffill())
         last_close = float(df["Close"].iloc[-1])
 
         forecasts = compute_forecasts(df, ticker)
@@ -337,6 +382,8 @@ def main() -> int:
                 "FH_Day2": float(s.iloc[1]),
                 "FH_Date3": yyyymmdd(dt_idx[2]),
                 "FH_Day3": float(s.iloc[2]),
+                "Run_Mode": str(args.history_mode),
+                "AsOf_Cutoff": str(args.as_of_date) if args.as_of_date else "",
             }
         )
 

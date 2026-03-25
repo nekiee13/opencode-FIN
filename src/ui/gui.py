@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 # Bootstrap: ensure FIN root is importable when running from arbitrary CWD
 # ----------------------------------------------------------------------
 
+
 def _bootstrap_sys_path() -> Path:
     """
     Expected location:
@@ -46,6 +47,7 @@ APP_ROOT = _bootstrap_sys_path()
 # Optional: legacy Constants (preferred if present)
 # ----------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class _Defaults:
     APP_VERSION: str = "0.0"
@@ -64,15 +66,23 @@ def _load_constants_or_defaults() -> _Defaults:
 
         app_version = str(getattr(C, "APP_VERSION", _Defaults.APP_VERSION))
         tickers_any = getattr(C, "TICKERS", _Defaults.TICKERS)
-        show_peaks = bool(getattr(C, "SHOW_PEAKS_TROUGHS", _Defaults.SHOW_PEAKS_TROUGHS))
+        show_peaks = bool(
+            getattr(C, "SHOW_PEAKS_TROUGHS", _Defaults.SHOW_PEAKS_TROUGHS)
+        )
         show_regimes = bool(getattr(C, "SHOW_REGIMES", _Defaults.SHOW_REGIMES))
 
         # Legacy GUI had fixed ['1m','3m']; allow override if added later.
         periods_any = getattr(C, "HISTORY_PERIODS", _Defaults.HISTORY_PERIODS)
 
         # Ensure tuples of str for UI controls (static typing + runtime safety)
-        tickers = tuple(str(x) for x in tickers_any) if tickers_any else _Defaults.TICKERS
-        periods = tuple(str(x) for x in periods_any) if periods_any else _Defaults.HISTORY_PERIODS
+        tickers = (
+            tuple(str(x) for x in tickers_any) if tickers_any else _Defaults.TICKERS
+        )
+        periods = (
+            tuple(str(x) for x in periods_any)
+            if periods_any
+            else _Defaults.HISTORY_PERIODS
+        )
 
         return _Defaults(
             APP_VERSION=app_version,
@@ -96,8 +106,11 @@ except Exception:  # pragma: no cover
 # GUI
 # ----------------------------------------------------------------------
 
+
 class StockAnalysisApp:
     """
+
+    ALL_TICKERS_LABEL = "ALL_TICKERS"
     Tkinter GUI for FIN analysis & forecasting.
 
     analysis_callback contract:
@@ -115,7 +128,9 @@ class StockAnalysisApp:
         - hint_value: typical ΔATR or similar (float), or <= 0 if unavailable.
     """
 
-    def __init__(self, root: tk.Tk, analysis_callback: Callable[..., Tuple[bool, float]]):
+    def __init__(
+        self, root: tk.Tk, analysis_callback: Callable[..., Tuple[bool, float]]
+    ):
         self.root = root
         self.analysis_callback = analysis_callback
 
@@ -135,15 +150,14 @@ class StockAnalysisApp:
         )
 
         self.ticker_var = tk.StringVar(value=self.C.TICKERS[0])
+        ticker_values = [self.ALL_TICKERS_LABEL] + list(self.C.TICKERS)
         self.ticker_menu = ttk.Combobox(
             control_frame,
             textvariable=self.ticker_var,
-            values=list(self.C.TICKERS),
+            values=ticker_values,
             state="readonly",
         )
-        self.ticker_menu.grid(
-            row=0, column=1, columnspan=2, sticky=tk.EW, padx=(5, 0)
-        )
+        self.ticker_menu.grid(row=0, column=1, columnspan=2, sticky=tk.EW, padx=(5, 0))
 
         # ---- History period selection
         ttk.Label(control_frame, text="Select History Period:").grid(
@@ -157,15 +171,13 @@ class StockAnalysisApp:
             values=list(self.C.HISTORY_PERIODS),
             state="readonly",
         )
-        self.period_menu.grid(
-            row=1, column=1, columnspan=2, sticky=tk.EW, padx=(5, 0)
-        )
+        self.period_menu.grid(row=1, column=1, columnspan=2, sticky=tk.EW, padx=(5, 0))
 
         # ---- Display options
-        options_frame = ttk.LabelFrame(control_frame, text="Display Options", padding=10)
-        options_frame.grid(
-            row=2, column=0, columnspan=2, sticky=tk.EW, pady=(10, 5)
+        options_frame = ttk.LabelFrame(
+            control_frame, text="Display Options", padding=10
         )
+        options_frame.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=(10, 5))
 
         self.show_peaks_var = tk.BooleanVar(value=bool(self.C.SHOW_PEAKS_TROUGHS))
         ttk.Checkbutton(
@@ -179,7 +191,9 @@ class StockAnalysisApp:
         self.regime_button.pack(side=tk.LEFT, padx=5)
 
         # Capability gating: ruptures required
-        has_ruptures = bool(getattr(fin_compat, "HAS_RUPTURES", False)) if fin_compat else False
+        has_ruptures = (
+            bool(getattr(fin_compat, "HAS_RUPTURES", False)) if fin_compat else False
+        )
         if not has_ruptures:
             self.regime_button.config(state=tk.DISABLED)
             self.show_regimes_var.set(False)
@@ -190,22 +204,24 @@ class StockAnalysisApp:
             text="Scenario Forecasting (configured via Exo_regressors.csv)",
             padding=10,
         )
-        self.scenario_frame.grid(
-            row=3, column=0, columnspan=2, sticky=tk.EW, pady=5
-        )
+        self.scenario_frame.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=5)
         self.scenario_frame.columnconfigure(0, weight=1)
 
         self.style = ttk.Style(self.root)
         self.style.configure("Hint.TLabel", foreground="gray")
 
-        self.delta_atr_var = tk.StringVar(value="Δ(ATR(14)): (Run analysis to calculate)")
+        self.delta_atr_var = tk.StringVar(
+            value="Δ(ATR(14)): (Run analysis to calculate)"
+        )
         self.delta_atr_label = ttk.Label(
             self.scenario_frame, textvariable=self.delta_atr_var, style="Hint.TLabel"
         )
         self.delta_atr_label.grid(row=0, column=0, sticky=tk.W, padx=5, pady=(2, 2))
 
         # ---- Progress + status
-        self.progress_bar = ttk.Progressbar(control_frame, length=340, mode="determinate")
+        self.progress_bar = ttk.Progressbar(
+            control_frame, length=340, mode="determinate"
+        )
         self.progress_bar.grid(row=4, column=0, columnspan=2, pady=10, sticky=tk.EW)
 
         self.status_label = ttk.Label(control_frame, text="Status: Ready")
@@ -232,7 +248,6 @@ class StockAnalysisApp:
             "period": self.period_var.get(),
             "show_peaks": bool(self.show_peaks_var.get()),
             "show_regimes": bool(self.show_regimes_var.get()),
-            "progress_callback": self.update_progress_safe,
         }
 
         threading.Thread(
@@ -243,15 +258,58 @@ class StockAnalysisApp:
 
     def analysis_thread_target(self, analysis_args: dict) -> None:
         """Worker thread: call pipeline and then marshal results back to UI thread."""
-        ticker = str(analysis_args.get("ticker", ""))
-        try:
-            log.info("GUI: Starting analysis thread for %s ...", ticker)
-            result = self.analysis_callback(**analysis_args)
-        except Exception as e:
-            log.error("GUI: analysis_callback failed for %s: %s", ticker, e, exc_info=True)
-            result = (False, 0.0)
+        ticker_sel = str(analysis_args.get("ticker", ""))
+        period = str(analysis_args.get("period", ""))
+        show_peaks = bool(analysis_args.get("show_peaks", False))
+        show_regimes = bool(analysis_args.get("show_regimes", False))
 
-        self.root.after(0, self.finalize_analysis, result, ticker)
+        try:
+            if ticker_sel == self.ALL_TICKERS_LABEL:
+                tickers = list(self.C.TICKERS)
+                log.info("GUI: Starting batch analysis for tickers=%s", tickers)
+
+                successes = 0
+                hint_values: list[float] = []
+                for idx, ticker in enumerate(tickers, start=1):
+                    self.update_progress_safe(
+                        int(((idx - 1) / max(1, len(tickers))) * 100),
+                        f"Batch {idx}/{len(tickers)} starting: {ticker}",
+                    )
+                    ok, hint = self.analysis_callback(
+                        ticker=ticker,
+                        period=period,
+                        show_peaks=show_peaks,
+                        show_regimes=show_regimes,
+                        progress_callback=self.update_progress_safe,
+                    )
+                    if ok:
+                        successes += 1
+                    if hint and float(hint) > 0.0:
+                        hint_values.append(float(hint))
+
+                batch_ok = successes == len(tickers)
+                avg_hint = (sum(hint_values) / len(hint_values)) if hint_values else 0.0
+                result = (batch_ok, float(avg_hint))
+                label = self.ALL_TICKERS_LABEL
+            else:
+                ticker = ticker_sel
+                log.info("GUI: Starting analysis thread for %s ...", ticker)
+                result = self.analysis_callback(
+                    ticker=ticker,
+                    period=period,
+                    show_peaks=show_peaks,
+                    show_regimes=show_regimes,
+                    progress_callback=self.update_progress_safe,
+                )
+                label = ticker
+        except Exception as e:
+            log.error(
+                "GUI: analysis_callback failed for %s: %s", ticker_sel, e, exc_info=True
+            )
+            result = (False, 0.0)
+            label = ticker_sel
+
+        self.root.after(0, self.finalize_analysis, result, label)
 
     # ------------------------------------------------------------------
     # UI updates
@@ -262,7 +320,8 @@ class StockAnalysisApp:
         success, hint_value = result
 
         if success:
-            self.update_progress(100, f"Plot for {ticker} saved. Ready.")
+            done_label = "all tickers" if ticker == self.ALL_TICKERS_LABEL else ticker
+            self.update_progress(100, f"Plot for {done_label} saved. Ready.")
             if hint_value and float(hint_value) > 0.0:
                 self.delta_atr_var.set(f"Typical Δ(ATR(14)): ±{float(hint_value):.4f}")
             else:
@@ -270,7 +329,7 @@ class StockAnalysisApp:
 
             messagebox.showinfo(
                 "Success",
-                f"Analysis for {ticker} is complete and outputs have been saved.",
+                f"Analysis for {done_label} is complete and outputs have been saved.",
             )
         else:
             self.update_progress(0, "Failed. Ready.")
@@ -296,6 +355,7 @@ class StockAnalysisApp:
 # ----------------------------------------------------------------------
 # Convenience runner (optional)
 # ----------------------------------------------------------------------
+
 
 def run_gui(analysis_callback: Callable[..., Tuple[bool, float]]) -> None:
     """

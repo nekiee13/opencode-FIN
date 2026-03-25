@@ -74,7 +74,9 @@ def resolve_raw_csv_path(
     return preferred
 
 
-def detect_date_column(df: pd.DataFrame, candidates: Sequence[str] = _DATE_COL_CANDIDATES) -> Optional[str]:
+def detect_date_column(
+    df: pd.DataFrame, candidates: Sequence[str] = _DATE_COL_CANDIDATES
+) -> Optional[str]:
     """Detect a date column name from common variants (TS behavior)."""
     for c in candidates:
         if c in df.columns:
@@ -141,9 +143,19 @@ def _parse_datetime_column(series: pd.Series) -> pd.Series:
         return out
 
     except Exception as e:
-        log.warning("Preferred date parse failed (%s). Falling back to default parsing.", e)
+        log.warning(
+            "Preferred date parse failed (%s). Falling back to default parsing.", e
+        )
         out_any = pd.to_datetime(s, errors="coerce")
         return cast(pd.Series, out_any)
+
+
+def _normalize_as_of_date(as_of_date: Union[str, pd.Timestamp]) -> pd.Timestamp:
+    """Normalize as-of input to a date-level pandas Timestamp."""
+    ts = pd.Timestamp(as_of_date)
+    if pd.isna(ts):
+        raise ValueError(f"Invalid as_of_date: {as_of_date}")
+    return ts.normalize()
 
 
 def fetch_data(
@@ -153,6 +165,7 @@ def fetch_data(
     raw_dir: Optional[PathLike] = None,
     suffix: str = "_data.csv",
     min_rows_warn: int = 30,
+    as_of_date: Optional[Union[str, pd.Timestamp]] = None,
 ) -> Optional[pd.DataFrame]:
     """
     Load and sanitize historical OHLCV data for a ticker.
@@ -204,14 +217,19 @@ def fetch_data(
 
         # Ensure DatetimeIndex (robust coercion path)
         if not isinstance(df.index, pd.DatetimeIndex):
-            log.warning("Index not DatetimeIndex for %s after initial processing. Converting.", ticker)
+            log.warning(
+                "Index not DatetimeIndex for %s after initial processing. Converting.",
+                ticker,
+            )
 
             idx_any = pd.to_datetime(df.index, errors="coerce")
             idx = cast(pd.DatetimeIndex, pd.DatetimeIndex(idx_any))
 
             mask_valid = ~idx.isna()
             if mask_valid.sum() == 0:
-                log.error("Failed to coerce any index values to datetime for %s.", ticker)
+                log.error(
+                    "Failed to coerce any index values to datetime for %s.", ticker
+                )
                 return None
 
             df = cast(pd.DataFrame, df.loc[mask_valid].copy())
@@ -221,13 +239,35 @@ def fetch_data(
         # Remove duplicated index entries
         if df.index.duplicated().any():
             num_dup = int(df.index.duplicated().sum())
-            log.warning("Found %d duplicate indices in %s. Keeping last.", num_dup, ticker)
+            log.warning(
+                "Found %d duplicate indices in %s. Keeping last.", num_dup, ticker
+            )
             df = cast(pd.DataFrame, df[~df.index.duplicated(keep="last")])
 
         # Sort index
         if not df.index.is_monotonic_increasing:
             log.warning("Index for %s not sorted. Sorting.", ticker)
             df = cast(pd.DataFrame, df.sort_index())
+
+        if as_of_date is not None:
+            cutoff = _normalize_as_of_date(as_of_date)
+            before = len(df)
+            df = cast(pd.DataFrame, df.loc[df.index <= cutoff].copy())
+            if df.empty:
+                log.warning(
+                    "No rows remain for %s after as_of_date filter <= %s.",
+                    ticker,
+                    cutoff.strftime("%Y-%m-%d"),
+                )
+                return None
+            dropped = before - len(df)
+            if dropped > 0:
+                log.info(
+                    "Applied as_of_date filter for %s: dropped %d future rows (> %s).",
+                    ticker,
+                    dropped,
+                    cutoff.strftime("%Y-%m-%d"),
+                )
 
         # Volume '-' replacement (TS behavior)
         if "Volume" in df.columns and df["Volume"].dtype == "object":
@@ -246,7 +286,11 @@ def fetch_data(
             if col in df.columns:
                 df[col] = _coerce_numeric_series(cast(pd.Series, df[col]))
             elif col != "Volume":
-                log.warning("Expected numeric column '%s' not found in data for %s.", col, ticker)
+                log.warning(
+                    "Expected numeric column '%s' not found in data for %s.",
+                    col,
+                    ticker,
+                )
 
         # Validate essential OHLC
         essential_cols = ["Open", "High", "Low", "Close"]
@@ -262,7 +306,9 @@ def fetch_data(
         df = cast(pd.DataFrame, df.dropna(subset=essential_cols))
         dropped = initial_rows - len(df)
         if dropped > 0:
-            log.warning("Dropped %d rows with NaN in essential OHLC for %s.", dropped, ticker)
+            log.warning(
+                "Dropped %d rows with NaN in essential OHLC for %s.", dropped, ticker
+            )
 
         if len(df) < min_rows_warn:
             log.warning(

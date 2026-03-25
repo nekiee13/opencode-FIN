@@ -282,6 +282,8 @@ def export_tda_artifacts(
     embed_tau: int = 1,
     persist_thr: float = 0.5,
     lastn: int = 10,
+    history_mode: str = "live",
+    as_of_date: Optional[str] = None,
 ) -> ExportPaths:
     """
     Export Phase 2A TDA artifacts.
@@ -319,7 +321,8 @@ def export_tda_artifacts(
             t, prefix_map=prefix_map, raw_dir=raw_dir, suffix=suffix
         )
         try:
-            df = fetch_data(t, csv_path=csv_path)
+            effective_as_of = as_of_date if history_mode == "replay" else None
+            df = fetch_data(t, csv_path=csv_path, as_of_date=effective_as_of)
         except Exception as e:
             ticker_errors[t] = f"Load failed: {type(e).__name__}: {e} ({csv_path})"
             continue
@@ -541,6 +544,18 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         choices=["min_across_tickers", "per_ticker"],
     )
 
+    p.add_argument(
+        "--history-mode",
+        default="live",
+        choices=["live", "replay"],
+        help="History scope mode. live=full history, replay=clip history to --as-of-date.",
+    )
+    p.add_argument(
+        "--as-of-date",
+        default=None,
+        help="Cutoff date for replay mode (YYYY-MM-DD).",
+    )
+
     # IMPORTANT: Do NOT include literal %Y/%m/%d in argparse help text; argparse formats help via old-style '%'.
     p.add_argument(
         "--asof-fmt",
@@ -565,7 +580,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     out_dir = (
         Path(args.out_dir).resolve() if args.out_dir else fin_paths.OUT_I_CALC_TDA_DIR
     )
-    raw_dir = Path(args.raw_dir).resolve() if args.raw_dir else fin_paths.DATA_TICKERS_DIR
+    raw_dir = (
+        Path(args.raw_dir).resolve() if args.raw_dir else fin_paths.DATA_TICKERS_DIR
+    )
+
+    if args.history_mode == "replay" and not args.as_of_date:
+        raise SystemExit("--as-of-date is required when --history-mode replay is used.")
 
     computed_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[tda_export] FIN root: {fin_paths.APP_ROOT}")
@@ -588,6 +608,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         embed_tau=int(args.embed_tau),
         persist_thr=float(args.persist_thr),
         lastn=int(args.lastn),
+        history_mode=str(args.history_mode),
+        as_of_date=args.as_of_date,
     )
 
     print("[tda_export] Wrote:")
