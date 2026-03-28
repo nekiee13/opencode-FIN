@@ -1,0 +1,90 @@
+classDiagram
+    class CheckResult {
+      +str name
+      +str status
+      +str detail
+    }
+
+    class Ability {
+      +string name
+      +string description
+      +Step[] steps
+    }
+
+    class Step {
+      +string id
+      +string type
+      +string[] needs
+    }
+
+    class ScriptStep {
+      +string run
+      +object validation
+    }
+
+    class AbilityExecution {
+      +string id
+      +string status
+      +Step currentStep
+      +StepResult[] completedSteps
+    }
+
+    class StepResult {
+      +string stepId
+      +string status
+      +string output
+      +string error
+    }
+
+    class ExecutionManager {
+      +execute(ability, inputs, ctx)
+      +getActive()
+      +cancel()
+      +cleanup()
+    }
+
+    class AbilitiesPlugin {
+      +initialize(ctx, config)
+      +handleEvent(input)
+      +handleToolExecuteBefore(input, output)
+      +getTools()
+    }
+
+    class AbilitiesSDK {
+      +initialize()
+      +list()
+      +validate(name)
+      +execute(name, inputs, context)
+    }
+
+    class BaseEvaluator {
+      <<abstract>>
+      +evaluate(...)
+    }
+
+    class ApprovalGateEvaluator
+    class BehaviorEvaluator
+    class ContextLoadingEvaluator
+    class DelegationEvaluator
+    class ToolUsageEvaluator
+    class EvaluatorRunner
+
+    Step <|-- ScriptStep
+    Ability *-- Step
+    AbilityExecution *-- StepResult
+    AbilityExecution --> Step
+
+    ExecutionManager --> AbilityExecution
+    ExecutionManager --> Ability
+
+    AbilitiesPlugin --> ExecutionManager
+    AbilitiesPlugin --> Ability
+    AbilitiesSDK --> ExecutionManager
+    AbilitiesSDK --> Ability
+
+    BaseEvaluator <|-- ApprovalGateEvaluator
+    BaseEvaluator <|-- BehaviorEvaluator
+    BaseEvaluator <|-- ContextLoadingEvaluator
+    BaseEvaluator <|-- DelegationEvaluator
+    BaseEvaluator <|-- ToolUsageEvaluator
+    EvaluatorRunner --> BaseEvaluator

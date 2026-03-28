@@ -1,0 +1,29 @@
+flowchart TD
+    A[User Request] --> B[Retrieve Code Context via jCodeMunch]
+    B --> C[Retrieve Docs Context via jDocMunch]
+    C --> D[Preflight with Superpowers Skills]
+    D --> E{Preflight Pass?}
+
+    E -- No --> E1[Stop and report missing preflight evidence]
+    E1 --> Z[Run marked failed]
+
+    E -- Yes --> F[OAC Approval Gate]
+    F --> G{Approval Granted?}
+
+    G -- No --> G1[Stop and record gate denial]
+    G1 --> Z
+
+    G -- Yes --> H[Edit via Serena]
+    H --> I{Edit Success?}
+
+    I -- No --> I1[Capture edit failure and return to repair]
+    I1 --> Z
+
+    I -- Yes --> J[Run Verification Command]
+    J --> K{Tests Pass?}
+
+    K -- No --> K1[Record failure and block completion]
+    K1 --> Z
+
+    K -- Yes --> L[Publish Stage Artifact Report]
+    L --> M[Workflow Completed]

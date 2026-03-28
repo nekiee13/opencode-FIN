@@ -1,0 +1,6 @@
+{
+  "generated_at": "2026-03-27T19:09:11+00:00",
+  "skip_policy": "skip file when invalid error payload or invalid parse error is detected",
+  "skipped_count": 0,
+  "skipped_files": []
+}

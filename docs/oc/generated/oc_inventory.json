@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-03-27T19:09:11+00:00",
+  "root": "/repo",
+  "scope_paths": [
+    ".opencode",
+    "tools/hello-stack",
+    "docs/integration-pilot",
+    "vendor/OpenAgentsControl/.opencode",
+    "vendor/OpenAgentsControl/packages/plugin-abilities/src",
+    "vendor/OpenAgentsControl/evals/framework/src",
+    "vendor/OpenAgentsControl/registry.json",
+    "vendor/OpenAgentsControl/README.md"
+  ],
+  "total_files_in_scope": 440,
+  "file_counts_by_scope": {
+    ".opencode": 4,
+    "tools/hello-stack": 5,
+    "docs/integration-pilot": 39,
+    "vendor/OpenAgentsControl/.opencode": 307,
+    "vendor/OpenAgentsControl/packages/plugin-abilities/src": 9,
+    "vendor/OpenAgentsControl/evals/framework/src": 74,
+    "vendor/OpenAgentsControl/registry.json": 1,
+    "vendor/OpenAgentsControl/README.md": 1
+  },
+  "extension_counts": {
+    ".json": 29,
+    ".md": 303,
+    ".py": 1,
+    ".sh": 8,
+    ".ts": 90,
+    ".yaml": 9
+  },
+  "registry_summary": {
+    "path": "/repo/vendor/OpenAgentsControl/registry.json",
+    "version": "2.0.0",
+    "schema_version": "2.0.0",
+    "component_counts": {
+      "agents": 8,
+      "subagents": 18,
+      "commands": 16,
+      "tools": 2,
+      "plugins": 1,
+      "skills": 4,
+      "contexts": 177,
+      "config": 2
+    },
+    "dependency_edges": 45
+  }
+}

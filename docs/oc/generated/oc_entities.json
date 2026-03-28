@@ -1,0 +1,2443 @@
+{
+  "generated_at": "2026-03-27T19:09:11+00:00",
+  "python_class_count": 1,
+  "python_dataclass_count": 1,
+  "ts_class_count": 34,
+  "ts_interface_count": 103,
+  "ts_type_count": 18,
+  "python_classes": [
+    {
+      "name": "CheckResult",
+      "path": "tools/hello-stack/check_stack.py",
+      "line": 13,
+      "decorators": [
+        "dataclass"
+      ],
+      "bases": []
+    }
+  ],
+  "python_dataclasses": [
+    {
+      "name": "CheckResult",
+      "path": "tools/hello-stack/check_stack.py",
+      "line": 13,
+      "fields": [
+        {
+          "name": "name",
+          "type": "str",
+          "has_default": false
+        },
+        {
+          "name": "status",
+          "type": "str",
+          "has_default": false
+        },
+        {
+          "name": "detail",
+          "type": "str",
+          "has_default": false
+        }
+      ]
+    }
+  ],
+  "ts_classes": [
+    {
+      "name": "MessageParser",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/collector/message-parser.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "SessionReader",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/collector/session-reader.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "TimelineBuilder",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/collector/timeline-builder.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "AgentModelEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/agent-model-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "ApprovalGateEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/approval-gate-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "BaseEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/base-evaluator.ts",
+      "extends": "",
+      "implements": [
+        "IEvaluator"
+      ]
+    },
+    {
+      "name": "BehaviorEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/behavior-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "CleanupConfirmationEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/cleanup-confirmation-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "ContextLoadingEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/context-loading-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "DelegationEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/delegation-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "ErrorHandlingEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/error-handling-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "EvaluatorRunner",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/evaluator-runner.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "ExecutionBalanceEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/execution-balance-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "PerformanceMetricsEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/performance-metrics-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "ReportFirstEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/report-first-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "StopOnFailureEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/stop-on-failure-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "ToolUsageEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/tool-usage-evaluator.ts",
+      "extends": "BaseEvaluator",
+      "implements": []
+    },
+    {
+      "name": "MultiAgentLogger",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/logging/logger.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "SessionTracker",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/logging/session-tracker.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "AutoApproveStrategy",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/approval/auto-approve-strategy.ts",
+      "extends": "",
+      "implements": [
+        "ApprovalStrategy"
+      ]
+    },
+    {
+      "name": "AutoDenyStrategy",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/approval/auto-deny-strategy.ts",
+      "extends": "",
+      "implements": [
+        "ApprovalStrategy"
+      ]
+    },
+    {
+      "name": "SmartApprovalStrategy",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/approval/smart-approval-strategy.ts",
+      "extends": "",
+      "implements": [
+        "ApprovalStrategy"
+      ]
+    },
+    {
+      "name": "ClientManager",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/client-manager.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "EventStreamHandler",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/event-stream-handler.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "PromptManager",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/prompt-manager.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "ResultSaver",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "ResultValidator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-validator.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "ServerManager",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/server-manager.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "SuiteValidator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/suite-validator.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "TestExecutor",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-executor.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "TestRunner",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-runner.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "ExecutionManager",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/executor/execution-manager.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "AbilitiesPlugin",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "extends": "",
+      "implements": []
+    },
+    {
+      "name": "AbilitiesSDK",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/sdk.ts",
+      "extends": "",
+      "implements": []
+    }
+  ],
+  "ts_interfaces": [
+    {
+      "name": "ValidationCheck",
+      "path": "vendor/OpenAgentsControl/.opencode/plugin/agent-validator.ts",
+      "fields": []
+    },
+    {
+      "name": "ValidationResult",
+      "path": "vendor/OpenAgentsControl/.opencode/plugin/agent-validator.ts",
+      "fields": []
+    },
+    {
+      "name": "Subtask",
+      "path": "vendor/OpenAgentsControl/.opencode/scripts/task-cli.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "seq",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "'pending' | 'in_progress' | 'completed' | 'blocked'"
+        },
+        {
+          "name": "depends_on",
+          "type": "string[]"
+        },
+        {
+          "name": "parallel",
+          "type": "boolean"
+        },
+        {
+          "name": "context_files",
+          "type": "string[]"
+        },
+        {
+          "name": "acceptance_criteria",
+          "type": "string[]"
+        },
+        {
+          "name": "deliverables",
+          "type": "string[]"
+        },
+        {
+          "name": "agent_id",
+          "type": "string | null"
+        },
+        {
+          "name": "started_at",
+          "type": "string | null"
+        },
+        {
+          "name": "completed_at",
+          "type": "string | null"
+        },
+        {
+          "name": "completion_summary",
+          "type": "string | null"
+        }
+      ]
+    },
+    {
+      "name": "Task",
+      "path": "vendor/OpenAgentsControl/.opencode/scripts/task-cli.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "'active' | 'completed' | 'blocked' | 'archived'"
+        },
+        {
+          "name": "objective",
+          "type": "string"
+        },
+        {
+          "name": "context_files",
+          "type": "string[]"
+        },
+        {
+          "name": "exit_criteria",
+          "type": "string[]"
+        },
+        {
+          "name": "subtask_count",
+          "type": "number"
+        },
+        {
+          "name": "completed_count",
+          "type": "number"
+        },
+        {
+          "name": "created_at",
+          "type": "string"
+        },
+        {
+          "name": "completed_at",
+          "type": "string | null"
+        }
+      ]
+    },
+    {
+      "name": "Subtask",
+      "path": "vendor/OpenAgentsControl/.opencode/skill/task-management/scripts/task-cli.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "seq",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "'pending' | 'in_progress' | 'completed' | 'blocked'"
+        },
+        {
+          "name": "depends_on",
+          "type": "string[]"
+        },
+        {
+          "name": "parallel",
+          "type": "boolean"
+        },
+        {
+          "name": "context_files",
+          "type": "string[]"
+        },
+        {
+          "name": "reference_files",
+          "type": "string[]"
+        },
+        {
+          "name": "acceptance_criteria",
+          "type": "string[]"
+        },
+        {
+          "name": "deliverables",
+          "type": "string[]"
+        },
+        {
+          "name": "agent_id",
+          "type": "string | null"
+        },
+        {
+          "name": "suggested_agent",
+          "type": "string"
+        },
+        {
+          "name": "started_at",
+          "type": "string | null"
+        },
+        {
+          "name": "completed_at",
+          "type": "string | null"
+        },
+        {
+          "name": "completion_summary",
+          "type": "string | null"
+        }
+      ]
+    },
+    {
+      "name": "Task",
+      "path": "vendor/OpenAgentsControl/.opencode/skill/task-management/scripts/task-cli.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "'active' | 'completed' | 'blocked' | 'archived'"
+        },
+        {
+          "name": "objective",
+          "type": "string"
+        },
+        {
+          "name": "context_files",
+          "type": "string[]"
+        },
+        {
+          "name": "reference_files",
+          "type": "string[]"
+        },
+        {
+          "name": "exit_criteria",
+          "type": "string[]"
+        },
+        {
+          "name": "subtask_count",
+          "type": "number"
+        },
+        {
+          "name": "completed_count",
+          "type": "number"
+        },
+        {
+          "name": "created_at",
+          "type": "string"
+        },
+        {
+          "name": "completed_at",
+          "type": "string | null"
+        }
+      ]
+    },
+    {
+      "name": "EnvLoaderConfig",
+      "path": "vendor/OpenAgentsControl/.opencode/tool/env/index.ts",
+      "fields": []
+    },
+    {
+      "name": "ImageConfig",
+      "path": "vendor/OpenAgentsControl/.opencode/tool/gemini/index.ts",
+      "fields": [
+        {
+          "name": "outputDir",
+          "type": "string"
+        },
+        {
+          "name": "useTimestamp",
+          "type": "boolean"
+        },
+        {
+          "name": "preserveOriginal",
+          "type": "boolean"
+        },
+        {
+          "name": "customName",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "UserData",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts",
+      "fields": [
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "age",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ValidationResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts",
+      "fields": [
+        {
+          "name": "isValid",
+          "type": "boolean"
+        },
+        {
+          "name": "errors",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "Violation",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "severity",
+          "type": "Severity"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "AgentMetadata",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/agent-model-evaluator.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "promptSnippet",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "AgentModelExpectations",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/agent-model-evaluator.ts",
+      "fields": [
+        {
+          "name": "expectedAgent",
+          "type": "string"
+        },
+        {
+          "name": "expectedModel",
+          "type": "string"
+        },
+        {
+          "name": "projectPath",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "CodeAnalysis",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/error-handling-evaluator.ts",
+      "fields": [
+        {
+          "name": "filePath",
+          "type": "string"
+        },
+        {
+          "name": "content",
+          "type": "string"
+        },
+        {
+          "name": "language",
+          "type": "'javascript' | 'typescript' | 'python' | 'unknown'"
+        },
+        {
+          "name": "riskyOperations",
+          "type": "RiskyOperation[]"
+        },
+        {
+          "name": "errorMessages",
+          "type": "ErrorMessage[]"
+        },
+        {
+          "name": "hasErrorBoundaries",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "ErrorMessage",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/error-handling-evaluator.ts",
+      "fields": [
+        {
+          "name": "line",
+          "type": "number"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        },
+        {
+          "name": "isGeneric",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "RiskyOperation",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/error-handling-evaluator.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "'api_call' | 'file_io' | 'async_operation' | 'network' | 'database'"
+        },
+        {
+          "name": "line",
+          "type": "number"
+        },
+        {
+          "name": "code",
+          "type": "string"
+        },
+        {
+          "name": "hasErrorHandling",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "AggregatedResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/evaluator-runner.ts",
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "string"
+        },
+        {
+          "name": "sessionInfo",
+          "type": "SessionInfo"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "evaluatorResults",
+          "type": "EvaluationResult[]"
+        },
+        {
+          "name": "overallPassed",
+          "type": "boolean"
+        },
+        {
+          "name": "overallScore",
+          "type": "number"
+        },
+        {
+          "name": "totalViolations",
+          "type": "number"
+        },
+        {
+          "name": "violationsBySeverity",
+          "type": "{\n    error: number"
+        },
+        {
+          "name": "warning",
+          "type": "number"
+        },
+        {
+          "name": "info",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "RunnerConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/evaluator-runner.ts",
+      "fields": [
+        {
+          "name": "sessionReader",
+          "type": "SessionReader"
+        },
+        {
+          "name": "timelineBuilder",
+          "type": "TimelineBuilder"
+        },
+        {
+          "name": "evaluators",
+          "type": "IEvaluator[]"
+        },
+        {
+          "name": "sdkClient",
+          "type": "any"
+        }
+      ]
+    },
+    {
+      "name": "PerformanceMetrics",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/performance-metrics-evaluator.ts",
+      "fields": [
+        {
+          "name": "total_duration_ms",
+          "type": "number"
+        },
+        {
+          "name": "tool_latencies_ms",
+          "type": "Record<string, ToolLatencyStats>"
+        },
+        {
+          "name": "inference_time_ms",
+          "type": "number"
+        },
+        {
+          "name": "idle_time_ms",
+          "type": "number"
+        },
+        {
+          "name": "event_distribution",
+          "type": "Record<string, number>"
+        },
+        {
+          "name": "tool_count",
+          "type": "number"
+        },
+        {
+          "name": "message_count",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ToolLatencyStats",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/performance-metrics-evaluator.ts",
+      "fields": [
+        {
+          "name": "count",
+          "type": "number"
+        },
+        {
+          "name": "avg_ms",
+          "type": "number"
+        },
+        {
+          "name": "min_ms",
+          "type": "number"
+        },
+        {
+          "name": "max_ms",
+          "type": "number"
+        },
+        {
+          "name": "total_ms",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "WorkflowStep",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/evaluators/report-first-evaluator.ts",
+      "fields": [
+        {
+          "name": "step",
+          "type": "'report' | 'propose' | 'request' | 'fix'"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "evidence",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "DelegationEvent",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/logging/types.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "parentSessionId",
+          "type": "string"
+        },
+        {
+          "name": "childSessionId",
+          "type": "string"
+        },
+        {
+          "name": "fromAgent",
+          "type": "string"
+        },
+        {
+          "name": "toAgent",
+          "type": "string"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "LogEntry",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/logging/types.ts",
+      "fields": [
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "sessionId",
+          "type": "string"
+        },
+        {
+          "name": "depth",
+          "type": "number"
+        },
+        {
+          "name": "type",
+          "type": "'user' | 'assistant' | 'tool' | 'delegation' | 'system'"
+        },
+        {
+          "name": "content",
+          "type": "string"
+        },
+        {
+          "name": "metadata",
+          "type": "Record<string, any>"
+        }
+      ]
+    },
+    {
+      "name": "SessionNode",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/logging/types.ts",
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "string"
+        },
+        {
+          "name": "parentId",
+          "type": "string"
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "depth",
+          "type": "number"
+        },
+        {
+          "name": "startTime",
+          "type": "number"
+        },
+        {
+          "name": "endTime",
+          "type": "number"
+        },
+        {
+          "name": "children",
+          "type": "SessionNode[]"
+        }
+      ]
+    },
+    {
+      "name": "SessionTree",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/logging/types.ts",
+      "fields": [
+        {
+          "name": "root",
+          "type": "SessionNode"
+        },
+        {
+          "name": "totalSessions",
+          "type": "number"
+        },
+        {
+          "name": "maxDepth",
+          "type": "number"
+        },
+        {
+          "name": "delegations",
+          "type": "DelegationEvent[]"
+        }
+      ]
+    },
+    {
+      "name": "ApprovalDecision",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/approval/approval-strategy.ts",
+      "fields": [
+        {
+          "name": "approved",
+          "type": "boolean"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ApprovalStrategy",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/approval/approval-strategy.ts",
+      "fields": []
+    },
+    {
+      "name": "SmartApprovalConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/approval/smart-approval-strategy.ts",
+      "fields": [
+        {
+          "name": "allowedTools",
+          "type": "string[]"
+        },
+        {
+          "name": "deniedTools",
+          "type": "string[]"
+        },
+        {
+          "name": "approvePatterns",
+          "type": "RegExp[]"
+        },
+        {
+          "name": "denyPatterns",
+          "type": "RegExp[]"
+        },
+        {
+          "name": "maxApprovals",
+          "type": "number"
+        },
+        {
+          "name": "defaultDecision",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "ClientConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/client-manager.ts",
+      "fields": [
+        {
+          "name": "baseUrl",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "PromptConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/client-manager.ts",
+      "fields": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "model",
+          "type": "{\n    providerID: string"
+        },
+        {
+          "name": "modelID",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "SessionConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/client-manager.ts",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "SessionInfo",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/client-manager.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "messages",
+          "type": "Array<{\n    info: Message"
+        },
+        {
+          "name": "parts",
+          "type": "Part[]"
+        }
+      ]
+    },
+    {
+      "name": "PermissionRequestEvent",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/event-stream-handler.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "'permission.request'"
+        },
+        {
+          "name": "properties",
+          "type": "{\n    sessionId: string"
+        },
+        {
+          "name": "permissionId",
+          "type": "string"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        },
+        {
+          "name": "tool",
+          "type": "string"
+        },
+        {
+          "name": "args",
+          "type": "any"
+        }
+      ]
+    },
+    {
+      "name": "ServerEvent",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/event-stream-handler.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "EventType"
+        },
+        {
+          "name": "properties",
+          "type": "any"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ModelBehavior",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/model-behaviors.ts",
+      "fields": [
+        {
+          "name": "sendsCompletionText",
+          "type": "boolean"
+        },
+        {
+          "name": "mayEndWithToolCalls",
+          "type": "boolean"
+        },
+        {
+          "name": "typicalResponseTime",
+          "type": "number"
+        },
+        {
+          "name": "toolCompletionGrace",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "PromptMetadata",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/prompt-manager.ts",
+      "fields": [
+        {
+          "name": "model_family",
+          "type": "string"
+        },
+        {
+          "name": "recommended_models",
+          "type": "string[]"
+        },
+        {
+          "name": "tested_with",
+          "type": "string"
+        },
+        {
+          "name": "last_tested",
+          "type": "string"
+        },
+        {
+          "name": "maintainer",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "SwitchResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/prompt-manager.ts",
+      "fields": [
+        {
+          "name": "success",
+          "type": "boolean"
+        },
+        {
+          "name": "variantPath",
+          "type": "string"
+        },
+        {
+          "name": "agentPath",
+          "type": "string"
+        },
+        {
+          "name": "metadata",
+          "type": "PromptMetadata"
+        },
+        {
+          "name": "recommendedModel",
+          "type": "string"
+        },
+        {
+          "name": "error",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "CategorySummary",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "CompactTestResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "PackageJson",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "ResultMetadata",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "ResultSummary",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "SaveOptions",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": [
+        {
+          "name": "promptVariant",
+          "type": "string"
+        },
+        {
+          "name": "modelFamily",
+          "type": "string"
+        },
+        {
+          "name": "promptsDir",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "TestSummary",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "ViolationDetail",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "fields": []
+    },
+    {
+      "name": "ValidationLogger",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-validator.ts",
+      "fields": []
+    },
+    {
+      "name": "CliArgs",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/run-sdk-tests.ts",
+      "fields": [
+        {
+          "name": "debug",
+          "type": "boolean"
+        },
+        {
+          "name": "verbose",
+          "type": "boolean"
+        },
+        {
+          "name": "noEvaluators",
+          "type": "boolean"
+        },
+        {
+          "name": "core",
+          "type": "boolean"
+        },
+        {
+          "name": "suite",
+          "type": "string"
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "pattern",
+          "type": "string"
+        },
+        {
+          "name": "timeout",
+          "type": "number"
+        },
+        {
+          "name": "model",
+          "type": "string"
+        },
+        {
+          "name": "promptVariant",
+          "type": "string"
+        },
+        {
+          "name": "subagent",
+          "type": "string"
+        },
+        {
+          "name": "delegate",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "ServerConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/server-manager.ts",
+      "fields": [
+        {
+          "name": "port",
+          "type": "number"
+        },
+        {
+          "name": "hostname",
+          "type": "string"
+        },
+        {
+          "name": "printLogs",
+          "type": "boolean"
+        },
+        {
+          "name": "logLevel",
+          "type": "'DEBUG' | 'INFO' | 'WARN' | 'ERROR'"
+        },
+        {
+          "name": "timeout",
+          "type": "number"
+        },
+        {
+          "name": "cwd",
+          "type": "string"
+        },
+        {
+          "name": "debug",
+          "type": "boolean"
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ValidationError",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/suite-validator.ts",
+      "fields": [
+        {
+          "name": "field",
+          "type": "string"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        },
+        {
+          "name": "value",
+          "type": "any"
+        }
+      ]
+    },
+    {
+      "name": "ValidationResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/suite-validator.ts",
+      "fields": [
+        {
+          "name": "valid",
+          "type": "boolean"
+        },
+        {
+          "name": "errors",
+          "type": "ValidationError[]"
+        },
+        {
+          "name": "warnings",
+          "type": "string[]"
+        },
+        {
+          "name": "missingTests",
+          "type": "string[]"
+        },
+        {
+          "name": "suite",
+          "type": "TestSuite"
+        }
+      ]
+    },
+    {
+      "name": "ExecutionConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-executor.ts",
+      "fields": [
+        {
+          "name": "defaultTimeout",
+          "type": "number"
+        },
+        {
+          "name": "projectPath",
+          "type": "string"
+        },
+        {
+          "name": "defaultModel",
+          "type": "string"
+        },
+        {
+          "name": "debug",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "ExecutionLogger",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-executor.ts",
+      "fields": []
+    },
+    {
+      "name": "ExecutionResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-executor.ts",
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "string"
+        },
+        {
+          "name": "events",
+          "type": "ServerEvent[]"
+        },
+        {
+          "name": "errors",
+          "type": "string[]"
+        },
+        {
+          "name": "approvalsGiven",
+          "type": "number"
+        },
+        {
+          "name": "duration",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "TestResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-runner.ts",
+      "fields": [
+        {
+          "name": "testCase",
+          "type": "TestCase"
+        },
+        {
+          "name": "sessionId",
+          "type": "string"
+        },
+        {
+          "name": "passed",
+          "type": "boolean"
+        },
+        {
+          "name": "errors",
+          "type": "string[]"
+        },
+        {
+          "name": "events",
+          "type": "ServerEvent[]"
+        },
+        {
+          "name": "duration",
+          "type": "number"
+        },
+        {
+          "name": "approvalsGiven",
+          "type": "number"
+        },
+        {
+          "name": "sessionPath",
+          "type": "string"
+        },
+        {
+          "name": "evaluation",
+          "type": "AggregatedResult"
+        }
+      ]
+    },
+    {
+      "name": "TestRunnerConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-runner.ts",
+      "fields": [
+        {
+          "name": "port",
+          "type": "number"
+        },
+        {
+          "name": "debug",
+          "type": "boolean"
+        },
+        {
+          "name": "defaultTimeout",
+          "type": "number"
+        },
+        {
+          "name": "projectPath",
+          "type": "string"
+        },
+        {
+          "name": "runEvaluators",
+          "type": "boolean"
+        },
+        {
+          "name": "defaultModel",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ValidationStats",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/validate-suites-cli.ts",
+      "fields": [
+        {
+          "name": "totalSuites",
+          "type": "number"
+        },
+        {
+          "name": "validSuites",
+          "type": "number"
+        },
+        {
+          "name": "invalidSuites",
+          "type": "number"
+        },
+        {
+          "name": "totalErrors",
+          "type": "number"
+        },
+        {
+          "name": "totalWarnings",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ApprovalGateCheck",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "approvalRequested",
+          "type": "boolean"
+        },
+        {
+          "name": "approvalTimestamp",
+          "type": "number"
+        },
+        {
+          "name": "executionTimestamp",
+          "type": "number"
+        },
+        {
+          "name": "timeDiffMs",
+          "type": "number"
+        },
+        {
+          "name": "toolName",
+          "type": "string"
+        },
+        {
+          "name": "approvalConfidence",
+          "type": "'high' | 'medium' | 'low'"
+        },
+        {
+          "name": "approvalText",
+          "type": "string"
+        },
+        {
+          "name": "whatIsBeingApproved",
+          "type": "string"
+        },
+        {
+          "name": "evidence",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "Check",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "passed",
+          "type": "boolean"
+        },
+        {
+          "name": "weight",
+          "type": "number"
+        },
+        {
+          "name": "evidence",
+          "type": "Evidence[]"
+        }
+      ]
+    },
+    {
+      "name": "ContextLoadingCheck",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "contextFileLoaded",
+          "type": "boolean"
+        },
+        {
+          "name": "contextFilePath",
+          "type": "string"
+        },
+        {
+          "name": "loadTimestamp",
+          "type": "number"
+        },
+        {
+          "name": "executionTimestamp",
+          "type": "number"
+        },
+        {
+          "name": "requiredContext",
+          "type": "string"
+        },
+        {
+          "name": "taskType",
+          "type": "TaskType"
+        },
+        {
+          "name": "expectedContextFiles",
+          "type": "string[]"
+        },
+        {
+          "name": "actualContextFiles",
+          "type": "string[]"
+        },
+        {
+          "name": "evidence",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "DelegationCheck",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "shouldDelegate",
+          "type": "boolean"
+        },
+        {
+          "name": "didDelegate",
+          "type": "boolean"
+        },
+        {
+          "name": "fileCount",
+          "type": "number"
+        },
+        {
+          "name": "delegationThreshold",
+          "type": "number"
+        },
+        {
+          "name": "evidence",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "EvaluationResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "evaluator",
+          "type": "string"
+        },
+        {
+          "name": "passed",
+          "type": "boolean"
+        },
+        {
+          "name": "score",
+          "type": "number"
+        },
+        {
+          "name": "violations",
+          "type": "Violation[]"
+        },
+        {
+          "name": "evidence",
+          "type": "Evidence[]"
+        },
+        {
+          "name": "metadata",
+          "type": "any"
+        }
+      ]
+    },
+    {
+      "name": "EvaluatorConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "name": "weight",
+          "type": "number"
+        },
+        {
+          "name": "options",
+          "type": "Record<string, any>"
+        }
+      ]
+    },
+    {
+      "name": "EvaluatorRegistry",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "Evidence",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "data",
+          "type": "any"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ExpectedBehavior",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "no_execution_tools",
+          "type": "boolean"
+        },
+        {
+          "name": "no_approval_required",
+          "type": "boolean"
+        },
+        {
+          "name": "approval_requested",
+          "type": "boolean"
+        },
+        {
+          "name": "context_loaded",
+          "type": "boolean"
+        },
+        {
+          "name": "context_file",
+          "type": "string"
+        },
+        {
+          "name": "delegation_used",
+          "type": "boolean"
+        },
+        {
+          "name": "tool_used",
+          "type": "string"
+        },
+        {
+          "name": "min_file_count",
+          "type": "number"
+        },
+        {
+          "name": "response_provided",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "FrameworkConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "projectPath",
+          "type": "string"
+        },
+        {
+          "name": "sessionStoragePath",
+          "type": "string"
+        },
+        {
+          "name": "resultsPath",
+          "type": "string"
+        },
+        {
+          "name": "passThreshold",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "IEvaluator",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "Message",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "'user' | 'assistant'"
+        },
+        {
+          "name": "sessionID",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "modelID",
+          "type": "string"
+        },
+        {
+          "name": "providerID",
+          "type": "string"
+        },
+        {
+          "name": "tokens",
+          "type": "TokenUsage"
+        },
+        {
+          "name": "cost",
+          "type": "number"
+        },
+        {
+          "name": "time",
+          "type": "{\n    created: number"
+        },
+        {
+          "name": "completed",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "MessageMetrics",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "tokens",
+          "type": "TokenUsage"
+        },
+        {
+          "name": "cost",
+          "type": "number"
+        },
+        {
+          "name": "duration",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "MessageWithParts",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "info",
+          "type": "Message"
+        },
+        {
+          "name": "parts",
+          "type": "Part[]"
+        }
+      ]
+    },
+    {
+      "name": "ModelInfo",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "modelID",
+          "type": "string"
+        },
+        {
+          "name": "providerID",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "Part",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "messageID",
+          "type": "string"
+        },
+        {
+          "name": "sessionID",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "'text' | 'tool' | 'patch' | 'reasoning' | 'step-start' | 'step-finish' | 'file'"
+        },
+        {
+          "name": "time",
+          "type": "{\n    created: number"
+        },
+        {
+          "name": "completed",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "SessionInfo",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "time",
+          "type": "{\n    created: number"
+        },
+        {
+          "name": "updated",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "TaskContext",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "TaskType"
+        },
+        {
+          "name": "userMessage",
+          "type": "string"
+        },
+        {
+          "name": "requiredContext",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "TestCase",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "input",
+          "type": "string"
+        },
+        {
+          "name": "expected_behavior",
+          "type": "ExpectedBehavior"
+        },
+        {
+          "name": "evaluators",
+          "type": "string[]"
+        },
+        {
+          "name": "pass_threshold",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "TestResult",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "testCaseId",
+          "type": "string"
+        },
+        {
+          "name": "sessionId",
+          "type": "string"
+        },
+        {
+          "name": "passed",
+          "type": "boolean"
+        },
+        {
+          "name": "score",
+          "type": "number"
+        },
+        {
+          "name": "evaluationResults",
+          "type": "EvaluationResult[]"
+        },
+        {
+          "name": "violations",
+          "type": "Violation[]"
+        },
+        {
+          "name": "evidence",
+          "type": "Evidence[]"
+        },
+        {
+          "name": "metadata",
+          "type": "{\n    timestamp: number"
+        },
+        {
+          "name": "duration",
+          "type": "number"
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "model",
+          "type": "string"
+        },
+        {
+          "name": "cost",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "TestSuite",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "testResults",
+          "type": "TestResult[]"
+        },
+        {
+          "name": "summary",
+          "type": "{\n    total: number"
+        },
+        {
+          "name": "passed",
+          "type": "number"
+        },
+        {
+          "name": "failed",
+          "type": "number"
+        },
+        {
+          "name": "passRate",
+          "type": "number"
+        },
+        {
+          "name": "avgScore",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "TimelineEvent",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "type",
+          "type": "'user_message' | 'assistant_message' | 'tool_call' | 'patch' | 'reasoning' | 'text'"
+        },
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "model",
+          "type": "string"
+        },
+        {
+          "name": "messageId",
+          "type": "string"
+        },
+        {
+          "name": "partId",
+          "type": "string"
+        },
+        {
+          "name": "data",
+          "type": "any"
+        }
+      ]
+    },
+    {
+      "name": "TokenUsage",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "input",
+          "type": "number"
+        },
+        {
+          "name": "output",
+          "type": "number"
+        },
+        {
+          "name": "total",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ToolUsageCheck",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "correctToolUsed",
+          "type": "boolean"
+        },
+        {
+          "name": "toolUsed",
+          "type": "string"
+        },
+        {
+          "name": "expectedTool",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "name": "evidence",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "Violation",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "fields": [
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "severity",
+          "type": "'error' | 'warning' | 'info'"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        },
+        {
+          "name": "timestamp",
+          "type": "number"
+        },
+        {
+          "name": "evidence",
+          "type": "any"
+        }
+      ]
+    },
+    {
+      "name": "AbilityListItem",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/loader/index.ts",
+      "fields": []
+    },
+    {
+      "name": "ChatMessageOutput",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": [
+        {
+          "name": "parts",
+          "type": "Array<{ type: string"
+        }
+      ]
+    },
+    {
+      "name": "EventInput",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": []
+    },
+    {
+      "name": "OpencodeClient",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": [
+        {
+          "name": "session",
+          "type": "{\n    get: (options: { path: { id: string } }) => Promise<unknown>\n    list: () => Promise<Array<{ id: string }>>\n    command: (options: { path: { id: string }"
+        }
+      ]
+    },
+    {
+      "name": "PluginConfig",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": []
+    },
+    {
+      "name": "PluginContext",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": []
+    },
+    {
+      "name": "SessionIdleOutput",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": []
+    },
+    {
+      "name": "ToolExecuteInput",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": []
+    },
+    {
+      "name": "ToolExecuteOutput",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/plugin.ts",
+      "fields": []
+    },
+    {
+      "name": "AbilitiesSDKOptions",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/sdk.ts",
+      "fields": []
+    },
+    {
+      "name": "AbilityInfo",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/sdk.ts",
+      "fields": []
+    },
+    {
+      "name": "ExecutionResult",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/sdk.ts",
+      "fields": []
+    },
+    {
+      "name": "Ability",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "AbilityExecution",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "ExecutorContext",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "InputDefinition",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "LoadedAbility",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "LoaderOptions",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "ScriptStep",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "StepResult",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "ValidationError",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    },
+    {
+      "name": "ValidationResult",
+      "path": "vendor/OpenAgentsControl/packages/plugin-abilities/src/types/index.ts",
+      "fields": []
+    }
+  ],
+  "ts_types": [
+    {
+      "name": "Severity",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts",
+      "value": "'error' | 'warning' | 'info'"
+    },
+    {
+      "name": "OpencodeClient",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/collector/session-reader.ts",
+      "value": "any"
+    },
+    {
+      "name": "TextPartInput",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/client-manager.ts",
+      "value": "{\n  type: 'text'"
+    },
+    {
+      "name": "EventHandler",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/event-stream-handler.ts",
+      "value": "(event: ServerEvent) => void | Promise<void>"
+    },
+    {
+      "name": "EventType",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/event-stream-handler.ts",
+      "value": "| 'session.created'\n  | 'session.updated'\n  | 'session.deleted'\n  | 'session.status'\n  | 'session.diff'\n  | 'message.created'\n  | 'message.updated'\n  | 'message.deleted'\n  | 'message.part.updated'\n  | 'part.created'\n  | 'part.updated'\n  | 'part.deleted'\n  | 'permission.request'\n  | 'permission.response'\n  | 'tool.call'\n  | 'tool.result'\n  | 'file.edited'\n  | 'command.executed'\n  | 'server.connected'"
+    },
+    {
+      "name": "PermissionHandler",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/event-stream-handler.ts",
+      "value": "(event: PermissionRequestEvent) => Promise<boolean>"
+    },
+    {
+      "name": "TestCategory",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "value": "'developer' | 'business' | 'creative' | 'edge-case' | 'other'"
+    },
+    {
+      "name": "ViolationSeverity",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/result-saver.ts",
+      "value": "'error' | 'warning'"
+    },
+    {
+      "name": "TestDefinition",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/suite-validator.ts",
+      "value": "z.infer<typeof TestDefinitionSchema>"
+    },
+    {
+      "name": "TestSuite",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/suite-validator.ts",
+      "value": "z.infer<typeof TestSuiteSchema>"
+    },
+    {
+      "name": "ApprovalStrategyConfig",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof ApprovalStrategySchema>"
+    },
+    {
+      "name": "BehaviorExpectation",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof BehaviorExpectationSchema>"
+    },
+    {
+      "name": "ExpectedResults",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof ExpectedResultsSchema>"
+    },
+    {
+      "name": "ExpectedViolation",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof ExpectedViolationSchema>"
+    },
+    {
+      "name": "MultiMessage",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof MultiMessageSchema>"
+    },
+    {
+      "name": "TestCase",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof TestCaseSchema>"
+    },
+    {
+      "name": "TestSuite",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/sdk/test-case-schema.ts",
+      "value": "z.infer<typeof TestSuiteSchema>"
+    },
+    {
+      "name": "TaskType",
+      "path": "vendor/OpenAgentsControl/evals/framework/src/types/index.ts",
+      "value": "'code' | 'docs' | 'tests' | 'review' | 'delegation' | 'bash-only' | 'unknown'"
+    }
+  ]
+}

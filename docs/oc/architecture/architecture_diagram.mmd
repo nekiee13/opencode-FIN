@@ -1,0 +1,43 @@
+flowchart LR
+    subgraph Runtime[OpenCode Runtime Layer]
+        OC[OpenCode Runtime]
+        CFG[.opencode/opencode.json]
+        SP[Superpowers Plugin]
+    end
+
+    subgraph Control[OAC Control Layer]
+        REG[registry.json]
+        AGENTS[OAC Agents and Subagents]
+        GATES[Approval Gate Policy]
+    end
+
+    subgraph Retrieval[Retrieval Layer]
+        JCM[jCodeMunch MCP]
+        JDM[jDocMunch MCP]
+    end
+
+    subgraph Edit[Edit Layer]
+        SER[Serena MCP]
+        HS[hello-stack check_stack.py]
+    end
+
+    subgraph Eval[Evaluation Layer]
+        EVAL[OAC Eval Framework]
+        EVID[Integration Pilot Evidence]
+    end
+
+    CFG --> OC
+    SP --> OC
+    OC --> REG
+    REG --> AGENTS
+    AGENTS --> GATES
+
+    AGENTS --> JCM
+    AGENTS --> JDM
+    AGENTS --> SER
+    SER --> HS
+
+    GATES --> EVAL
+    EVAL --> EVID
+    JCM --> EVAL
+    JDM --> EVAL
