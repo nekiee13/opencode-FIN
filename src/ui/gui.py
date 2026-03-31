@@ -109,8 +109,6 @@ except Exception:  # pragma: no cover
 
 class StockAnalysisApp:
     """
-
-    ALL_TICKERS_LABEL = "ALL_TICKERS"
     Tkinter GUI for FIN analysis & forecasting.
 
     analysis_callback contract:
@@ -127,6 +125,8 @@ class StockAnalysisApp:
         - success: True iff analysis completed and artifact(s) were produced.
         - hint_value: typical ΔATR or similar (float), or <= 0 if unavailable.
     """
+
+    ALL_TICKERS_LABEL = "ALL_TICKERS"
 
     def __init__(
         self, root: tk.Tk, analysis_callback: Callable[..., Tuple[bool, float]]
