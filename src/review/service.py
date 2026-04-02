@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
@@ -197,10 +198,63 @@ def export_review_payload(
     return export_payload_json_text(session)
 
 
+def _parse_marker_date(raw_value: str) -> str | None:
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _load_marker_review_dates() -> list[dict[str, Any]]:
+    markers_dir = paths.DATA_RAW_DIR / "markers"
+    if not markers_dir.exists():
+        return []
+
+    date_values: set[str] = set()
+    for marker_file in sorted(markers_dir.glob("*.csv")):
+        try:
+            with marker_file.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                if not reader.fieldnames:
+                    continue
+                date_key = None
+                for field_name in reader.fieldnames:
+                    if str(field_name).strip().lower() == "date":
+                        date_key = field_name
+                        break
+                if not date_key:
+                    continue
+                for row in reader:
+                    value = row.get(date_key)
+                    parsed = _parse_marker_date(str(value or ""))
+                    if parsed:
+                        date_values.add(parsed)
+        except OSError:
+            continue
+
+    out: list[dict[str, Any]] = []
+    for date_value in sorted(date_values, reverse=True):
+        out.append(
+            {
+                "review_date": date_value,
+                "raw_round_state": "MARKER_DATE",
+                "gui_state": "SHOW",
+                "editable": False,
+                "reason": "Loaded from marker CSV date fallback.",
+            }
+        )
+    return out
+
+
 def load_available_review_dates(vg_db_path: Path | None = None) -> list[dict[str, Any]]:
     db_path = vg_db_path or paths.OUT_I_CALC_ML_VG_DB_PATH
     if not db_path.exists():
-        return []
+        return _load_marker_review_dates()
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -227,7 +281,9 @@ def load_available_review_dates(vg_db_path: Path | None = None) -> list[dict[str
                 "reason": mapped.reason,
             }
         )
-    return out
+    if out:
+        return out
+    return _load_marker_review_dates()
 
 
 def load_available_tickers() -> list[str]:
