@@ -27,8 +27,10 @@ from src.ui.services.run_registry import (
 )
 from src.ui.services.vg_loader import (
     green_meta_to_rows,
+    list_violet_forecast_dates,
     materialize_for_selected_date,
     matrix_to_rows,
+    suggest_forecast_date,
 )
 
 
@@ -255,11 +257,44 @@ def run_review_console(db_path: Path | None = None) -> None:
             except Exception:
                 forecast_date_default = ""
 
-        forecast_date = st.text_input(
-            "Forecast Date (yyyy-mm-dd)",
-            value=forecast_date_default,
-            key="vg_forecast_date",
+        available_violet_dates = list_violet_forecast_dates()
+        suggested_forecast_date = suggest_forecast_date(
+            selected_date=selected_date,
+            available_dates=available_violet_dates,
         )
+        if not available_violet_dates:
+            forecast_options = [forecast_date_default or selected_date or ""]
+            st.warning(
+                "No violet rows currently available. Run ML pipeline/finalize+ingest before materialization."
+            )
+        else:
+            forecast_options = available_violet_dates
+
+        default_forecast = (
+            suggested_forecast_date
+            if suggested_forecast_date
+            else (forecast_options[0] if forecast_options else "")
+        )
+        default_index = 0
+        if default_forecast in forecast_options:
+            default_index = forecast_options.index(default_forecast)
+
+        forecast_date = st.selectbox(
+            "Forecast Date (available violet rounds)",
+            options=forecast_options,
+            index=default_index,
+            key="vg_forecast_date_select",
+        )
+
+        if (
+            available_violet_dates
+            and selected_date
+            and str(forecast_date) != str(selected_date)
+        ):
+            st.info(
+                f"Selected round date {selected_date} has no direct violet row. "
+                f"Using nearest available forecast date {forecast_date}."
+            )
 
         warmup_depth = st.selectbox(
             "Warm-up Depth (dummy slot window)",
@@ -281,6 +316,11 @@ def run_review_console(db_path: Path | None = None) -> None:
                 st.session_state["vg_error"] = ""
             except Exception as exc:
                 st.session_state["vg_error"] = str(exc)
+                if available_violet_dates:
+                    st.session_state["vg_error"] += (
+                        "\nAvailable violet dates: "
+                        + ", ".join(available_violet_dates[:12])
+                    )
 
         vg_error = str(st.session_state.get("vg_error", "") or "")
         if vg_error:

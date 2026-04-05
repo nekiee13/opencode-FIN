@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import types
+import sqlite3
+from pathlib import Path
+
 from src.ui.services.vg_loader import (
     green_meta_to_rows,
+    list_violet_forecast_dates,
     materialize_for_selected_date,
     matrix_to_rows,
     next_business_day,
+    suggest_forecast_date,
 )
 
 
@@ -79,3 +84,50 @@ def test_materialize_for_selected_date_passes_overrides(monkeypatch) -> None:
     assert captured["memory_tail"] == 5
     assert captured["bootstrap_enabled"] is True
     assert captured["policy_name"] == "value_assign_v1"
+
+
+def test_list_violet_forecast_dates_returns_descending(tmp_path: Path) -> None:
+    db_path = tmp_path / "ML_VG_tables.sqlite"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE violet_scores (
+                forecast_date TEXT,
+                model TEXT,
+                ticker TEXT,
+                accuracy_pct REAL,
+                score_status TEXT,
+                source_round_id TEXT,
+                source_partial_scores_path TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO violet_scores(forecast_date, model, ticker, accuracy_pct, score_status, source_round_id, source_partial_scores_path, created_at, updated_at)
+            VALUES ('2025-08-05', 'Torch', 'TNX', 95.0, 'scored', 'r1', 'x', 't', 't')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO violet_scores(forecast_date, model, ticker, accuracy_pct, score_status, source_round_id, source_partial_scores_path, created_at, updated_at)
+            VALUES ('2025-07-29', 'Torch', 'TNX', 94.0, 'scored', 'r0', 'x', 't', 't')
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    out = list_violet_forecast_dates(db_path)
+    assert out == ["2025-08-05", "2025-07-29"]
+
+
+def test_suggest_forecast_date_uses_nearest_prior() -> None:
+    out = suggest_forecast_date(
+        selected_date="2026-04-01",
+        available_dates=["2026-03-31", "2026-03-24", "2026-03-17"],
+    )
+    assert out == "2026-03-31"
