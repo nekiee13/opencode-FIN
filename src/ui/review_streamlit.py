@@ -262,31 +262,40 @@ def run_review_console(db_path: Path | None = None) -> None:
             selected_date=selected_date,
             available_dates=available_violet_dates,
         )
+        has_violet_dates = len(available_violet_dates) > 0
         if not available_violet_dates:
-            forecast_options = [forecast_date_default or selected_date or ""]
             st.warning(
-                "No violet rows currently available. Run ML pipeline/finalize+ingest before materialization."
+                "No violet rows currently available. Run finalize+ingest to populate Violet scores."
             )
+            st.caption("Index: IDX_VIOLET_MISSING")
+            st.text_input(
+                "Forecast Date (available violet rounds)",
+                value="",
+                key="vg_forecast_date_select_empty",
+                disabled=True,
+            )
+            forecast_date = ""
+            st.session_state["vg_error"] = ""
         else:
             forecast_options = available_violet_dates
 
-        default_forecast = (
-            suggested_forecast_date
-            if suggested_forecast_date
-            else (forecast_options[0] if forecast_options else "")
-        )
-        default_index = 0
-        if default_forecast in forecast_options:
-            default_index = forecast_options.index(default_forecast)
+            default_forecast = (
+                suggested_forecast_date
+                if suggested_forecast_date
+                else (forecast_options[0] if forecast_options else "")
+            )
+            default_index = 0
+            if default_forecast in forecast_options:
+                default_index = forecast_options.index(default_forecast)
 
-        forecast_date = st.selectbox(
-            "Forecast Date (available violet rounds)",
-            options=forecast_options,
-            index=default_index,
-            key="vg_forecast_date_select",
-        )
+            forecast_date = st.selectbox(
+                "Forecast Date (available violet rounds)",
+                options=forecast_options,
+                index=default_index,
+                key="vg_forecast_date_select",
+            )
 
-        if (
+        if has_violet_dates and (
             available_violet_dates
             and selected_date
             and str(forecast_date) != str(selected_date)
@@ -303,7 +312,12 @@ def run_review_console(db_path: Path | None = None) -> None:
             key="vg_warmup_depth",
         )
 
-        if st.button("Load Blue/Green", key="load_blue_green"):
+        run_clicked = st.button(
+            "Load Blue/Green",
+            key="load_blue_green",
+            disabled=not has_violet_dates,
+        )
+        if run_clicked:
             try:
                 result = materialize_for_selected_date(
                     selected_date=selected_date,
@@ -316,7 +330,7 @@ def run_review_console(db_path: Path | None = None) -> None:
                 st.session_state["vg_error"] = ""
             except Exception as exc:
                 st.session_state["vg_error"] = str(exc)
-                if available_violet_dates:
+                if has_violet_dates:
                     st.session_state["vg_error"] += (
                         "\nAvailable violet dates: "
                         + ", ".join(available_violet_dates[:12])

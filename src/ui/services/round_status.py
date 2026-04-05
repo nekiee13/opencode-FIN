@@ -8,6 +8,7 @@ from typing import Any
 from src.config import paths
 from src.ui.services.pipeline_runner import TICKER_ORDER
 from src.ui.services.run_registry import latest_run_for_date
+from src.ui.services.vg_loader import list_violet_forecast_dates, suggest_forecast_date
 
 CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export", "make_fh3_table")
 _PREFIX_MAP: dict[str, str] = {"SPX": "GSPC"}
@@ -91,6 +92,7 @@ def compute_round_status(
     selected_date: str,
     raw_tickers_dir: Path | None = None,
     runs_root: Path | None = None,
+    vg_db_path: Path | None = None,
 ) -> dict[str, Any]:
     use_dir = (raw_tickers_dir or paths.DATA_TICKERS_DIR).resolve()
     missing_tickers: list[str] = []
@@ -124,6 +126,19 @@ def compute_round_status(
 
     if latest is not None and str(latest.get("status") or "") == "success":
         if _core_success_for_all_tickers(latest):
+            violet_dates = list_violet_forecast_dates(vg_db_path)
+            violet_match = suggest_forecast_date(
+                selected_date=selected_date,
+                available_dates=violet_dates,
+            )
+            if not violet_dates or str(violet_match or "") != str(selected_date):
+                return {
+                    "status": "GREEN",
+                    "reason": "ML calculations completed, but Violet scores are not ingested for selected round.",
+                    "index_code": "IDX_VIOLET_MISSING",
+                    "log_id": None,
+                    "missing_tickers": [],
+                }
             return {
                 "status": "BLUE",
                 "reason": "ML data available and calculations completed.",
