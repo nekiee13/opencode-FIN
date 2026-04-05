@@ -17,6 +17,14 @@ from src.ui.services.pipeline_runner import (
     build_pipeline_commands,
     run_command,
 )
+from src.ui.services.round_status import compute_round_status
+from src.ui.services.run_registry import (
+    append_stage_result,
+    create_run,
+    finalize_run,
+    list_runs,
+    load_run,
+)
 from src.ui.services.vg_loader import materialize_for_selected_date, matrix_to_rows
 
 
@@ -26,21 +34,82 @@ def _streamlit() -> Any:
     return st
 
 
-def _render_command_results(st: Any, results: list[dict[str, Any]]) -> None:
-    if not results:
+def _status_color(status: str) -> str:
+    value = str(status or "").upper()
+    if value == "GREEN":
+        return "#13a10e"
+    if value == "BLUE":
+        return "#0078d4"
+    if value == "RED":
+        return "#d13438"
+    if value == "VIOLET":
+        return "#7f39fb"
+    return "#666666"
+
+
+def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
+    status = str(status_payload.get("status") or "UNKNOWN")
+    reason = str(status_payload.get("reason") or "")
+    color = _status_color(status)
+    st.markdown(
+        f"<div style='padding:0.5rem 0.75rem;border-radius:8px;border:1px solid {color};'>"
+        f"<b>ROUND STATUS:</b> <span style='color:{color};font-weight:700;'>{status}</span></div>",
+        unsafe_allow_html=True,
+    )
+    if reason:
+        st.caption(reason)
+    missing = list(status_payload.get("missing_tickers") or [])
+    if missing:
+        st.caption("Missing tickers: " + ", ".join(missing))
+    log_id = str(status_payload.get("log_id") or "").strip()
+    if log_id:
+        st.caption(f"see log #{log_id}")
+
+
+def _render_command_results(st: Any, run_payload: dict[str, Any] | None) -> None:
+    if not run_payload:
         st.info("No command execution records yet.")
         return
 
-    ok_count = sum(1 for row in results if int(row.get("returncode", 1)) == 0)
+    results = list(run_payload.get("stages", []))
+    run_id = str(run_payload.get("run_id") or "")
+    st.caption(f"run_id={run_id}")
+
+    ok_count = sum(1 for row in results if str(row.get("status") or "") == "success")
+    failed_count = sum(1 for row in results if str(row.get("status") or "") == "failed")
     st.caption(
-        f"Stages: {len(results)} | Succeeded: {ok_count} | Failed: {len(results) - ok_count}"
+        f"Stages: {len(results)} | Succeeded: {ok_count} | Failed: {failed_count}"
     )
+
+    failed_rows = [row for row in results if str(row.get("status") or "") == "failed"]
+    if failed_rows:
+        st.error("One or more stages failed. Details are listed below.")
+        st.dataframe(
+            [
+                {
+                    "stage": row.get("stage"),
+                    "ticker": row.get("ticker"),
+                    "returncode": row.get("returncode"),
+                    "reason_code": row.get("reason_code"),
+                    "log_id": row.get("log_id"),
+                    "log_path": row.get("log_path"),
+                }
+                for row in failed_rows
+            ],
+            use_container_width=True,
+        )
+
     for item in results:
         ticker = str(item.get("ticker") or "-")
         stage = str(item.get("stage") or "-")
-        rc = int(item.get("returncode", 1))
-        label = f"{stage} | ticker={ticker} | rc={rc}"
+        rc = int(item.get("returncode", 0))
+        reason_code = str(item.get("reason_code") or "")
+        log_id = str(item.get("log_id") or "")
+        label = f"{stage} | ticker={ticker} | rc={rc} | {reason_code or 'NONE'}"
         with st.expander(label):
+            if log_id:
+                st.caption(f"log_id={log_id}")
+            st.caption(f"log_path={item.get('log_path')}")
             st.text("Command")
             st.code(" ".join(item.get("command", [])), language="bash")
             st.text("stdout")
@@ -68,6 +137,10 @@ def run_review_console(db_path: Path | None = None) -> None:
             ["ALL", *TICKER_ORDER],
             key="ctx_ticker",
         )
+        _render_round_status(
+            st,
+            compute_round_status(selected_date=selected_date),
+        )
 
     tab_ml, tab_dashboard, tab_vg, tab_ann = st.tabs(
         ["ML Calculations", "Dashboard", "Blue/Green ML", "ANN Training"]
@@ -81,26 +154,65 @@ def run_review_console(db_path: Path | None = None) -> None:
                 selected_date=selected_date,
                 selected_ticker=selected_ticker,
             )
-            collected: list[dict[str, Any]] = []
-            for spec in specs:
-                result = run_command(spec)
-                collected.append(
-                    {
-                        "category": spec.category,
-                        "stage": spec.stage,
-                        "ticker": spec.ticker,
-                        "command": spec.command,
-                        "returncode": result.returncode,
-                        "duration_seconds": round(result.duration_seconds, 3),
-                        "stdout": result.stdout,
-                        "stderr": result.stderr,
-                    }
-                )
-            st.session_state["ml_pipeline_results"] = collected
+            run_payload = create_run(
+                selected_date=selected_date,
+                selected_ticker=selected_ticker,
+                total_stages=len(specs),
+            )
+            run_id = str(run_payload["run_id"])
+            st.session_state["ml_pipeline_run_id"] = run_id
 
-        _render_command_results(
-            st, list(st.session_state.get("ml_pipeline_results", []))
-        )
+            progress_bar = st.progress(0.0)
+            status_placeholder = st.empty()
+
+            for index, spec in enumerate(specs, start=1):
+                status_placeholder.info(
+                    f"Running stage {index}/{len(specs)}: {spec.stage} (ticker={spec.ticker or '-'})"
+                )
+                result = run_command(spec)
+                append_stage_result(
+                    run_id=run_id,
+                    stage_index=index,
+                    stage_name=spec.stage,
+                    category=spec.category,
+                    ticker=spec.ticker,
+                    command=spec.command,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    duration_seconds=round(result.duration_seconds, 3),
+                )
+                progress_bar.progress(float(index) / float(max(len(specs), 1)))
+
+            finished = finalize_run(run_id)
+            if str(finished.get("status") or "") == "success":
+                status_placeholder.success("Pipeline run completed successfully.")
+            else:
+                status_placeholder.error("Pipeline run completed with failures.")
+
+        run_id = str(st.session_state.get("ml_pipeline_run_id") or "").strip()
+        _render_command_results(st, load_run(run_id) if run_id else None)
+
+        st.subheader("Recent Runs")
+        history = list_runs(limit=10, selected_date=selected_date)
+        if not history:
+            st.info("No persisted runs found for selected date.")
+        else:
+            st.dataframe(
+                [
+                    {
+                        "run_id": item.get("run_id"),
+                        "status": item.get("status"),
+                        "total_stages": item.get("total_stages"),
+                        "completed_stages": item.get("completed_stages"),
+                        "failed_stages": item.get("failed_stages"),
+                        "created_at": item.get("created_at"),
+                        "ended_at": item.get("ended_at"),
+                    }
+                    for item in history
+                ],
+                use_container_width=True,
+            )
 
     with tab_dashboard:
         st.subheader("ML Dashboard")
