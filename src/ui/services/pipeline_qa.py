@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import csv
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -36,18 +38,67 @@ def _core_success_for_all_tickers(run_payload: dict[str, Any]) -> bool:
     return True
 
 
+def _list_partial_score_forecast_dates(scores_dir: Path) -> list[str]:
+    if not scores_dir.exists():
+        return []
+
+    dates: set[str] = set()
+    for csv_path in sorted(scores_dir.glob("*_partial_scores.csv")):
+        try:
+            with csv_path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    raw = str(row.get("forecast_date") or "").strip()
+                    if raw and raw.lower() != "nan":
+                        dates.add(raw)
+        except OSError:
+            continue
+
+    return sorted(dates)
+
+
+def _materialized_counts_for_date(
+    vg_db_path: Path | None, selected_date: str
+) -> dict[str, int]:
+    use_path = (vg_db_path or paths.OUT_I_CALC_ML_VG_DB_PATH).resolve()
+    if not use_path.exists():
+        return {}
+
+    conn = sqlite3.connect(str(use_path))
+    try:
+        rows = conn.execute(
+            """
+            SELECT table_name, COUNT(*) AS c
+            FROM materialized_scores
+            WHERE forecast_date = ?
+            GROUP BY table_name
+            """,
+            (str(selected_date),),
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+
+    return {str(r[0]): int(r[1]) for r in rows}
+
+
 def evaluate_pipeline_state(
     *,
     selected_date: str,
     runs_root: Path | None = None,
     vg_db_path: Path | None = None,
+    scores_dir: Path | None = None,
 ) -> dict[str, Any]:
     latest = latest_run_for_date(selected_date, root_dir=runs_root)
     violet_dates = list_violet_forecast_dates(vg_db_path)
+    use_scores_dir = (scores_dir or paths.OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR).resolve()
+    partial_score_dates = _list_partial_score_forecast_dates(use_scores_dir)
     suggested_violet = suggest_forecast_date(
         selected_date=selected_date,
         available_dates=violet_dates,
     )
+    materialized_counts = _materialized_counts_for_date(vg_db_path, selected_date)
 
     report: dict[str, Any] = {
         "selected_date": str(selected_date),
@@ -62,6 +113,13 @@ def evaluate_pipeline_state(
         "violet_dates_count": int(len(violet_dates)),
         "violet_for_selected_date": str(selected_date) in set(violet_dates),
         "suggested_violet_date": suggested_violet,
+        "partial_scores_dir": str(use_scores_dir),
+        "partial_scores_dates_count": int(len(partial_score_dates)),
+        "partial_scores_has_selected_date": str(selected_date)
+        in set(partial_score_dates),
+        "partial_scores_sample_dates": partial_score_dates[-10:],
+        "materialized_counts": materialized_counts,
+        "materialized_has_selected_date": bool(materialized_counts),
         "index_code": "QA_UNKNOWN",
         "summary": "",
     }
@@ -84,13 +142,31 @@ def evaluate_pipeline_state(
         return report
 
     if not bool(report["has_violet_rows"]):
-        report["index_code"] = "QA_VIOLET_MISSING"
-        report["summary"] = "No Violet scores are ingested in ML_VG store."
+        if bool(report["partial_scores_has_selected_date"]):
+            report["index_code"] = "QA_VG_INGEST_MISSING"
+            report["summary"] = (
+                "Partial scores exist for selected date, but ML_VG Violet ingestion was not executed. "
+                "Run followup_ml_vg ingest-round for the related round_id."
+            )
+        else:
+            report["index_code"] = "QA_PARTIAL_SCORES_MISSING"
+            report["summary"] = (
+                "No partial score artifacts found for selected date. "
+                "Run followup_ml finalize flow first, then ingest into ML_VG."
+            )
         return report
 
     if not bool(report["violet_for_selected_date"]):
         report["index_code"] = "QA_VIOLET_DATE_MISMATCH"
         report["summary"] = "Violet scores exist, but selected date is missing."
+        return report
+
+    if not bool(report["materialized_has_selected_date"]):
+        report["index_code"] = "QA_MATERIALIZE_MISSING"
+        report["summary"] = (
+            "Violet rows exist, but no materialized blue/green/violet snapshot exists for selected date. "
+            "Run Blue/Green materialization."
+        )
         return report
 
     report["index_code"] = "QA_OK"

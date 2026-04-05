@@ -149,6 +149,28 @@ def test_materialize_uses_bootstrap_padding(tmp_path, monkeypatch) -> None:
     assert meta["real_rounds_used"] == 1
     assert meta["bootstrap_slots_used"] == 3
 
+    conn = vg_store.connect_vg_db(db_path)
+    try:
+        tbl = conn.execute(
+            "SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='materialized_scores'"
+        ).fetchone()
+        assert tbl is not None and int(tbl["c"]) == 1
+
+        rows = conn.execute(
+            """
+            SELECT table_name, COUNT(*) AS c
+            FROM materialized_scores
+            WHERE forecast_date = '2026-03-10'
+            GROUP BY table_name
+            ORDER BY table_name
+            """
+        ).fetchall()
+        got = {str(r["table_name"]): int(r["c"]) for r in rows}
+        # 2 models x 2 tickers from fixture rows are persisted for violet + green.
+        assert got == {"green": 4, "violet": 4}
+    finally:
+        conn.close()
+
 
 def test_warmup_slots_follow_real_data_start_boundary(tmp_path, monkeypatch) -> None:
     rounds_dir = tmp_path / "out" / "followup_ml" / "rounds"

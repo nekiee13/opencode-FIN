@@ -41,6 +41,43 @@ def _seed_violet_score(db_path: Path, forecast_date: str) -> None:
         conn.close()
 
 
+def _seed_materialized_rows(db_path: Path, forecast_date: str) -> None:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS materialized_scores (
+                run_id INTEGER NOT NULL,
+                forecast_date TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                model TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                score_value REAL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO materialized_scores(
+                run_id, forecast_date, table_name, model, ticker, score_value, created_at
+            ) VALUES (1, ?, 'violet', 'Torch', 'TNX', 95.0, 't')
+            """,
+            (forecast_date,),
+        )
+        conn.execute(
+            """
+            INSERT INTO materialized_scores(
+                run_id, forecast_date, table_name, model, ticker, score_value, created_at
+            ) VALUES (1, ?, 'green', 'Torch', 'TNX', 97.5, 't')
+            """,
+            (forecast_date,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _seed_successful_all_ticker_run(runs_root: Path, selected_date: str) -> str:
     run = create_run(
         selected_date=selected_date,
@@ -69,6 +106,21 @@ def _seed_successful_all_ticker_run(runs_root: Path, selected_date: str) -> str:
     return str(run["run_id"])
 
 
+def _seed_partial_scores_for_date(scores_dir: Path, selected_date: str) -> None:
+    scores_dir.mkdir(parents=True, exist_ok=True)
+    path = scores_dir / "26-1-11_partial_scores.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "round_id,ticker,model,forecast_date,expected_actual_date,lookup_actual_date,pred_value,actual_close,accuracy_pct,transformed_score,score_status,transform_status",
+                f"26-1-11,TNX,Torch,{selected_date},{selected_date},{selected_date},1,1,95,95,scored,mapped",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_evaluate_pipeline_state_flags_violet_missing(tmp_path: Path) -> None:
     runs_root = tmp_path / "runs"
     vg_db = tmp_path / "ML_VG_tables.sqlite"
@@ -80,12 +132,49 @@ def test_evaluate_pipeline_state_flags_violet_missing(tmp_path: Path) -> None:
         vg_db_path=vg_db,
     )
 
-    assert report["index_code"] == "QA_VIOLET_MISSING"
+    assert report["index_code"] == "QA_PARTIAL_SCORES_MISSING"
     assert report["latest_run_status"] == "success"
     assert report["has_violet_rows"] is False
 
 
+def test_evaluate_pipeline_state_flags_ingest_missing_when_scores_exist(
+    tmp_path: Path,
+) -> None:
+    runs_root = tmp_path / "runs"
+    vg_db = tmp_path / "ML_VG_tables.sqlite"
+    scores_dir = tmp_path / "scores"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+    _seed_partial_scores_for_date(scores_dir, "2025-07-29")
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=vg_db,
+        scores_dir=scores_dir,
+    )
+
+    assert report["index_code"] == "QA_VG_INGEST_MISSING"
+    assert report["partial_scores_has_selected_date"] is True
+
+
 def test_evaluate_pipeline_state_ok_when_violet_exists(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    vg_db = tmp_path / "ML_VG_tables.sqlite"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+    _seed_violet_score(vg_db, "2025-07-29")
+    _seed_materialized_rows(vg_db, "2025-07-29")
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=vg_db,
+    )
+
+    assert report["index_code"] == "QA_OK"
+    assert report["violet_for_selected_date"] is True
+
+
+def test_evaluate_pipeline_state_flags_materialize_missing(tmp_path: Path) -> None:
     runs_root = tmp_path / "runs"
     vg_db = tmp_path / "ML_VG_tables.sqlite"
     _seed_successful_all_ticker_run(runs_root, "2025-07-29")
@@ -97,8 +186,7 @@ def test_evaluate_pipeline_state_ok_when_violet_exists(tmp_path: Path) -> None:
         vg_db_path=vg_db,
     )
 
-    assert report["index_code"] == "QA_OK"
-    assert report["violet_for_selected_date"] is True
+    assert report["index_code"] == "QA_MATERIALIZE_MISSING"
 
 
 def test_write_pipeline_qa_log_persists_json(tmp_path: Path) -> None:

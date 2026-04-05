@@ -205,9 +205,24 @@ def initialize_vg_db(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (policy_id) REFERENCES transform_policies(policy_id)
         );
 
+        CREATE TABLE IF NOT EXISTS materialized_scores (
+            run_id INTEGER NOT NULL,
+            forecast_date TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            model TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            score_value REAL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (forecast_date, table_name, model, ticker),
+            FOREIGN KEY (run_id) REFERENCES materialization_runs(run_id) ON DELETE CASCADE,
+            CHECK(table_name IN ('violet', 'blue', 'green'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_rounds_round_id ON rounds(round_id);
         CREATE INDEX IF NOT EXISTS idx_violet_forecast ON violet_scores(forecast_date);
         CREATE INDEX IF NOT EXISTS idx_violet_model_ticker ON violet_scores(model, ticker, forecast_date);
+        CREATE INDEX IF NOT EXISTS idx_materialized_scores_ftm
+        ON materialized_scores(forecast_date, table_name, model, ticker);
         """
     )
     now = _now_ts()
@@ -782,9 +797,48 @@ def materialize_vbg_for_date(
                 run_ts,
             ),
         )
+
+        run_id_row = conn.execute("SELECT last_insert_rowid() AS run_id").fetchone()
+        if run_id_row is None:
+            raise RuntimeError("Failed to resolve materialization run_id")
+        run_id = int(run_id_row["run_id"])
+
+        conn.execute(
+            "DELETE FROM materialized_scores WHERE forecast_date = ?",
+            (date_norm,),
+        )
+
+        rows_to_write: List[Tuple[int, str, str, str, str, Optional[float], str]] = []
+        # Persistence policy: store only violet and green snapshots.
+        # Blue is derived on-demand from violet via active transform policy.
+        for table_name, table in (("violet", violet), ("green", green)):
+            for model in models:
+                for ticker in tickers:
+                    rows_to_write.append(
+                        (
+                            run_id,
+                            date_norm,
+                            table_name,
+                            model,
+                            ticker,
+                            table.get(model, {}).get(ticker),
+                            run_ts,
+                        )
+                    )
+
+        conn.executemany(
+            """
+            INSERT INTO materialized_scores(
+                run_id, forecast_date, table_name, model, ticker, score_value, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows_to_write,
+        )
+
         conn.commit()
 
         return {
+            "run_id": run_id,
             "forecast_date": date_norm,
             "policy_id": policy_id,
             "policy_name": policy_name_resolved,
@@ -805,6 +859,7 @@ def materialize_vbg_for_date(
             },
             "generated_at": run_ts,
             "real_data_start_date": real_data_start_date,
+            "materialized_rows_written": len(rows_to_write),
         }
     finally:
         conn.close()
