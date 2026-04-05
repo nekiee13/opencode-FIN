@@ -133,8 +133,11 @@ def test_materialize_uses_bootstrap_padding(tmp_path, monkeypatch) -> None:
         bootstrap_score=99.0,
     )
 
-    # Blue: 99.4 with floor map should become 99.0
-    assert out["blue"]["Torch"]["TNX"] == 99.0
+    # Blue: default policy is piecewise linear over value_assign anchors.
+    got_blue = out["blue"]["Torch"]["TNX"]
+    assert got_blue is not None
+    assert abs(float(got_blue) - 99.4040404040404) < 1e-9
+    assert out["policy_mode"] == "piecewise_linear"
 
     # Green uses one prior transformed value (95) + three bootstrap slots (99).
     expected_green = (95.0 + 99.0 + 99.0 + 99.0) / 4.0
@@ -145,6 +148,59 @@ def test_materialize_uses_bootstrap_padding(tmp_path, monkeypatch) -> None:
     meta = out["green_meta"]["Torch"]["TNX"]
     assert meta["real_rounds_used"] == 1
     assert meta["bootstrap_slots_used"] == 3
+
+
+def test_warmup_slots_follow_real_data_start_boundary(tmp_path, monkeypatch) -> None:
+    rounds_dir = tmp_path / "out" / "followup_ml" / "rounds"
+    scores_dir = tmp_path / "out" / "followup_ml" / "scores"
+    db_path = tmp_path / "out" / "i_calc" / "ML" / "ML_VG_tables.sqlite"
+
+    mapping_path = tmp_path / "config" / "followup_ml_value_assign.csv"
+    _write(mapping_path, "value,assign\n0,0\n90,90\n95,95\n99,99\n99.99,100\n")
+
+    monkeypatch.setenv("FIN_ML_VG_DB", str(db_path))
+    monkeypatch.setattr(paths, "OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR", rounds_dir)
+    monkeypatch.setattr(paths, "OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR", scores_dir)
+    monkeypatch.setattr(paths, "FOLLOWUP_ML_VALUE_ASSIGN_PATH", mapping_path)
+
+    _prepare_round(
+        rounds_dir=rounds_dir,
+        scores_dir=scores_dir,
+        round_id="25-0-01",
+        forecast_date="2025-07-29",
+        accuracy_torch_tnx=95.0,
+    )
+    _prepare_round(
+        rounds_dir=rounds_dir,
+        scores_dir=scores_dir,
+        round_id="25-0-02",
+        forecast_date="2025-08-05",
+        accuracy_torch_tnx=95.0,
+    )
+
+    vg_store.ingest_round_from_artifacts("25-0-01")
+    vg_store.ingest_round_from_artifacts("25-0-02")
+
+    out_jul = vg_store.materialize_vbg_for_date(
+        "2025-07-29",
+        memory_tail=4,
+        bootstrap_enabled=True,
+        bootstrap_score=99.0,
+    )
+    meta_jul = out_jul["green_meta"]["Torch"]["TNX"]
+    assert meta_jul["real_rounds_used"] == 0
+    assert meta_jul["bootstrap_slots_used"] == 4
+
+    out_aug = vg_store.materialize_vbg_for_date(
+        "2025-08-05",
+        memory_tail=4,
+        bootstrap_enabled=True,
+        bootstrap_score=99.0,
+    )
+    meta_aug = out_aug["green_meta"]["Torch"]["TNX"]
+    assert meta_aug["real_rounds_used"] == 1
+    assert meta_aug["bootstrap_slots_used"] == 3
+    assert out_aug["real_data_start_date"] == "2025-07-29"
 
 
 def test_piecewise_linear_policy_materialization(tmp_path, monkeypatch) -> None:

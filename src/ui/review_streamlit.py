@@ -25,7 +25,11 @@ from src.ui.services.run_registry import (
     list_runs,
     load_run,
 )
-from src.ui.services.vg_loader import materialize_for_selected_date, matrix_to_rows
+from src.ui.services.vg_loader import (
+    green_meta_to_rows,
+    materialize_for_selected_date,
+    matrix_to_rows,
+)
 
 
 def _streamlit() -> Any:
@@ -237,7 +241,11 @@ def run_review_console(db_path: Path | None = None) -> None:
         st.dataframe(comparison_rows, use_container_width=True)
 
     with tab_vg:
-        st.subheader("Blue and Green ML Tables")
+        st.subheader("Blue / Green / Violet ML Tables")
+        st.caption(
+            "Violet = true accuracy. Blue = transformed Violet (continuous piecewise interpolation). "
+            "Green = moving average with dummy warm-up slots."
+        )
         forecast_date_default = ""
         if selected_date:
             try:
@@ -253,11 +261,21 @@ def run_review_console(db_path: Path | None = None) -> None:
             key="vg_forecast_date",
         )
 
+        warmup_depth = st.selectbox(
+            "Warm-up Depth (dummy slot window)",
+            options=[3, 4, 5],
+            index=1,
+            key="vg_warmup_depth",
+        )
+
         if st.button("Load Blue/Green", key="load_blue_green"):
             try:
                 result = materialize_for_selected_date(
                     selected_date=selected_date,
                     forecast_date=forecast_date or None,
+                    memory_tail=int(warmup_depth),
+                    bootstrap_enabled=True,
+                    policy_name="value_assign_v1",
                 )
                 st.session_state["vg_result"] = result
                 st.session_state["vg_error"] = ""
@@ -271,10 +289,19 @@ def run_review_console(db_path: Path | None = None) -> None:
         vg_result = st.session_state.get("vg_result")
         if isinstance(vg_result, dict):
             st.caption(
-                f"forecast_date={vg_result.get('forecast_date')} | policy={vg_result.get('policy_name')}"
+                f"forecast_date={vg_result.get('forecast_date')} | policy={vg_result.get('policy_name')} "
+                f"({vg_result.get('policy_mode')}) | memory_tail={vg_result.get('memory_tail')}"
+            )
+            st.caption(
+                f"real_data_start={vg_result.get('real_data_start_date', '2025-07-29')}"
             )
             models = [str(x) for x in vg_result.get("models", [])]
             tickers = [str(x) for x in vg_result.get("tickers", [])]
+            violet_rows = matrix_to_rows(
+                matrix=dict(vg_result.get("violet", {})),
+                models=models,
+                tickers=tickers,
+            )
             blue_rows = matrix_to_rows(
                 matrix=dict(vg_result.get("blue", {})),
                 models=models,
@@ -285,10 +312,19 @@ def run_review_console(db_path: Path | None = None) -> None:
                 models=models,
                 tickers=tickers,
             )
+            green_meta_rows = green_meta_to_rows(
+                green_meta=dict(vg_result.get("green_meta", {})),
+                models=models,
+                tickers=tickers,
+            )
+            st.markdown("**Violet Table (True Accuracy)**")
+            st.dataframe(violet_rows, use_container_width=True)
             st.markdown("**Blue Table**")
             st.dataframe(blue_rows, use_container_width=True)
             st.markdown("**Green Table**")
             st.dataframe(green_rows, use_container_width=True)
+            st.markdown("**Green Provenance (Real vs Dummy Slots)**")
+            st.dataframe(green_meta_rows, use_container_width=True)
 
     with tab_ann:
         st.subheader("ANN Training / Store")

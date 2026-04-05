@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.ui.services.dashboard_loader import (
+    build_marker_comparison_rows,
     load_marker_values,
     load_model_table,
 )
@@ -35,8 +36,10 @@ def test_load_model_table_uses_round_asof_date(tmp_path: Path) -> None:
     assert table.source_round_id == "26-1-99"
     assert len(table.rows) == 2
     tnx = next(row for row in table.rows if row["Ticker"] == "TNX")
-    assert "4.0900" in str(tnx["Torch"])
-    assert "4.21" in str(tnx["ARIMAX"])
+    assert str(tnx["Torch"]) == "3.990-4.150 ~4.090"
+    assert str(tnx["ARIMAX"]) == "4.210-4.270 ~4.240"
+    aapl = next(row for row in table.rows if row["Ticker"] == "AAPL")
+    assert str(aapl["Torch"]) == "249.00-253.00 ~253.70"
 
 
 def test_load_marker_values_for_selected_date(tmp_path: Path) -> None:
@@ -57,3 +60,53 @@ def test_load_marker_values_for_selected_date(tmp_path: Path) -> None:
     assert "oraclum" in out
     assert out["oraclum"]["TNX"] == 4.289
     assert out["oraclum"]["AAPL"] == 253.76
+
+
+def test_build_marker_comparison_rows_applies_ticker_formats() -> None:
+    model_rows = [
+        {"Ticker": "TNX", "Torch": "4.392"},
+        {"Ticker": "DJI", "Torch": "46124.06"},
+        {"Ticker": "SPX", "Torch": "6537.8"},
+        {"Ticker": "VIX", "Torch": "25.5"},
+        {"Ticker": "QQQ", "Torch": "581.8"},
+        {"Ticker": "AAPL", "Torch": "251"},
+    ]
+    marker_values: dict[str, dict[str, float | None]] = {
+        "oraclum": {
+            "TNX": 4.289,
+            "DJI": 46339.26,
+            "SPX": 6528.53,
+            "VIX": 25.25,
+            "QQQ": 577.22,
+            "AAPL": 253.76,
+        },
+        "rd": {
+            "TNX": 4.33,
+            "DJI": 45703.0,
+            "SPX": 6537.0,
+            "VIX": 25.55,
+            "QQQ": 581.8,
+            "AAPL": 251.0,
+        },
+        "85220": {
+            "TNX": 4.32,
+            "DJI": 45632.0,
+            "SPX": 6525.0,
+            "VIX": 25.15,
+            "QQQ": 580.6,
+            "AAPL": 250.5,
+        },
+    }
+
+    rows = build_marker_comparison_rows(
+        model_rows=model_rows,
+        marker_values=marker_values,
+    )
+
+    by_ticker = {row["Ticker"]: row for row in rows}
+    assert by_ticker["TNX"]["ML"] == "4.392"
+    assert by_ticker["DJI"]["ML"] == "46124.1"
+    assert by_ticker["SPX"]["ML"] == "6537.8"
+    assert by_ticker["VIX"]["ML"] == "25.50"
+    assert by_ticker["QQQ"]["ML"] == "581.80"
+    assert by_ticker["AAPL"]["ML"] == "251.00"

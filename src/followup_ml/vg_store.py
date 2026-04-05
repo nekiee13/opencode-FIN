@@ -84,22 +84,25 @@ def _most_common(values: Iterable[str]) -> str:
     return counts.most_common(1)[0][0]
 
 
-def _load_vbg_defaults() -> Tuple[int, bool, float]:
+def _load_vbg_defaults() -> Tuple[int, bool, float, str]:
     tail = 4
     bootstrap_enabled = True
     bootstrap_score = 99.0
+    real_data_start = "2025-07-29"
     try:
         import Constants as C  # type: ignore
 
         tail = int(getattr(C, "VBG_MEMORY_TAIL", tail))
         bootstrap_enabled = bool(getattr(C, "VBG_BOOTSTRAP_ENABLED", bootstrap_enabled))
         bootstrap_score = float(getattr(C, "VBG_BOOTSTRAP_SCORE", bootstrap_score))
+        real_data_start = str(getattr(C, "VBG_REAL_DATA_START_DATE", real_data_start))
     except Exception:
         pass
 
     if tail <= 0:
         tail = 4
-    return tail, bootstrap_enabled, bootstrap_score
+    real_data_start_norm = _to_date_or_none(real_data_start) or "2025-07-29"
+    return tail, bootstrap_enabled, bootstrap_score, real_data_start_norm
 
 
 def resolve_vg_db_path(db_path: Optional[Path] = None) -> Path:
@@ -334,7 +337,7 @@ def ensure_default_transform_policy(conn: sqlite3.Connection) -> int:
     return upsert_transform_policy(
         conn,
         policy_name=DEFAULT_POLICY_NAME,
-        mode="step_floor",
+        mode="piecewise_linear",
         points=points,
         set_active=True,
     )
@@ -634,9 +637,12 @@ def materialize_vbg_for_date(
     if not date_norm:
         raise ValueError(f"Invalid forecast_date: {forecast_date!r}")
 
-    tail_default, bootstrap_enabled_default, bootstrap_score_default = (
-        _load_vbg_defaults()
-    )
+    (
+        tail_default,
+        bootstrap_enabled_default,
+        bootstrap_score_default,
+        real_data_start_date,
+    ) = _load_vbg_defaults()
     tail = int(memory_tail) if memory_tail is not None else int(tail_default)
     if tail <= 0:
         tail = tail_default
@@ -691,10 +697,10 @@ def materialize_vbg_for_date(
             """
             SELECT forecast_date, model, ticker, accuracy_pct, score_status
             FROM violet_scores
-            WHERE forecast_date < ?
+            WHERE forecast_date < ? AND forecast_date >= ?
             ORDER BY forecast_date DESC
             """,
-            (date_norm,),
+            (date_norm, real_data_start_date),
         ).fetchall()
 
         hist_scores: Dict[Tuple[str, str], List[float]] = defaultdict(list)
@@ -798,6 +804,7 @@ def materialize_vbg_for_date(
                 "green": _row_avr(green),
             },
             "generated_at": run_ts,
+            "real_data_start_date": real_data_start_date,
         }
     finally:
         conn.close()

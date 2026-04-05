@@ -4,7 +4,7 @@ import csv
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from src.config import paths
 from src.ui.services.pipeline_runner import TICKER_ORDER
@@ -20,6 +20,15 @@ _MODEL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("ETS", "ETS"),
     ("DYNAMIX", "Dyna"),
 )
+
+_TICKER_VALUE_FORMAT: dict[str, str] = {
+    "TNX": "0.3f",
+    "DJI": "07.1f",
+    "SPX": "06.1f",
+    "VIX": "05.2f",
+    "QQQ": "06.2f",
+    "AAPL": "06.2f",
+}
 
 
 @dataclass(frozen=True)
@@ -58,15 +67,40 @@ def _previous_business_day(d: date) -> date:
     return cur
 
 
-def _format_model_value(row: dict[str, str]) -> str | None:
+def _to_float(value: Any) -> float | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _format_ticker_numeric(ticker: str, value: float | None) -> str | None:
+    if value is None:
+        return None
+    fmt = _TICKER_VALUE_FORMAT.get(str(ticker).upper())
+    if not fmt:
+        return str(value)
+    return format(float(value), fmt)
+
+
+def _format_model_value(row: dict[str, str], *, ticker: str) -> str | None:
     pred = str(row.get("pred_value", "") or "").strip()
     low = str(row.get("lower_ci", "") or "").strip()
     high = str(row.get("upper_ci", "") or "").strip()
-    if not pred:
+    pred_num = _to_float(pred)
+    if pred_num is None:
         return None
-    if low and high:
-        return f"{low}-{high} ~{pred}"
-    return pred
+    pred_fmt = _format_ticker_numeric(ticker, pred_num)
+    low_num = _to_float(low)
+    high_num = _to_float(high)
+    if low_num is not None and high_num is not None:
+        low_fmt = _format_ticker_numeric(ticker, low_num)
+        high_fmt = _format_ticker_numeric(ticker, high_num)
+        return f"{low_fmt}-{high_fmt} ~{pred_fmt}"
+    return pred_fmt
 
 
 def _read_rows(path: Path) -> list[dict[str, str]]:
@@ -121,11 +155,11 @@ def _choose_round(
 
         prior = [x for x in candidates if x[0] is not None and x[0] <= selected]
         if prior:
-            prior.sort(key=lambda x: x[0])
+            prior.sort(key=lambda x: x[0] if x[0] is not None else date.min)
             asof, round_id, rows, _ = prior[-1]
             return round_id, rows, asof
 
-    candidates.sort(key=lambda x: x[0] or date.min)
+    candidates.sort(key=lambda x: x[0] if x[0] is not None else date.min)
     asof, round_id, rows, _ = candidates[-1]
     return round_id, rows, asof
 
@@ -160,7 +194,9 @@ def load_model_table(
         out: dict[str, Any] = {"Ticker": ticker}
         has_any = False
         for source_name, display_name in _MODEL_COLUMNS:
-            value = _format_model_value(best.get((ticker, source_name), {}))
+            value = _format_model_value(
+                best.get((ticker, source_name), {}), ticker=ticker
+            )
             out[display_name] = value
             has_any = has_any or (value is not None)
         if has_any:
@@ -187,7 +223,10 @@ def load_marker_values(
     }
 
     for marker_name, marker_file in marker_files.items():
-        values = {ticker: None for ticker in TICKER_ORDER}
+        values = cast(
+            dict[str, float | None],
+            {ticker: None for ticker in TICKER_ORDER},
+        )
         if not marker_file.exists() or date_key is None:
             out[marker_name] = values
             continue
@@ -249,10 +288,10 @@ def build_marker_comparison_rows(
         out.append(
             {
                 "Ticker": ticker,
-                "ML": ml_value,
-                "Oraclum": oraclum,
-                "RD": rd_value,
-                "85220": v85220,
+                "ML": _format_ticker_numeric(ticker, ml_value),
+                "Oraclum": _format_ticker_numeric(ticker, oraclum),
+                "RD": _format_ticker_numeric(ticker, rd_value),
+                "85220": _format_ticker_numeric(ticker, v85220),
                 "Delta_Oraclum_%": pct_delta(oraclum),
                 "Delta_RD_%": pct_delta(rd_value),
                 "Delta_85220_%": pct_delta(v85220),

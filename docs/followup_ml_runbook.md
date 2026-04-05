@@ -116,6 +116,20 @@ Optional controls:
 - `--bootstrap-enabled` / `--bootstrap-disabled`
 - `--bootstrap-score <float>`
 
+Current baseline policy:
+
+- **Blue transform default**: `piecewise_linear` interpolation over `config/followup_ml_value_assign.csv` anchor points.
+- **Real data start boundary**: `2025-07-29`.
+- **Green warm-up**: uses `memory_tail` historical transformed scores; if history is shorter than tail, remaining slots are filled by bootstrap score.
+
+Warm-up examples with `memory_tail=4`:
+
+- `2025-07-29`: real slots `0`, bootstrap slots `4`
+- `2025-08-05`: real slots `1`, bootstrap slots `3`
+- `2025-08-12`: real slots `2`, bootstrap slots `2`
+
+For Streamlit operations, supported warm-up depth options are `3`, `4`, and `5`.
+
 ## LLM VBG and Markers Databases
 
 Canonical sqlite paths:
