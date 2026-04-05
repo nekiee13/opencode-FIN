@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from src.ui.services.pipeline_qa import evaluate_pipeline_state, write_pipeline_qa_log
+from src.ui.services.run_registry import append_stage_result, create_run, finalize_run
+
+
+def _seed_violet_score(db_path: Path, forecast_date: str) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS violet_scores (
+                forecast_date TEXT,
+                model TEXT,
+                ticker TEXT,
+                accuracy_pct REAL,
+                score_status TEXT,
+                source_round_id TEXT,
+                source_partial_scores_path TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO violet_scores(
+                forecast_date, model, ticker, accuracy_pct, score_status,
+                source_round_id, source_partial_scores_path, created_at, updated_at
+            ) VALUES (?, 'Torch', 'TNX', 95.0, 'scored', 'r1', 'x', 't', 't')
+            """,
+            (forecast_date,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_successful_all_ticker_run(runs_root: Path, selected_date: str) -> str:
+    run = create_run(
+        selected_date=selected_date,
+        selected_ticker="ALL",
+        total_stages=18,
+        root_dir=runs_root,
+    )
+    idx = 1
+    for ticker in ("TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"):
+        for stage_name in ("svl_export", "tda_export", "make_fh3_table"):
+            append_stage_result(
+                run_id=str(run["run_id"]),
+                stage_index=idx,
+                stage_name=stage_name,
+                category="core",
+                ticker=ticker,
+                command=["python", stage_name],
+                returncode=0,
+                stdout="ok",
+                stderr="",
+                duration_seconds=0.1,
+                root_dir=runs_root,
+            )
+            idx += 1
+    finalize_run(str(run["run_id"]), root_dir=runs_root)
+    return str(run["run_id"])
+
+
+def test_evaluate_pipeline_state_flags_violet_missing(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    vg_db = tmp_path / "ML_VG_tables.sqlite"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=vg_db,
+    )
+
+    assert report["index_code"] == "QA_VIOLET_MISSING"
+    assert report["latest_run_status"] == "success"
+    assert report["has_violet_rows"] is False
+
+
+def test_evaluate_pipeline_state_ok_when_violet_exists(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    vg_db = tmp_path / "ML_VG_tables.sqlite"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+    _seed_violet_score(vg_db, "2025-07-29")
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=vg_db,
+    )
+
+    assert report["index_code"] == "QA_OK"
+    assert report["violet_for_selected_date"] is True
+
+
+def test_write_pipeline_qa_log_persists_json(tmp_path: Path) -> None:
+    report = {
+        "selected_date": "2025-07-29",
+        "index_code": "QA_VIOLET_MISSING",
+        "latest_run_id": "RUN-TEST-001",
+    }
+    log_path = write_pipeline_qa_log(
+        report=report,
+        root_dir=tmp_path,
+    )
+    assert log_path.exists()
+    payload = json.loads(log_path.read_text(encoding="utf-8"))
+    assert payload["index_code"] == "QA_VIOLET_MISSING"
+    assert payload["latest_run_id"] == "RUN-TEST-001"

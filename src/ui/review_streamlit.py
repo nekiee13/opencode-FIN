@@ -17,6 +17,7 @@ from src.ui.services.pipeline_runner import (
     build_pipeline_commands,
     run_command,
 )
+from src.ui.services.pipeline_qa import evaluate_pipeline_state, write_pipeline_qa_log
 from src.ui.services.round_status import compute_round_status
 from src.ui.services.run_registry import (
     append_stage_result,
@@ -222,6 +223,18 @@ def run_review_console(db_path: Path | None = None) -> None:
                 ],
                 use_container_width=True,
             )
+
+        st.subheader("Pipeline QA")
+        qa_report = evaluate_pipeline_state(selected_date=selected_date)
+        st.code(json.dumps(qa_report, indent=2), language="json")
+
+        if st.button("Write QA Log", key="write_pipeline_qa_log"):
+            qa_path = write_pipeline_qa_log(report=qa_report)
+            st.session_state["qa_log_path"] = str(qa_path)
+
+        qa_log_path = str(st.session_state.get("qa_log_path") or "").strip()
+        if qa_log_path:
+            st.caption(f"QA log: {qa_log_path}")
 
     with tab_dashboard:
         st.subheader("ML Dashboard")
