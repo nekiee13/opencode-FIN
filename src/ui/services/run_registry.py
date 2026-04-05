@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,7 @@ def create_run(
         "selected_date": str(selected_date),
         "selected_ticker": str(selected_ticker),
         "created_at": _now_iso(),
+        "created_ns": int(time.time_ns()),
         "ended_at": None,
         "status": "running",
         "total_stages": int(total_stages),
@@ -187,7 +189,13 @@ def list_runs(
             continue
         out.append(payload)
 
-    out.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+    out.sort(
+        key=lambda item: (
+            int(item.get("created_ns") or 0),
+            str(item.get("created_at") or ""),
+        ),
+        reverse=True,
+    )
     return out[: int(limit)]
 
 

@@ -13,11 +13,29 @@ CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export", "make_fh3_table")
 _PREFIX_MAP: dict[str, str] = {"SPX": "GSPC"}
 
 
-def _parse_iso_date(raw: str) -> datetime | None:
-    try:
-        return datetime.strptime(str(raw).strip(), "%Y-%m-%d")
-    except ValueError:
+def _parse_date(raw: str) -> datetime | None:
+    value = str(raw or "").strip().strip('"')
+    if not value:
         return None
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%b %d, %Y",
+        "%B %d, %Y",
+    ):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _date_key(row: dict[str, str]) -> str | None:
+    for key in row.keys():
+        normalized = str(key or "").strip().lstrip("\ufeff").lower()
+        if normalized == "date":
+            return key
+    return None
 
 
 def _resolve_ticker_csv(raw_tickers_dir: Path, ticker: str) -> Path | None:
@@ -32,13 +50,14 @@ def _resolve_ticker_csv(raw_tickers_dir: Path, ticker: str) -> Path | None:
 
 
 def _has_data_by_date(csv_path: Path, selected_date: str) -> bool:
-    cutoff = _parse_iso_date(selected_date)
+    cutoff = _parse_date(selected_date)
     if cutoff is None:
         return False
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
-            d = _parse_iso_date(str(row.get("Date", "") or ""))
+            key = _date_key(row)
+            d = _parse_date(str(row.get(key, "") if key else ""))
             if d is not None and d <= cutoff:
                 return True
     return False
@@ -89,6 +108,7 @@ def compute_round_status(
         return {
             "status": "VIOLET",
             "reason": "ML calculation error detected for selected round.",
+            "index_code": "IDX_CALC_ERROR",
             "log_id": log_id,
             "missing_tickers": missing_tickers,
         }
@@ -97,6 +117,7 @@ def compute_round_status(
         return {
             "status": "RED",
             "reason": "ML data missing for one or more required tickers.",
+            "index_code": "IDX_DATA_MISSING",
             "log_id": None,
             "missing_tickers": missing_tickers,
         }
@@ -106,13 +127,24 @@ def compute_round_status(
             return {
                 "status": "BLUE",
                 "reason": "ML data available and calculations completed.",
+                "index_code": "IDX_CALC_COMPLETE",
                 "log_id": None,
                 "missing_tickers": [],
             }
 
+    if latest is not None and str(latest.get("status") or "") == "success":
+        return {
+            "status": "GREEN",
+            "reason": "ML input data available; calculations are incomplete for selected round.",
+            "index_code": "IDX_CALC_INCOMPLETE",
+            "log_id": None,
+            "missing_tickers": [],
+        }
+
     return {
         "status": "GREEN",
-        "reason": "ML input data available for all required tickers.",
+        "reason": "ML input data available; calculations not yet executed for selected round.",
+        "index_code": "IDX_CALC_PENDING",
         "log_id": None,
         "missing_tickers": [],
     }

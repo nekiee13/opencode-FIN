@@ -12,6 +12,8 @@ def classify_stage_error(*, returncode: int, stderr: str, stdout: str) -> str:
         return "ARGUMENT_ERROR"
     if "modulenotfounderror" in text or "missing python dependency" in text:
         return "DEPENDENCY_ERROR"
+    if "unicodeencodeerror" in text or "codec can't encode character" in text:
+        return "OUTPUT_ENCODING"
     if "filenotfounderror" in text:
         return "FILE_NOT_FOUND"
     return "RUNTIME_ERROR"

@@ -24,3 +24,12 @@ def test_classify_stage_error_argument_error() -> None:
 def test_classify_stage_error_ok() -> None:
     code = classify_stage_error(returncode=0, stderr="", stdout="done")
     assert code == "NONE"
+
+
+def test_classify_stage_error_output_encoding() -> None:
+    code = classify_stage_error(
+        returncode=1,
+        stderr="UnicodeEncodeError: 'charmap' codec can't encode character \\u2192",
+        stdout="",
+    )
+    assert code == "OUTPUT_ENCODING"

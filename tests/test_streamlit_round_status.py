@@ -35,6 +35,7 @@ def test_compute_round_status_red_when_data_missing(tmp_path: Path) -> None:
         runs_root=tmp_path / "runs",
     )
     assert out["status"] == "RED"
+    assert out["index_code"] == "IDX_DATA_MISSING"
 
 
 def test_compute_round_status_green_when_data_present_without_run(
@@ -49,6 +50,7 @@ def test_compute_round_status_green_when_data_present_without_run(
         runs_root=tmp_path / "runs",
     )
     assert out["status"] == "GREEN"
+    assert out["index_code"] == "IDX_CALC_PENDING"
 
 
 def test_compute_round_status_blue_when_successful_run_exists(tmp_path: Path) -> None:
@@ -87,6 +89,7 @@ def test_compute_round_status_blue_when_successful_run_exists(tmp_path: Path) ->
         runs_root=runs_root,
     )
     assert out["status"] == "BLUE"
+    assert out["index_code"] == "IDX_CALC_COMPLETE"
 
 
 def test_compute_round_status_violet_when_failed_run_exists(tmp_path: Path) -> None:
@@ -121,4 +124,22 @@ def test_compute_round_status_violet_when_failed_run_exists(tmp_path: Path) -> N
         runs_root=runs_root,
     )
     assert out["status"] == "VIOLET"
+    assert out["index_code"] == "IDX_CALC_ERROR"
     assert out["log_id"] == stage["log_id"]
+
+
+def test_compute_round_status_accepts_month_name_dates(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "tickers"
+    for ticker in ("TNX", "DJI", "GSPC", "VIX", "QQQ", "AAPL"):
+        _write_ticker_csv(
+            raw_dir / f"{ticker}_data.csv",
+            [("Mar 31, 2026", 1.0), ("Mar 24, 2026", 0.9)],
+        )
+
+    out = compute_round_status(
+        selected_date="2026-03-31",
+        raw_tickers_dir=raw_dir,
+        runs_root=tmp_path / "runs",
+    )
+    assert out["status"] == "GREEN"
+    assert out["missing_tickers"] == []

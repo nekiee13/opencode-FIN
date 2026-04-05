@@ -50,6 +50,7 @@ def _status_color(status: str) -> str:
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
     status = str(status_payload.get("status") or "UNKNOWN")
     reason = str(status_payload.get("reason") or "")
+    index_code = str(status_payload.get("index_code") or "").strip()
     color = _status_color(status)
     st.markdown(
         f"<div style='padding:0.5rem 0.75rem;border-radius:8px;border:1px solid {color};'>"
@@ -58,6 +59,8 @@ def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
     )
     if reason:
         st.caption(reason)
+    if index_code:
+        st.caption(f"Index: {index_code}")
     missing = list(status_payload.get("missing_tickers") or [])
     if missing:
         st.caption("Missing tickers: " + ", ".join(missing))

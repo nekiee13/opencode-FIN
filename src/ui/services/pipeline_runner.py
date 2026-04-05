@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -142,11 +143,15 @@ def build_pipeline_commands(
 
 def run_command(spec: CommandSpec) -> CommandResult:
     start = time.monotonic()
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.setdefault("PYTHONUTF8", "1")
     proc = subprocess.run(
         spec.command,
         cwd=str(spec.cwd),
         text=True,
         capture_output=True,
+        env=env,
         check=False,
     )
     elapsed = time.monotonic() - start
