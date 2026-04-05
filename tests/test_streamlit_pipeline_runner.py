@@ -32,9 +32,14 @@ def test_build_pipeline_commands_all_tickers_in_sequence() -> None:
         selected_ticker="ALL",
     )
     core = [x for x in commands if x.category == "core"]
-    assert len(core) == len(TICKER_ORDER) * 3
+    assert len(core) == (len(TICKER_ORDER) * 2) + 1
     assert core[0].ticker == TICKER_ORDER[0]
-    assert core[-1].ticker == TICKER_ORDER[-1]
+    fh3 = [x for x in core if x.stage == "make_fh3_table"]
+    assert len(fh3) == 1
+    assert fh3[0].ticker == "ALL"
+    assert fh3[0].command.count("--tickers") == 1
+    for ticker in TICKER_ORDER:
+        assert ticker in fh3[0].command
 
 
 def test_run_command_sets_utf8_pythonioencoding(tmp_path: Path) -> None:

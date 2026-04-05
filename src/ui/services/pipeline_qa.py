@@ -10,9 +10,13 @@ from typing import Any
 from src.config import paths
 from src.ui.services.pipeline_runner import TICKER_ORDER
 from src.ui.services.run_registry import latest_run_for_date
-from src.ui.services.vg_loader import list_violet_forecast_dates, suggest_forecast_date
+from src.ui.services.vg_loader import (
+    list_violet_forecast_dates,
+    next_business_day,
+    suggest_forecast_date,
+)
 
-_CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export", "make_fh3_table")
+_PER_TICKER_CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export")
 
 
 def _now_iso() -> str:
@@ -31,11 +35,38 @@ def _core_success_for_all_tickers(run_payload: dict[str, Any]) -> bool:
         for item in stages
         if str(item.get("status") or "") == "success"
     }
+
+    has_global_fh3 = False
+    for item in stages:
+        if str(item.get("status") or "") != "success":
+            continue
+        if str(item.get("stage") or "") != "make_fh3_table":
+            continue
+        ticker_value = str(item.get("ticker") or "").strip().upper()
+        if ticker_value in {"", "ALL", "ALL_TICKERS"}:
+            has_global_fh3 = True
+            break
+
     for ticker in TICKER_ORDER:
-        for stage_name in _CORE_STAGES:
+        for stage_name in _PER_TICKER_CORE_STAGES:
             if (ticker, stage_name) not in success_set:
                 return False
+    if has_global_fh3:
+        return True
+    for ticker in TICKER_ORDER:
+        if (ticker, "make_fh3_table") not in success_set:
+            return False
     return True
+
+
+def _target_forecast_date(selected_date: str) -> str:
+    raw = str(selected_date or "").strip()
+    if not raw:
+        return ""
+    try:
+        return next_business_day(raw)
+    except ValueError:
+        return raw
 
 
 def _list_partial_score_forecast_dates(scores_dir: Path) -> list[str]:
@@ -58,7 +89,7 @@ def _list_partial_score_forecast_dates(scores_dir: Path) -> list[str]:
 
 
 def _materialized_counts_for_date(
-    vg_db_path: Path | None, selected_date: str
+    vg_db_path: Path | None, forecast_date: str
 ) -> dict[str, int]:
     use_path = (vg_db_path or paths.OUT_I_CALC_ML_VG_DB_PATH).resolve()
     if not use_path.exists():
@@ -73,7 +104,7 @@ def _materialized_counts_for_date(
             WHERE forecast_date = ?
             GROUP BY table_name
             """,
-            (str(selected_date),),
+            (str(forecast_date),),
         ).fetchall()
     except sqlite3.Error:
         return {}
@@ -89,19 +120,40 @@ def evaluate_pipeline_state(
     runs_root: Path | None = None,
     vg_db_path: Path | None = None,
     scores_dir: Path | None = None,
+    fh3_dir: Path | None = None,
 ) -> dict[str, Any]:
     latest = latest_run_for_date(selected_date, root_dir=runs_root)
+    target_forecast_date = _target_forecast_date(selected_date)
     violet_dates = list_violet_forecast_dates(vg_db_path)
     use_scores_dir = (scores_dir or paths.OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR).resolve()
+    use_fh3_dir = (fh3_dir or paths.OUT_I_CALC_FH3_DIR).resolve()
     partial_score_dates = _list_partial_score_forecast_dates(use_scores_dir)
     suggested_violet = suggest_forecast_date(
-        selected_date=selected_date,
+        selected_date=target_forecast_date,
         available_dates=violet_dates,
     )
-    materialized_counts = _materialized_counts_for_date(vg_db_path, selected_date)
+    materialized_counts = _materialized_counts_for_date(
+        vg_db_path, target_forecast_date
+    )
+
+    fh3_tag = str(target_forecast_date).replace("-", "")
+    fh3_path = use_fh3_dir / f"FH3_TABLE_FULL_{fh3_tag}.csv"
+    fh3_tickers: set[str] = set()
+    if fh3_path.exists():
+        try:
+            with fh3_path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    ticker = str(row.get("Ticker") or "").strip().upper()
+                    if ticker:
+                        fh3_tickers.add(ticker)
+        except OSError:
+            fh3_tickers = set()
+    missing_fh3_tickers = sorted(set(TICKER_ORDER) - fh3_tickers)
 
     report: dict[str, Any] = {
         "selected_date": str(selected_date),
+        "target_forecast_date": str(target_forecast_date),
         "generated_at": _now_iso(),
         "latest_run_id": str(latest.get("run_id")) if latest else None,
         "latest_run_status": str(latest.get("status")) if latest else None,
@@ -112,14 +164,26 @@ def evaluate_pipeline_state(
         "has_violet_rows": bool(violet_dates),
         "violet_dates_count": int(len(violet_dates)),
         "violet_for_selected_date": str(selected_date) in set(violet_dates),
+        "violet_for_target_forecast_date": str(target_forecast_date)
+        in set(violet_dates),
         "suggested_violet_date": suggested_violet,
         "partial_scores_dir": str(use_scores_dir),
         "partial_scores_dates_count": int(len(partial_score_dates)),
         "partial_scores_has_selected_date": str(selected_date)
         in set(partial_score_dates),
+        "partial_scores_has_target_forecast_date": str(target_forecast_date)
+        in set(partial_score_dates),
         "partial_scores_sample_dates": partial_score_dates[-10:],
+        "fh3_dir": str(use_fh3_dir),
+        "fh3_expected_path": str(fh3_path),
+        "fh3_exists": bool(fh3_path.exists()),
+        "fh3_tickers": sorted(fh3_tickers),
+        "fh3_ticker_count": int(len(fh3_tickers)),
+        "fh3_has_all_tickers": len(missing_fh3_tickers) == 0,
+        "fh3_missing_tickers": missing_fh3_tickers,
         "materialized_counts": materialized_counts,
         "materialized_has_selected_date": bool(materialized_counts),
+        "materialized_has_target_forecast_date": bool(materialized_counts),
         "index_code": "QA_UNKNOWN",
         "summary": "",
     }
@@ -141,30 +205,46 @@ def evaluate_pipeline_state(
         report["summary"] = "Core ticker stages are incomplete for selected date."
         return report
 
+    if not bool(report["fh3_exists"]):
+        report["index_code"] = "QA_FH3_MISSING"
+        report["summary"] = (
+            "FH3 table artifact is missing for target forecast date. "
+            "Run make_fh3_table for all tickers first."
+        )
+        return report
+
+    if not bool(report["fh3_has_all_tickers"]):
+        report["index_code"] = "QA_FH3_INCOMPLETE"
+        report["summary"] = (
+            "FH3 table exists but does not include all required tickers. "
+            "Rebuild FH3 using the full ticker set."
+        )
+        return report
+
     if not bool(report["has_violet_rows"]):
-        if bool(report["partial_scores_has_selected_date"]):
+        if bool(report["partial_scores_has_target_forecast_date"]):
             report["index_code"] = "QA_VG_INGEST_MISSING"
             report["summary"] = (
-                "Partial scores exist for selected date, but ML_VG Violet ingestion was not executed. "
+                "Partial scores exist for target forecast date, but ML_VG Violet ingestion was not executed. "
                 "Run followup_ml_vg ingest-round for the related round_id."
             )
         else:
             report["index_code"] = "QA_PARTIAL_SCORES_MISSING"
             report["summary"] = (
-                "No partial score artifacts found for selected date. "
+                "No partial score artifacts found for target forecast date. "
                 "Run followup_ml finalize flow first, then ingest into ML_VG."
             )
         return report
 
-    if not bool(report["violet_for_selected_date"]):
+    if not bool(report["violet_for_target_forecast_date"]):
         report["index_code"] = "QA_VIOLET_DATE_MISMATCH"
-        report["summary"] = "Violet scores exist, but selected date is missing."
+        report["summary"] = "Violet scores exist, but target forecast date is missing."
         return report
 
-    if not bool(report["materialized_has_selected_date"]):
+    if not bool(report["materialized_has_target_forecast_date"]):
         report["index_code"] = "QA_MATERIALIZE_MISSING"
         report["summary"] = (
-            "Violet rows exist, but no materialized blue/green/violet snapshot exists for selected date. "
+            "Violet rows exist, but no materialized blue/green/violet snapshot exists for target forecast date. "
             "Run Blue/Green materialization."
         )
         return report

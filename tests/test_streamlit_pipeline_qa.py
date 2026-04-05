@@ -121,18 +121,42 @@ def _seed_partial_scores_for_date(scores_dir: Path, selected_date: str) -> None:
     )
 
 
+def _seed_fh3_full_table(
+    fh3_dir: Path,
+    forecast_date: str,
+    tickers: tuple[str, ...] = ("TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"),
+) -> None:
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    tag = forecast_date.replace("-", "")
+    path = fh3_dir / f"FH3_TABLE_FULL_{tag}.csv"
+    lines = [
+        "Ticker,FilePrefix,Last_Close_ASOF,Model_Used,Col_Used,FH_Date1,FH_Day1,FH_Date2,FH_Day2,FH_Date3,FH_Day3,Run_Mode,AsOf_Cutoff"
+    ]
+    for ticker in tickers:
+        prefix = "GSPC" if ticker == "SPX" else ticker
+        lines.append(
+            f"{ticker},{prefix},1.0,DYNAMIX,DYNAMIX_Pred,{forecast_date},1.1,{forecast_date},1.2,{forecast_date},1.3,replay,2025-07-29"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def test_evaluate_pipeline_state_flags_violet_missing(tmp_path: Path) -> None:
     runs_root = tmp_path / "runs"
     vg_db = tmp_path / "ML_VG_tables.sqlite"
+    fh3_dir = tmp_path / "fh3"
     _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+    _seed_fh3_full_table(fh3_dir, "2025-07-30")
 
     report = evaluate_pipeline_state(
         selected_date="2025-07-29",
         runs_root=runs_root,
         vg_db_path=vg_db,
+        fh3_dir=fh3_dir,
     )
 
     assert report["index_code"] == "QA_PARTIAL_SCORES_MISSING"
+    assert report["target_forecast_date"] == "2025-07-30"
+    assert report["fh3_has_all_tickers"] is True
     assert report["latest_run_status"] == "success"
     assert report["has_violet_rows"] is False
 
@@ -143,50 +167,91 @@ def test_evaluate_pipeline_state_flags_ingest_missing_when_scores_exist(
     runs_root = tmp_path / "runs"
     vg_db = tmp_path / "ML_VG_tables.sqlite"
     scores_dir = tmp_path / "scores"
+    fh3_dir = tmp_path / "fh3"
     _seed_successful_all_ticker_run(runs_root, "2025-07-29")
-    _seed_partial_scores_for_date(scores_dir, "2025-07-29")
+    _seed_fh3_full_table(fh3_dir, "2025-07-30")
+    _seed_partial_scores_for_date(scores_dir, "2025-07-30")
 
     report = evaluate_pipeline_state(
         selected_date="2025-07-29",
         runs_root=runs_root,
         vg_db_path=vg_db,
         scores_dir=scores_dir,
+        fh3_dir=fh3_dir,
     )
 
     assert report["index_code"] == "QA_VG_INGEST_MISSING"
-    assert report["partial_scores_has_selected_date"] is True
+    assert report["partial_scores_has_target_forecast_date"] is True
 
 
 def test_evaluate_pipeline_state_ok_when_violet_exists(tmp_path: Path) -> None:
     runs_root = tmp_path / "runs"
     vg_db = tmp_path / "ML_VG_tables.sqlite"
+    fh3_dir = tmp_path / "fh3"
     _seed_successful_all_ticker_run(runs_root, "2025-07-29")
-    _seed_violet_score(vg_db, "2025-07-29")
-    _seed_materialized_rows(vg_db, "2025-07-29")
+    _seed_fh3_full_table(fh3_dir, "2025-07-30")
+    _seed_violet_score(vg_db, "2025-07-30")
+    _seed_materialized_rows(vg_db, "2025-07-30")
 
     report = evaluate_pipeline_state(
         selected_date="2025-07-29",
         runs_root=runs_root,
         vg_db_path=vg_db,
+        fh3_dir=fh3_dir,
     )
 
     assert report["index_code"] == "QA_OK"
-    assert report["violet_for_selected_date"] is True
+    assert report["violet_for_target_forecast_date"] is True
 
 
 def test_evaluate_pipeline_state_flags_materialize_missing(tmp_path: Path) -> None:
     runs_root = tmp_path / "runs"
     vg_db = tmp_path / "ML_VG_tables.sqlite"
+    fh3_dir = tmp_path / "fh3"
     _seed_successful_all_ticker_run(runs_root, "2025-07-29")
-    _seed_violet_score(vg_db, "2025-07-29")
+    _seed_fh3_full_table(fh3_dir, "2025-07-30")
+    _seed_violet_score(vg_db, "2025-07-30")
 
     report = evaluate_pipeline_state(
         selected_date="2025-07-29",
         runs_root=runs_root,
         vg_db_path=vg_db,
+        fh3_dir=fh3_dir,
     )
 
     assert report["index_code"] == "QA_MATERIALIZE_MISSING"
+
+
+def test_evaluate_pipeline_state_flags_fh3_missing(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    fh3_dir = tmp_path / "fh3"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=tmp_path / "ML_VG_tables.sqlite",
+        fh3_dir=fh3_dir,
+    )
+
+    assert report["index_code"] == "QA_FH3_MISSING"
+
+
+def test_evaluate_pipeline_state_flags_fh3_incomplete_coverage(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    fh3_dir = tmp_path / "fh3"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+    _seed_fh3_full_table(fh3_dir, "2025-07-30", tickers=("AAPL",))
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=tmp_path / "ML_VG_tables.sqlite",
+        fh3_dir=fh3_dir,
+    )
+
+    assert report["index_code"] == "QA_FH3_INCOMPLETE"
+    assert report["fh3_ticker_count"] == 1
 
 
 def test_write_pipeline_qa_log_persists_json(tmp_path: Path) -> None:

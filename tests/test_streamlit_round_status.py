@@ -128,6 +128,68 @@ def test_compute_round_status_green_when_successful_run_but_violet_missing(
     assert out["index_code"] == "IDX_VIOLET_MISSING"
 
 
+def test_compute_round_status_accepts_global_fh3_stage(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "tickers"
+    _seed_all_tickers(raw_dir)
+    runs_root = tmp_path / "runs"
+
+    run = create_run(
+        selected_date="2026-03-24",
+        selected_ticker="ALL",
+        total_stages=13,
+        root_dir=runs_root,
+    )
+    idx = 1
+    for ticker in ("TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"):
+        for stage_name in ("svl_export", "tda_export"):
+            append_stage_result(
+                run_id=str(run["run_id"]),
+                stage_index=idx,
+                stage_name=stage_name,
+                category="core",
+                ticker=ticker,
+                command=["python", stage_name],
+                returncode=0,
+                stdout="ok",
+                stderr="",
+                duration_seconds=0.1,
+                root_dir=runs_root,
+            )
+            idx += 1
+    append_stage_result(
+        run_id=str(run["run_id"]),
+        stage_index=idx,
+        stage_name="make_fh3_table",
+        category="core",
+        ticker="ALL",
+        command=[
+            "python",
+            "make_fh3_table",
+            "--tickers",
+            "TNX",
+            "DJI",
+            "SPX",
+            "VIX",
+            "QQQ",
+            "AAPL",
+        ],
+        returncode=0,
+        stdout="ok",
+        stderr="",
+        duration_seconds=0.1,
+        root_dir=runs_root,
+    )
+    finalize_run(str(run["run_id"]), root_dir=runs_root)
+
+    out = compute_round_status(
+        selected_date="2026-03-24",
+        raw_tickers_dir=raw_dir,
+        runs_root=runs_root,
+    )
+    assert out["status"] == "GREEN"
+    assert out["index_code"] == "IDX_VIOLET_MISSING"
+
+
 def test_compute_round_status_blue_when_violet_scores_exist(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw" / "tickers"
     _seed_all_tickers(raw_dir)

@@ -45,6 +45,11 @@ def _selected_tickers(selected_ticker: str) -> list[str]:
     return [value]
 
 
+def _is_all_tickers(selected_ticker: str) -> bool:
+    value = str(selected_ticker or "").strip().upper()
+    return value in {"", "ALL", "ALL_TICKERS"}
+
+
 def build_pipeline_commands(
     *,
     selected_date: str,
@@ -56,8 +61,9 @@ def build_pipeline_commands(
     scripts_dir = repo_root / "scripts"
     replay = _replay_args(selected_date)
     commands: list[CommandSpec] = []
+    selected_tickers = _selected_tickers(selected_ticker)
 
-    for ticker in _selected_tickers(selected_ticker):
+    for ticker in selected_tickers:
         commands.append(
             CommandSpec(
                 category="core",
@@ -104,21 +110,22 @@ def build_pipeline_commands(
                 ],
             )
         )
-        commands.append(
-            CommandSpec(
-                category="core",
-                stage="make_fh3_table",
-                ticker=ticker,
-                cwd=repo_root,
-                command=[
-                    py,
-                    str(scripts_dir / "make_fh3_table.py"),
-                    "--tickers",
-                    ticker,
-                    *replay,
-                ],
-            )
+
+    commands.append(
+        CommandSpec(
+            category="core",
+            stage="make_fh3_table",
+            ticker="ALL" if _is_all_tickers(selected_ticker) else selected_tickers[0],
+            cwd=repo_root,
+            command=[
+                py,
+                str(scripts_dir / "make_fh3_table.py"),
+                "--tickers",
+                *selected_tickers,
+                *replay,
+            ],
         )
+    )
 
     commands.append(
         CommandSpec(

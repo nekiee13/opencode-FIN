@@ -10,7 +10,7 @@ from src.ui.services.pipeline_runner import TICKER_ORDER
 from src.ui.services.run_registry import latest_run_for_date
 from src.ui.services.vg_loader import list_violet_forecast_dates, suggest_forecast_date
 
-CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export", "make_fh3_table")
+_PER_TICKER_CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export")
 _PREFIX_MAP: dict[str, str] = {"SPX": "GSPC"}
 
 
@@ -71,10 +71,27 @@ def _core_success_for_all_tickers(run_payload: dict[str, Any]) -> bool:
         for item in stages
         if str(item.get("status") or "") == "success"
     }
+
+    has_global_fh3 = False
+    for item in stages:
+        if str(item.get("status") or "") != "success":
+            continue
+        if str(item.get("stage") or "") != "make_fh3_table":
+            continue
+        ticker_value = str(item.get("ticker") or "").strip().upper()
+        if ticker_value in {"", "ALL", "ALL_TICKERS"}:
+            has_global_fh3 = True
+            break
+
     for ticker in TICKER_ORDER:
-        for stage_name in CORE_STAGES:
+        for stage_name in _PER_TICKER_CORE_STAGES:
             if (ticker, stage_name) not in success_set:
                 return False
+    if has_global_fh3:
+        return True
+    for ticker in TICKER_ORDER:
+        if (ticker, "make_fh3_table") not in success_set:
+            return False
     return True
 
 
