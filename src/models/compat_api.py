@@ -710,6 +710,30 @@ def build_exog_matrices(
     return X_train_df, X_future_df
 
 
+def _select_lstm_training_policy(
+    *,
+    history_mode: Optional[str],
+    available_rows: int,
+    configured_lookback: int,
+) -> Tuple[int, int]:
+    lookback_cfg = int(configured_lookback) if int(configured_lookback) > 0 else 60
+    default_lookback = lookback_cfg
+    default_min_samples = max(120, default_lookback + 25)
+
+    mode_text = str(history_mode or "").strip().lower()
+    rows = max(int(available_rows), 0)
+    if mode_text != "replay":
+        return default_lookback, default_min_samples
+    if rows <= 0:
+        return default_lookback, default_min_samples
+    if rows >= default_min_samples:
+        return default_lookback, default_min_samples
+
+    replay_lookback = min(default_lookback, max(20, rows - 40))
+    replay_min_samples = max(45, replay_lookback + 25)
+    return int(replay_lookback), int(replay_min_samples)
+
+
 # ======================================================================
 # LSTM with ExoConfig (delegates to canonical torch LSTM)
 # ======================================================================
@@ -719,6 +743,7 @@ def predict_lstm(
     enriched_data: "DataFrame",
     ticker: str = "Unknown",
     exo_config: Optional[Any] = None,
+    history_mode: Optional[str] = None,
     progress_callback=None,
 ) -> Optional["DataFrame"]:
     if pd is None or np is None:
@@ -776,6 +801,12 @@ def predict_lstm(
             q_lo, q_hi = 0.05, 0.95
 
     try:
+        lookback_cfg = int(getattr(C, "LSTM_LOOKBACK", 60))
+        lookback_eff, min_samples_eff = _select_lstm_training_policy(
+            history_mode=history_mode,
+            available_rows=int(len(enriched_data)),
+            configured_lookback=lookback_cfg,
+        )
         res = predict_lstm_quantiles(
             enriched_data,
             ticker=ticker,
@@ -785,14 +816,14 @@ def predict_lstm(
             exog_future=X_future_exog,
             quantiles=(q_lo, q_hi),
             train_window=int(getattr(C, "LSTM_TRAIN_WINDOW", 0)),
-            lookback=int(getattr(C, "LSTM_LOOKBACK", 60)),
+            lookback=int(lookback_eff),
             epochs=int(getattr(C, "LSTM_EPOCHS", 60)),
             batch_size=32,
             lstm_units=64,
             dense_units=32,
             dropout=0.10,
             learning_rate=1e-3,
-            min_samples=max(120, int(getattr(C, "LSTM_LOOKBACK", 60)) + 25),
+            min_samples=int(min_samples_eff),
             seed=42,
             verbose=0,
         )

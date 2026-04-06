@@ -335,7 +335,10 @@ def _run_models_for_ticker(
     try:
         out["LSTM"] = _extract_forecast_df(
             models_api.predict_lstm(
-                enriched, ticker=runtime_ticker, exo_config=exo_config
+                enriched,
+                ticker=runtime_ticker,
+                exo_config=exo_config,
+                history_mode=history_mode,
             )
         )
     except Exception as e:
