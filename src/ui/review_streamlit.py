@@ -208,10 +208,29 @@ def run_review_console(db_path: Path | None = None) -> None:
             "Anchored backfill builds follow-up round artifacts for selected date and ingests/materializes VG in one flow."
         )
         if st.button("Run Anchored Backfill", key="run_anchored_backfill"):
+            progress_slot = st.empty()
+            status_slot = st.empty()
+            progress = progress_slot.progress(0, text="Anchored backfill 0/4: starting")
+
+            def _on_backfill_progress(step: int, total: int, stage: str) -> None:
+                safe_total = max(int(total), 1)
+                safe_step = max(0, min(int(step), safe_total))
+                ratio = float(safe_step) / float(safe_total)
+                label = str(stage or "stage")
+                progress.progress(
+                    ratio, text=f"Anchored backfill {safe_step}/{safe_total}: {label}"
+                )
+
             result = run_anchored_backfill(
                 selected_date=selected_date,
                 selected_ticker=selected_ticker,
+                progress_callback=_on_backfill_progress,
             )
+            if str(result.get("status") or "") == "success":
+                progress.progress(1.0, text="Anchored backfill 4/4: done")
+                status_slot.success("Anchored backfill finished.")
+            else:
+                status_slot.error("Anchored backfill failed.")
             st.session_state["anchored_backfill_result"] = result
 
         anchored_result = st.session_state.get("anchored_backfill_result")

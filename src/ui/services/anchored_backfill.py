@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.config import paths
 
@@ -60,6 +60,7 @@ def run_anchored_backfill(
     selected_ticker: str | None = None,
     repo_root: Path | None = None,
     python_exec: str | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, Any]:
     _ = selected_ticker
     date_text = str(selected_date or "").strip()
@@ -105,11 +106,22 @@ def run_anchored_backfill(
         round_id,
     ]
 
+    total_steps = 4
+
+    def _emit(step: int, stage: str) -> None:
+        if progress_callback is None:
+            return
+        try:
+            progress_callback(int(step), int(total_steps), str(stage))
+        except Exception:
+            return
+
     for name, cmd in (
         ("draft", draft_cmd),
         ("finalize", finalize_cmd),
         ("ingest", ingest_cmd),
     ):
+        _emit(len(stage_results), name)
         out = _run_command(cmd, cwd=root)
         out["stage"] = name
         stage_results.append(out)
@@ -150,6 +162,7 @@ def run_anchored_backfill(
         "--bootstrap-score",
         "99.0",
     ]
+    _emit(3, "materialize")
     materialize_out = _run_command(materialize_cmd, cwd=root)
     materialize_out["stage"] = "materialize"
     stage_results.append(materialize_out)
@@ -163,6 +176,8 @@ def run_anchored_backfill(
             "forecast_date": forecast_date,
             "stages": stage_results,
         }
+
+    _emit(4, "done")
 
     return {
         "status": "success",

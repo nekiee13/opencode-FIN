@@ -119,3 +119,40 @@ def test_run_anchored_backfill_returns_error_when_ingest_forecast_missing(
 
     assert out["status"] == "error"
     assert out["index_code"] == "BACKFILL_FORECAST_DATE_MISSING"
+
+
+def test_run_anchored_backfill_emits_progress_callback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    scripts = repo_root / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+
+    events: list[tuple[int, int, str]] = []
+
+    def fake_run(command, **kwargs):
+        cmd = [str(x) for x in command]
+        if "ingest-round" in cmd:
+            return _Proc(stdout="forecast_date=2025-07-30\n")
+        return _Proc(stdout="ok\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    out = run_anchored_backfill(
+        selected_date="2025-07-29",
+        repo_root=repo_root,
+        python_exec="python-test",
+        progress_callback=lambda step, total, stage: events.append(
+            (step, total, stage)
+        ),
+    )
+
+    assert out["status"] == "success"
+    assert events == [
+        (0, 4, "draft"),
+        (1, 4, "finalize"),
+        (2, 4, "ingest"),
+        (3, 4, "materialize"),
+        (4, 4, "done"),
+    ]

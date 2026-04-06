@@ -90,8 +90,11 @@ def _format_model_value(row: dict[str, str], *, ticker: str) -> str | None:
     pred = str(row.get("pred_value", "") or "").strip()
     low = str(row.get("lower_ci", "") or "").strip()
     high = str(row.get("upper_ci", "") or "").strip()
+    status = str(row.get("status", "") or "").strip().lower()
     pred_num = _to_float(pred)
     if pred_num is None:
+        if status == "model_unavailable":
+            return "model_unavailable"
         return None
     pred_fmt = _format_ticker_numeric(ticker, pred_num)
     low_num = _to_float(low)

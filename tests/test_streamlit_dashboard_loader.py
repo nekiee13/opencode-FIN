@@ -64,6 +64,27 @@ def test_load_model_table_returns_empty_when_selected_before_available_rounds(
     assert table.rows == []
 
 
+def test_load_model_table_marks_model_unavailable_cells(tmp_path: Path) -> None:
+    rounds_dir = tmp_path / "rounds"
+    csv_path = rounds_dir / "anchor-20250729" / "t0_forecasts.csv"
+    _write(
+        csv_path,
+        "\n".join(
+            [
+                "round_id,round_state,ticker,runtime_ticker,model,fh_step,forecast_date,pred_value,lower_ci,upper_ci,status,generated_at",
+                "anchor-20250729,DRAFT_T0,TNX,TNX,Torch,1,2025-07-30,4.4080,4.3170,4.4990,ok,2026-04-06 14:00:00",
+                "anchor-20250729,DRAFT_T0,TNX,TNX,LSTM,1,nan,,,,model_unavailable,2026-04-06 14:00:00",
+                "",
+            ]
+        ),
+    )
+
+    table = load_model_table("2025-07-29", rounds_dir=rounds_dir)
+    assert table.source_round_id == "anchor-20250729"
+    tnx = next(row for row in table.rows if row["Ticker"] == "TNX")
+    assert tnx["LSTM"] == "model_unavailable"
+
+
 def test_load_marker_values_for_selected_date(tmp_path: Path) -> None:
     markers_dir = tmp_path / "markers"
     _write(
