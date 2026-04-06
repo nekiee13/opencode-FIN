@@ -321,6 +321,85 @@ def test_compute_round_status_uses_fh3_asof_mapping_for_violet_match(
     assert out["index_code"] == "IDX_CALC_COMPLETE"
 
 
+def test_compute_round_status_prefers_selected_date_violet_when_present(
+    tmp_path: Path,
+) -> None:
+    raw_dir = tmp_path / "raw" / "tickers"
+    _seed_all_tickers(raw_dir)
+    for ticker in ("TNX", "DJI", "GSPC", "VIX", "QQQ", "AAPL"):
+        _write_ticker_csv(
+            raw_dir / f"{ticker}_data.csv",
+            [("2026-02-27", 1.0), ("2026-03-03", 1.1)],
+        )
+    runs_root = tmp_path / "runs"
+    vg_db_path = tmp_path / "out" / "i_calc" / "ML" / "ML_VG_tables.sqlite"
+    fh3_dir = tmp_path / "fh3"
+    _seed_violet_score(vg_db_path, "2026-02-27")
+    _seed_fh3_full_table(
+        fh3_dir,
+        asof_cutoff="2026-02-27",
+        fh_date1="2026-03-02",
+    )
+
+    run = create_run(
+        selected_date="2026-02-27",
+        selected_ticker="ALL",
+        total_stages=13,
+        root_dir=runs_root,
+    )
+    idx = 1
+    for ticker in ("TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"):
+        for stage_name in ("svl_export", "tda_export"):
+            append_stage_result(
+                run_id=str(run["run_id"]),
+                stage_index=idx,
+                stage_name=stage_name,
+                category="core",
+                ticker=ticker,
+                command=["python", stage_name],
+                returncode=0,
+                stdout="ok",
+                stderr="",
+                duration_seconds=0.1,
+                root_dir=runs_root,
+            )
+            idx += 1
+    append_stage_result(
+        run_id=str(run["run_id"]),
+        stage_index=idx,
+        stage_name="make_fh3_table",
+        category="core",
+        ticker="ALL",
+        command=[
+            "python",
+            "make_fh3_table",
+            "--tickers",
+            "TNX",
+            "DJI",
+            "SPX",
+            "VIX",
+            "QQQ",
+            "AAPL",
+        ],
+        returncode=0,
+        stdout="ok",
+        stderr="",
+        duration_seconds=0.1,
+        root_dir=runs_root,
+    )
+    finalize_run(str(run["run_id"]), root_dir=runs_root)
+
+    out = compute_round_status(
+        selected_date="2026-02-27",
+        raw_tickers_dir=raw_dir,
+        runs_root=runs_root,
+        vg_db_path=vg_db_path,
+        fh3_dir=fh3_dir,
+    )
+    assert out["status"] == "BLUE"
+    assert out["index_code"] == "IDX_CALC_COMPLETE"
+
+
 def test_compute_round_status_violet_when_failed_run_exists(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw" / "tickers"
     _seed_all_tickers(raw_dir)

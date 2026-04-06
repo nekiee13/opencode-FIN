@@ -11,7 +11,6 @@ from src.ui.services.run_registry import latest_run_for_date
 from src.ui.services.vg_loader import (
     list_violet_forecast_dates,
     resolve_target_forecast_date,
-    suggest_forecast_date,
 )
 
 _PER_TICKER_CORE_STAGES: tuple[str, ...] = ("svl_export", "tda_export")
@@ -153,11 +152,10 @@ def compute_round_status(
     if latest is not None and str(latest.get("status") or "") == "success":
         if _core_success_for_all_tickers(latest):
             violet_dates = list_violet_forecast_dates(vg_db_path)
-            violet_match = suggest_forecast_date(
-                selected_date=target_forecast_date,
-                available_dates=violet_dates,
-            )
-            if not violet_dates or str(violet_match or "") != str(target_forecast_date):
+            violet_set = {str(x) for x in violet_dates}
+            selected_hit = str(selected_date) in violet_set
+            target_hit = str(target_forecast_date) in violet_set
+            if not violet_dates or not (selected_hit or target_hit):
                 return {
                     "status": "GREEN",
                     "reason": "ML calculations completed, but Violet scores are not ingested for selected round.",

@@ -252,9 +252,16 @@ def _load_marker_review_dates() -> list[dict[str, Any]]:
 
 
 def load_available_review_dates(vg_db_path: Path | None = None) -> list[dict[str, Any]]:
+    marker_dates = _load_marker_review_dates()
+    marker_map = {
+        str(item.get("review_date") or ""): dict(item)
+        for item in marker_dates
+        if str(item.get("review_date") or "")
+    }
+
     db_path = vg_db_path or paths.OUT_I_CALC_ML_VG_DB_PATH
     if not db_path.exists():
-        return _load_marker_review_dates()
+        return marker_dates
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -266,8 +273,25 @@ def load_available_review_dates(vg_db_path: Path | None = None) -> list[dict[str
             ORDER BY forecast_date DESC
             """
         ).fetchall()
+    except sqlite3.Error:
+        return marker_dates
     finally:
         conn.close()
+
+    if marker_map:
+        for row in rows:
+            date_value = str(row["forecast_date"])
+            if date_value not in marker_map:
+                continue
+            mapped = map_round_state(str(row["round_state"]))
+            marker_map[date_value] = {
+                "review_date": date_value,
+                "raw_round_state": mapped.raw_round_state,
+                "gui_state": mapped.gui_state,
+                "editable": mapped.editable,
+                "reason": mapped.reason,
+            }
+        return [marker_map[d] for d in sorted(marker_map.keys(), reverse=True)]
 
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -283,7 +307,7 @@ def load_available_review_dates(vg_db_path: Path | None = None) -> list[dict[str
         )
     if out:
         return out
-    return _load_marker_review_dates()
+    return marker_dates
 
 
 def load_available_tickers() -> list[str]:

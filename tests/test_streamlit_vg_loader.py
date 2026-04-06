@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from src.ui.services.vg_loader import (
+    format_green_table_rows,
     green_meta_to_rows,
     list_violet_forecast_dates,
     materialize_for_selected_date,
@@ -207,3 +208,17 @@ def test_suggest_forecast_date_uses_nearest_prior() -> None:
         available_dates=["2026-03-31", "2026-03-24", "2026-03-17"],
     )
     assert out == "2026-03-31"
+
+
+def test_format_green_table_rows_uses_three_decimals() -> None:
+    rows = [
+        {"Ticker": "TNX", "Torch": 99.1, "ARIMAX": 7, "PCE": None},
+        {"Ticker": "AAPL", "Torch": 9.87654, "ARIMAX": "10.5", "PCE": ""},
+    ]
+    out = format_green_table_rows(rows)
+    assert out[0]["Torch"] == "99.100"
+    assert out[0]["ARIMAX"] == "07.000"
+    assert out[0]["PCE"] is None
+    assert out[1]["Torch"] == "09.877"
+    assert out[1]["ARIMAX"] == "10.500"
+    assert out[1]["PCE"] is None

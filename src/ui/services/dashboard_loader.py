@@ -233,19 +233,30 @@ def load_marker_values(
         with marker_file.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             selected_row: dict[str, str] | None = None
+            latest_prior_row: tuple[date, dict[str, str]] | None = None
             for row in reader:
                 parsed = _parse_marker_date(row.get("Date"))
+                if parsed is None:
+                    continue
+                row_copy = dict(row)
                 if parsed == date_key:
-                    selected_row = dict(row)
+                    selected_row = row_copy
                     break
-            if selected_row:
-                for ticker in TICKER_ORDER:
-                    raw = str(selected_row.get(ticker, "") or "").strip()
-                    if raw:
-                        try:
-                            values[ticker] = float(raw.replace(",", ""))
-                        except ValueError:
-                            values[ticker] = None
+                if parsed <= date_key and (
+                    latest_prior_row is None or parsed > latest_prior_row[0]
+                ):
+                    latest_prior_row = (parsed, row_copy)
+            if selected_row is None and latest_prior_row is not None:
+                selected_row = latest_prior_row[1]
+            if selected_row is None:
+                continue
+            for ticker in TICKER_ORDER:
+                raw = str(selected_row.get(ticker, "") or "").strip()
+                if raw:
+                    try:
+                        values[ticker] = float(raw.replace(",", ""))
+                    except ValueError:
+                        values[ticker] = None
         out[marker_name] = values
 
     return out

@@ -140,6 +140,26 @@ def matrix_to_rows(
     return out
 
 
+def format_green_table_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item: dict[str, Any] = {}
+        for key, value in dict(row).items():
+            if str(key) == "Ticker":
+                item[str(key)] = value
+                continue
+            text = str(value).strip() if value is not None else ""
+            if not text:
+                item[str(key)] = None
+                continue
+            try:
+                item[str(key)] = format(float(text), "06.3f")
+            except ValueError:
+                item[str(key)] = value
+        out.append(item)
+    return out
+
+
 def green_meta_to_rows(
     *,
     green_meta: dict[str, dict[str, dict[str, int]]],

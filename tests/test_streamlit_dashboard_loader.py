@@ -62,6 +62,26 @@ def test_load_marker_values_for_selected_date(tmp_path: Path) -> None:
     assert out["oraclum"]["AAPL"] == 253.76
 
 
+def test_load_marker_values_falls_back_to_latest_prior_date(tmp_path: Path) -> None:
+    markers_dir = tmp_path / "markers"
+    _write(
+        markers_dir / "oraclum.csv",
+        "\n".join(
+            [
+                "Date,TNX,DJI,SPX,VIX,QQQ,AAPL",
+                '"Feb 24, 2026",4.289,46339.26,6528.53,25.25,577.22,253.76',
+                '"Mar 03, 2026",4.300,46400.00,6530.00,25.20,578.00,254.00',
+            ]
+        )
+        + "\n",
+    )
+
+    out = load_marker_values("2026-02-27", markers_dir=markers_dir)
+    assert "oraclum" in out
+    assert out["oraclum"]["TNX"] == 4.289
+    assert out["oraclum"]["AAPL"] == 253.76
+
+
 def test_build_marker_comparison_rows_applies_ticker_formats() -> None:
     model_rows = [
         {"Ticker": "TNX", "Torch": "4.392"},

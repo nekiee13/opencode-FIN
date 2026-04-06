@@ -27,6 +27,7 @@ from src.ui.services.run_registry import (
     load_run,
 )
 from src.ui.services.vg_loader import (
+    format_green_table_rows,
     green_meta_to_rows,
     list_violet_forecast_dates,
     materialize_for_selected_date,
@@ -379,6 +380,7 @@ def run_review_console(db_path: Path | None = None) -> None:
                 models=models,
                 tickers=tickers,
             )
+            green_rows = format_green_table_rows(green_rows)
             green_meta_rows = green_meta_to_rows(
                 green_meta=dict(vg_result.get("green_meta", {})),
                 models=models,
