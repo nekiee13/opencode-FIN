@@ -135,6 +135,17 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=None,
         help="Ticker symbol (explicit form). If provided, overrides positional ticker.",
     )
+    p.add_argument(
+        "--history-mode",
+        choices=["live", "replay"],
+        default="live",
+        help="History scope mode. replay clips loader data to --as-of-date.",
+    )
+    p.add_argument(
+        "--as-of-date",
+        default=None,
+        help="Required when --history-mode replay (YYYY-MM-DD).",
+    )
     return p.parse_args(argv)
 
 
@@ -168,13 +179,22 @@ def _import_torch_forecasting() -> Tuple[Any, Any]:
 # ----------------------------
 
 
-def fetch_minimal_data(ticker: str) -> Optional[pd.DataFrame]:
+def fetch_minimal_data(
+    ticker: str,
+    *,
+    history_mode: str = "live",
+    as_of_date: Optional[str] = None,
+) -> Optional[pd.DataFrame]:
     try:
         eprint(f"TorchForecast worker: resolving FIN raw CSV for {ticker}...")
         raw_path = resolve_raw_csv_path(ticker)
         eprint(f"TorchForecast worker: expected path: {raw_path}")
 
-        df_full = fetch_data(ticker, csv_path=raw_path)
+        df_full = fetch_data(
+            ticker,
+            csv_path=raw_path,
+            as_of_date=(str(as_of_date) if history_mode == "replay" else None),
+        )
         if df_full is None or df_full.empty:
             eprint("TorchForecast worker: fetch_data() returned no data.")
             return None
@@ -316,18 +336,33 @@ def run_torch_forecast(
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     ticker_arg = _resolve_ticker(args)
+    history_mode = str(getattr(args, "history_mode", "live") or "live").strip().lower()
+    as_of_date = str(getattr(args, "as_of_date", "") or "").strip()
+
+    if history_mode == "replay" and as_of_date == "":
+        eprint(
+            "TorchForecast worker: --as-of-date is required when --history-mode replay is used."
+        )
+        return 1
 
     eprint(f"--- Starting TorchForecast worker for ticker: {ticker_arg} ---")
     eprint(f"FIN root: {paths.APP_ROOT}")
     eprint(f"Raw dir:  {paths.DATA_TICKERS_DIR} (fallback: {paths.DATA_RAW_DIR})")
     eprint(f"FH:       {FORECAST_HORIZON}")
+    eprint(f"History mode: {history_mode}")
+    if history_mode == "replay":
+        eprint(f"As-of date: {as_of_date}")
 
     try:
         Baseline, TimeSeriesDataSet = _import_torch_forecasting()
     except Exception:
         return 1
 
-    stock_data = fetch_minimal_data(ticker_arg)
+    stock_data = fetch_minimal_data(
+        ticker_arg,
+        history_mode=history_mode,
+        as_of_date=(as_of_date or None),
+    )
     if stock_data is None:
         eprint("TorchForecast worker: data preparation failed.")
         return 1

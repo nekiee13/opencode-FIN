@@ -201,6 +201,9 @@ def run_external_script(
     ticker: str,
     timeout: int,
     progress_callback=None,
+    *,
+    history_mode: Optional[str] = None,
+    as_of_date: Optional[str] = None,
 ) -> Optional["DataFrame"]:
     """Run an external Python script and return a DataFrame loaded from its temp CSV.
 
@@ -234,8 +237,23 @@ def run_external_script(
     )
 
     try:
+        cmd = [python_executable, str(script_path), ticker]
+        mode_text = str(history_mode or "").strip().lower()
+        as_of_text = str(as_of_date or "").strip()
+        if mode_text in {"live", "replay"}:
+            cmd.extend(["--history-mode", mode_text])
+            if mode_text == "replay":
+                if as_of_text == "":
+                    log.error(
+                        "history_mode='replay' requires as_of_date for %s %s",
+                        script_name,
+                        ticker,
+                    )
+                    return None
+                cmd.extend(["--as-of-date", as_of_text])
+
         process = subprocess.run(
-            [python_executable, str(script_path), ticker],
+            cmd,
             capture_output=True,
             text=True,
             check=False,
@@ -324,12 +342,22 @@ def run_external_script(
 def run_external_ti_calculator(
     ticker: str,
     progress_callback=None,
+    *,
+    history_mode: Optional[str] = None,
+    as_of_date: Optional[str] = None,
 ) -> Optional["DataFrame"]:
     """Run TI worker and return enriched DataFrame."""
     if pd is None:
         return None
 
-    enriched_df = run_external_script("app3GTI.py", ticker, 120, progress_callback)
+    enriched_df = run_external_script(
+        "app3GTI.py",
+        ticker,
+        120,
+        progress_callback,
+        history_mode=history_mode,
+        as_of_date=as_of_date,
+    )
     if enriched_df is None:
         return None
 
@@ -349,9 +377,19 @@ def run_external_ti_calculator(
 def run_external_torch_forecasting(
     ticker: str,
     progress_callback=None,
+    *,
+    history_mode: Optional[str] = None,
+    as_of_date: Optional[str] = None,
 ) -> Optional["DataFrame"]:
     """Run torch-forecasting worker."""
-    return run_external_script("app3GPC.py", ticker, 600, progress_callback)
+    return run_external_script(
+        "app3GPC.py",
+        ticker,
+        600,
+        progress_callback,
+        history_mode=history_mode,
+        as_of_date=as_of_date,
+    )
 
 
 # ======================================================================

@@ -33,7 +33,9 @@ def _import_followup_module():
     except ModuleNotFoundError as e:
         print("[followup-ml] Missing Python dependency.")
         print(f"  {e}")
-        print("[followup-ml] Activate project venv and install requirements, then retry.")
+        print(
+            "[followup-ml] Activate project venv and install requirements, then retry."
+        )
         print("  Example: python -m pip install -r requirements.txt")
         return None
 
@@ -45,17 +47,37 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_draft = sub.add_parser("draft", help="Create T0 draft round artifacts and dashboard")
-    p_draft.add_argument("--round-id", required=True, help="Round identifier, e.g. 26-1-06")
+    p_draft = sub.add_parser(
+        "draft", help="Create T0 draft round artifacts and dashboard"
+    )
+    p_draft.add_argument(
+        "--round-id", required=True, help="Round identifier, e.g. 26-1-06"
+    )
     p_draft.add_argument(
         "--tickers",
         nargs="*",
         default=None,
         help="Optional logical tickers (default: TNX DJI SPX VIX QQQ AAPL)",
     )
-    p_draft.add_argument("--fh", type=int, default=None, help="Forecast horizon override")
+    p_draft.add_argument(
+        "--fh", type=int, default=None, help="Forecast horizon override"
+    )
+    p_draft.add_argument(
+        "--history-mode",
+        choices=["live", "replay"],
+        default="live",
+        help="History scope mode. replay clips worker data to --as-of-date.",
+    )
+    p_draft.add_argument(
+        "--as-of-date",
+        type=str,
+        default=None,
+        help="Required when --history-mode replay (yyyy-mm-dd).",
+    )
 
-    p_board = sub.add_parser("board", help="Re-render dashboard from persisted round data")
+    p_board = sub.add_parser(
+        "board", help="Re-render dashboard from persisted round data"
+    )
     p_board.add_argument("--round-id", required=True, help="Round identifier")
 
     p_finalize = sub.add_parser(
@@ -114,6 +136,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             round_id=str(args.round_id),
             tickers=args.tickers,
             fh=args.fh,
+            history_mode=str(args.history_mode),
+            as_of_date=args.as_of_date,
         )
         print("[followup-ml] Draft round artifacts written:")
         print(f"  {artifacts.context_json}")
@@ -161,16 +185,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"  run_mode={artifacts.run_mode}")
         print(f"  state={artifacts.round_state}")
         print(f"  actuals_ok={artifacts.ok_actuals}/{artifacts.total_actuals}")
-        print(
-            f"  scores_computed={artifacts.scored_rows}/{artifacts.total_score_rows}"
-        )
+        print(f"  scores_computed={artifacts.scored_rows}/{artifacts.total_score_rows}")
         print(
             f"  transforms_mapped={artifacts.mapped_rows}/{artifacts.total_score_rows}"
         )
-        print(
-            "  model_coverage_avg="
-            f"{artifacts.model_coverage_avg:.3f}"
-        )
+        print(f"  model_coverage_avg={artifacts.model_coverage_avg:.3f}")
         print(f"  {artifacts.actuals_csv}")
         print(f"  {artifacts.partial_scores_csv}")
         print(f"  {artifacts.model_summary_csv}")

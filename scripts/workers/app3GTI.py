@@ -136,6 +136,17 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=None,
         help="Ticker symbol (explicit form). If provided, overrides positional ticker.",
     )
+    p.add_argument(
+        "--history-mode",
+        choices=["live", "replay"],
+        default="live",
+        help="History scope mode. replay clips loader data to --as-of-date.",
+    )
+    p.add_argument(
+        "--as-of-date",
+        default=None,
+        help="Required when --history-mode replay (YYYY-MM-DD).",
+    )
 
     return p.parse_args(argv)
 
@@ -433,11 +444,22 @@ def add_technical_indicators(df: pd.DataFrame, ticker: str) -> Optional[pd.DataF
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     ticker = _resolve_ticker(args)
+    history_mode = str(getattr(args, "history_mode", "live") or "live").strip().lower()
+    as_of_date = str(getattr(args, "as_of_date", "") or "").strip()
+
+    if history_mode == "replay" and as_of_date == "":
+        eprint(
+            "TI worker: --as-of-date is required when --history-mode replay is used."
+        )
+        return 1
 
     # Normal run begins here (help mode will already have exited via argparse)
     eprint(f"\n--- Starting TI worker for ticker: {ticker} ---")
     eprint(f"FIN root: {paths.APP_ROOT}")
     eprint(f"Raw dir:  {paths.DATA_TICKERS_DIR} (fallback: {paths.DATA_RAW_DIR})")
+    eprint(f"History mode: {history_mode}")
+    if history_mode == "replay":
+        eprint(f"As-of date: {as_of_date}")
 
     # Require optional dependency only after parsing args (so --help works without TA-Lib)
     try:
@@ -447,7 +469,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     # Use FIN canonical loader (centralized sanitization)
     raw_path = resolve_raw_csv_path(ticker)
-    raw_df = fetch_data(ticker, csv_path=raw_path)
+    raw_df = fetch_data(
+        ticker,
+        csv_path=raw_path,
+        as_of_date=(as_of_date if history_mode == "replay" else None),
+    )
 
     if raw_df is None or raw_df.empty:
         eprint("TI worker: failed to load/process initial data. Aborting.")

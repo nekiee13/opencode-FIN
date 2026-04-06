@@ -203,11 +203,14 @@ def _load_value_assign_table() -> Tuple[pd.DataFrame, Path]:
                 df = cast(pd.DataFrame, loaded[["value", "assign"]].copy())
             else:
                 log.warning(
-                    "Value->Assign table missing columns at %s; using defaults.", map_path
+                    "Value->Assign table missing columns at %s; using defaults.",
+                    map_path,
                 )
                 df = _default_value_assign_table()
         else:
-            log.warning("Value->Assign table not found at %s; using defaults.", map_path)
+            log.warning(
+                "Value->Assign table not found at %s; using defaults.", map_path
+            )
             df = _default_value_assign_table()
     except Exception as e:
         log.warning("Failed loading Value->Assign table at %s: %s", map_path, e)
@@ -218,7 +221,10 @@ def _load_value_assign_table() -> Tuple[pd.DataFrame, Path]:
     df = cast(pd.DataFrame, df.dropna(subset=["value", "assign"]))
     if df.empty:
         df = _default_value_assign_table()
-    df = cast(pd.DataFrame, df.sort_values(by=["value"]).drop_duplicates(subset=["value"], keep="last"))
+    df = cast(
+        pd.DataFrame,
+        df.sort_values(by=["value"]).drop_duplicates(subset=["value"], keep="last"),
+    )
     return df.reset_index(drop=True), map_path
 
 
@@ -269,20 +275,30 @@ def _run_models_for_ticker(
     *,
     fh: int,
     exo_config: Optional[Any],
+    history_mode: str = "live",
+    as_of_date: Optional[str] = None,
 ) -> Dict[str, Optional[pd.DataFrame]]:
     runtime_ticker = _runtime_ticker(logical_ticker)
     out: Dict[str, Optional[pd.DataFrame]] = {k: None for k in MODEL_ORDER}
 
     try:
         out["Torch"] = _extract_forecast_df(
-            models_api.run_external_torch_forecasting(runtime_ticker)
+            models_api.run_external_torch_forecasting(
+                runtime_ticker,
+                history_mode=history_mode,
+                as_of_date=as_of_date,
+            )
         )
     except Exception as e:
         log.warning("Torch failed for %s: %s", logical_ticker, e)
 
     enriched: Optional[pd.DataFrame]
     try:
-        enriched = models_api.run_external_ti_calculator(runtime_ticker)
+        enriched = models_api.run_external_ti_calculator(
+            runtime_ticker,
+            history_mode=history_mode,
+            as_of_date=as_of_date,
+        )
     except Exception as e:
         enriched = None
         log.warning("TI worker failed for %s: %s", logical_ticker, e)
@@ -318,7 +334,9 @@ def _run_models_for_ticker(
 
     try:
         out["LSTM"] = _extract_forecast_df(
-            models_api.predict_lstm(enriched, ticker=runtime_ticker, exo_config=exo_config)
+            models_api.predict_lstm(
+                enriched, ticker=runtime_ticker, exo_config=exo_config
+            )
         )
     except Exception as e:
         log.warning("LSTM failed for %s: %s", logical_ticker, e)
@@ -714,8 +732,7 @@ def _render_round_markdown(
         lines.append("")
         if avr_stats is not None:
             lines.append(
-                "- History rows: "
-                f"`{_to_int_or_zero(avr_stats.get('history_rows', 0))}`"
+                f"- History rows: `{_to_int_or_zero(avr_stats.get('history_rows', 0))}`"
             )
             lines.append(
                 "- Models with history: "
@@ -752,7 +769,9 @@ def _render_round_markdown(
     lines.append("")
     lines.append("## Notes")
     lines.append("")
-    lines.append("- This board is generated from persisted round artifacts under out/i_calc.")
+    lines.append(
+        "- This board is generated from persisted round artifacts under out/i_calc."
+    )
     lines.append(
         "- Final scoring transformation and AVR feedback are applied in the finalization stage."
     )
@@ -892,7 +911,19 @@ def _load_avr_history() -> pd.DataFrame:
         ]
         for c in required:
             if c not in df.columns:
-                df[c] = "" if c in {"round_id", "ticker", "model", "score_status", "transform_status", "updated_at"} else NAN
+                df[c] = (
+                    ""
+                    if c
+                    in {
+                        "round_id",
+                        "ticker",
+                        "model",
+                        "score_status",
+                        "transform_status",
+                        "updated_at",
+                    }
+                    else NAN
+                )
         return cast(pd.DataFrame, df[required].copy())
     except Exception as e:
         log.warning("Failed loading AVR history at %s: %s", p, e)
@@ -910,7 +941,9 @@ def _load_avr_history() -> pd.DataFrame:
         )
 
 
-def _upsert_avr_history(history_df: pd.DataFrame, scores_df: pd.DataFrame, *, round_id: str) -> pd.DataFrame:
+def _upsert_avr_history(
+    history_df: pd.DataFrame, scores_df: pd.DataFrame, *, round_id: str
+) -> pd.DataFrame:
     h = cast(pd.DataFrame, history_df.copy())
     s = cast(
         pd.DataFrame,
@@ -935,11 +968,16 @@ def _upsert_avr_history(history_df: pd.DataFrame, scores_df: pd.DataFrame, *, ro
     out = cast(pd.DataFrame, pd.concat([h, s], ignore_index=True))
     out["accuracy_pct"] = pd.to_numeric(out["accuracy_pct"], errors="coerce")
     out["transformed_score"] = pd.to_numeric(out["transformed_score"], errors="coerce")
-    out = cast(pd.DataFrame, out.drop_duplicates(subset=["round_id", "ticker", "model"], keep="last"))
+    out = cast(
+        pd.DataFrame,
+        out.drop_duplicates(subset=["round_id", "ticker", "model"], keep="last"),
+    )
     return out
 
 
-def _compute_avr_summary(history_df: pd.DataFrame, *, round_id: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+def _compute_avr_summary(
+    history_df: pd.DataFrame, *, round_id: str
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     def _blank_summary() -> pd.DataFrame:
         rows = [
             {
@@ -961,7 +999,9 @@ def _compute_avr_summary(history_df: pd.DataFrame, *, round_id: str) -> Tuple[pd
     h = cast(pd.DataFrame, history_df.copy())
     scored = cast(
         pd.DataFrame,
-        h[(h["transform_status"] == "mapped") & (pd.notna(h["transformed_score"]))].copy(),
+        h[
+            (h["transform_status"] == "mapped") & (pd.notna(h["transformed_score"]))
+        ].copy(),
     )
     if scored.empty:
         empty = _blank_summary()
@@ -969,8 +1009,10 @@ def _compute_avr_summary(history_df: pd.DataFrame, *, round_id: str) -> Tuple[pd
 
     round_model = cast(
         pd.DataFrame,
-        scored.groupby(["round_id", "model"], as_index=False)
-        .agg(round_score=("transformed_score", "mean"), scored_tickers=("ticker", "nunique")),
+        scored.groupby(["round_id", "model"], as_index=False).agg(
+            round_score=("transformed_score", "mean"),
+            scored_tickers=("ticker", "nunique"),
+        ),
     )
 
     summary_rows: List[Dict[str, Any]] = []
@@ -1020,7 +1062,9 @@ def _compute_avr_summary(history_df: pd.DataFrame, *, round_id: str) -> Tuple[pd
     )
     stats = {
         "history_rows": int(len(history_df)),
-        "models_with_history": int(sum(1 for v in list(summary_df["rounds_count"]) if _to_int_or_zero(v) > 0)),
+        "models_with_history": int(
+            sum(1 for v in list(summary_df["rounds_count"]) if _to_int_or_zero(v) > 0)
+        ),
         "current_round": str(round_id),
     }
     return summary_df, stats
@@ -1034,7 +1078,9 @@ def _export_next_weights(
 ) -> Tuple[pd.DataFrame, Path, Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for model in MODEL_ORDER:
-        sub = cast(pd.DataFrame, avr_summary_df[avr_summary_df["model"] == model].copy())
+        sub = cast(
+            pd.DataFrame, avr_summary_df[avr_summary_df["model"] == model].copy()
+        )
         raw = NAN
         avr4 = NAN
         avr6 = NAN
@@ -1132,11 +1178,17 @@ def _load_prior_weights_for_round(
         if m and _isfinite(w) and w > 0:
             weights_map[m] = float(w)
 
-    status = str(df.get("weights_status").iloc[0]) if "weights_status" in df.columns and not df.empty else ""
+    status = (
+        str(df.get("weights_status").iloc[0])
+        if "weights_status" in df.columns and not df.empty
+        else ""
+    )
     return weights_map, src_round, str(src_path), status
 
 
-def _build_weighted_ensemble(dayn_df: pd.DataFrame, weights_map: Dict[str, float]) -> pd.DataFrame:
+def _build_weighted_ensemble(
+    dayn_df: pd.DataFrame, weights_map: Dict[str, float]
+) -> pd.DataFrame:
     if dayn_df.empty or not weights_map:
         return pd.DataFrame(columns=["ticker", "weighted_ensemble", "weights_used_sum"])
 
@@ -1206,14 +1258,18 @@ def _compute_partial_scores(
                 "coverage_ratio",
             ]
         )
-        return empty_scores, empty_summary, {
-            "scored_rows": 0,
-            "total_rows": 0,
-            "scored_tickers": 0,
-            "total_tickers": 0,
-            "model_coverage_avg": 0.0,
-            "mapped_rows": 0,
-        }
+        return (
+            empty_scores,
+            empty_summary,
+            {
+                "scored_rows": 0,
+                "total_rows": 0,
+                "scored_tickers": 0,
+                "total_tickers": 0,
+                "model_coverage_avg": 0.0,
+                "mapped_rows": 0,
+            },
+        )
 
     actuals_by_ticker: Dict[str, Dict[str, Any]] = {}
     for _, r in actuals_df.iterrows():
@@ -1231,7 +1287,9 @@ def _compute_partial_scores(
         actual_rec = actuals_by_ticker.get(ticker, {})
         actual_status = str(actual_rec.get("status", "pending_actual"))
         expected_actual_date = str(actual_rec.get("expected_actual_date", ""))
-        lookup_actual_date = str(actual_rec.get("lookup_actual_date", expected_actual_date))
+        lookup_actual_date = str(
+            actual_rec.get("lookup_actual_date", expected_actual_date)
+        )
         actual_close = _to_float_or_nan(actual_rec.get("actual_close"))
 
         accuracy_pct = NAN
@@ -1245,12 +1303,20 @@ def _compute_partial_scores(
             else:
                 score_status = "model_unavailable"
         else:
-            if actual_status == "ok" and _isfinite(actual_close) and abs(actual_close) > 0:
-                accuracy_pct = 100.0 - abs((actual_close - pred_value) / actual_close * 100.0)
+            if (
+                actual_status == "ok"
+                and _isfinite(actual_close)
+                and abs(actual_close) > 0
+            ):
+                accuracy_pct = 100.0 - abs(
+                    (actual_close - pred_value) / actual_close * 100.0
+                )
                 if _isfinite(accuracy_pct):
                     score_status = "scored"
                     transformed_score = _lookup_assign_value(accuracy_pct, mapping_df)
-                    transform_status = "mapped" if _isfinite(transformed_score) else "nan_pred"
+                    transform_status = (
+                        "mapped" if _isfinite(transformed_score) else "nan_pred"
+                    )
                 else:
                     score_status = "nan_pred"
                     transform_status = "nan_pred"
@@ -1296,17 +1362,21 @@ def _compute_partial_scores(
 
         vals = [
             _to_float_or_nan(v)
-            for v in list(scored["accuracy_pct"]) if "accuracy_pct" in scored.columns
+            for v in list(scored["accuracy_pct"])
+            if "accuracy_pct" in scored.columns
         ]
         vals_t = [
             _to_float_or_nan(v)
-            for v in list(scored["transformed_score"]) if "transformed_score" in scored.columns
+            for v in list(scored["transformed_score"])
+            if "transformed_score" in scored.columns
         ]
         vals_f = [v for v in vals if _isfinite(v)]
         vals_t_f = [v for v in vals_t if _isfinite(v)]
         mean_acc = float(sum(vals_f) / len(vals_f)) if vals_f else NAN
         mean_tr = float(sum(vals_t_f) / len(vals_t_f)) if vals_t_f else NAN
-        scored_tickers = int(cast(pd.Series, scored["ticker"]).nunique()) if not scored.empty else 0
+        scored_tickers = (
+            int(cast(pd.Series, scored["ticker"]).nunique()) if not scored.empty else 0
+        )
         coverage_ratio = (
             float(scored_tickers / expected_tickers) if expected_tickers > 0 else 0.0
         )
@@ -1335,12 +1405,15 @@ def _compute_partial_scores(
     mapped_rows = int((scores_df["transform_status"] == "mapped").sum())
     total_rows = int(len(scores_df))
     scored_tickers = int(
-        cast(pd.Series, scores_df[scores_df["score_status"] == "scored"]["ticker"]).nunique()
+        cast(
+            pd.Series, scores_df[scores_df["score_status"] == "scored"]["ticker"]
+        ).nunique()
     )
     total_tickers = int(cast(pd.Series, scores_df["ticker"]).nunique())
     cov_vals = [
         _to_float_or_nan(v)
-        for v in list(summary_df["coverage_ratio"]) if "coverage_ratio" in summary_df.columns
+        for v in list(summary_df["coverage_ratio"])
+        if "coverage_ratio" in summary_df.columns
     ]
     cov_vals_f = [v for v in cov_vals if _isfinite(v)]
     model_cov_avg = float(sum(cov_vals_f) / len(cov_vals_f)) if cov_vals_f else 0.0
@@ -1391,7 +1464,9 @@ def _normalize_yyyy_mm_dd(date_text: str) -> str:
         raise ValueError(f"Invalid date format: {date_text!r}. Expected yyyy-mm-dd.")
 
 
-def _lookup_actual_close_for_date(runtime_ticker: str, lookup_date: str) -> Tuple[float, str, str]:
+def _lookup_actual_close_for_date(
+    runtime_ticker: str, lookup_date: str
+) -> Tuple[float, str, str]:
     csv_path = resolve_raw_csv_path(runtime_ticker)
     df = fetch_data(runtime_ticker, csv_path=csv_path)
     if df is None or df.empty or "Close" not in df.columns:
@@ -1425,8 +1500,14 @@ def _actuals_changed(prev_df: pd.DataFrame, new_df: pd.DataFrame) -> bool:
         "status",
         "actual_close",
     ]
-    p = cast(pd.DataFrame, prev_df.loc[:, [c for c in base_cols if c in prev_df.columns]].copy())
-    n = cast(pd.DataFrame, new_df.loc[:, [c for c in base_cols if c in new_df.columns]].copy())
+    p = cast(
+        pd.DataFrame,
+        prev_df.loc[:, [c for c in base_cols if c in prev_df.columns]].copy(),
+    )
+    n = cast(
+        pd.DataFrame,
+        new_df.loc[:, [c for c in base_cols if c in new_df.columns]].copy(),
+    )
     if "actual_close" in p.columns:
         p["actual_close"] = pd.to_numeric(p["actual_close"], errors="coerce").round(8)
     if "actual_close" in n.columns:
@@ -1434,7 +1515,6 @@ def _actuals_changed(prev_df: pd.DataFrame, new_df: pd.DataFrame) -> bool:
     p = cast(pd.DataFrame, p.sort_values(by=["ticker"]).reset_index(drop=True))
     n = cast(pd.DataFrame, n.sort_values(by=["ticker"]).reset_index(drop=True))
     return not p.equals(n)
-
 
 
 def _finalize_override_policy(
@@ -1504,7 +1584,11 @@ def run_tplus3_finalize_round(
     forecasts_csv = round_dir / "t0_forecasts.csv"
     draft_metrics_csv = round_dir / "t0_draft_metrics.csv"
 
-    if not context_json.exists() or not forecasts_csv.exists() or not draft_metrics_csv.exists():
+    if (
+        not context_json.exists()
+        or not forecasts_csv.exists()
+        or not draft_metrics_csv.exists()
+    ):
         raise FileNotFoundError(
             f"Round artifacts missing for {round_id}. Expected files in {round_dir}."
         )
@@ -1521,7 +1605,9 @@ def run_tplus3_finalize_round(
     )
 
     forecasts_df = pd.read_csv(forecasts_csv)
-    ticker_list = _canonical_tickers(tickers or context.get("tickers", TICKER_ORDER_DEFAULT))
+    ticker_list = _canonical_tickers(
+        tickers or context.get("tickers", TICKER_ORDER_DEFAULT)
+    )
     expected_dates = _expected_actual_dates_by_ticker(
         cast(pd.DataFrame, forecasts_df), fh=fh_i, tickers=ticker_list
     )
@@ -1546,7 +1632,9 @@ def run_tplus3_finalize_round(
             continue
 
         lookup_date = lookup_override if lookup_override else expected_date
-        actual_v, status, source_csv = _lookup_actual_close_for_date(runtime_t, lookup_date)
+        actual_v, status, source_csv = _lookup_actual_close_for_date(
+            runtime_t, lookup_date
+        )
         rows.append(
             {
                 "round_id": str(round_id),
@@ -1578,7 +1666,9 @@ def run_tplus3_finalize_round(
         and round_state == ROUND_STATE_FINAL_TPLUS3
     ):
         prev_actuals_df = pd.read_csv(prev_actuals_path)
-        if _actuals_changed(cast(pd.DataFrame, prev_actuals_df), cast(pd.DataFrame, actuals_df)):
+        if _actuals_changed(
+            cast(pd.DataFrame, prev_actuals_df), cast(pd.DataFrame, actuals_df)
+        ):
             round_state = ROUND_STATE_REVISED
 
     round_actuals_csv = _round_actuals_path(round_id)
@@ -1731,6 +1821,8 @@ def run_t0_draft_round(
     round_id: str,
     tickers: Optional[Iterable[str]] = None,
     fh: Optional[int] = None,
+    history_mode: str = "live",
+    as_of_date: Optional[str] = None,
 ) -> DraftArtifacts:
     """
     Build and persist a draft follow-up round (T0, no +3 actual values).
@@ -1742,6 +1834,13 @@ def run_t0_draft_round(
         fh_i = DEFAULT_FH
 
     ticker_list = _canonical_tickers(tickers)
+    mode_text = str(history_mode or "live").strip().lower()
+    if mode_text not in {"live", "replay"}:
+        mode_text = "live"
+    as_of_text = str(as_of_date or "").strip()
+    if mode_text == "replay" and as_of_text == "":
+        raise ValueError("as_of_date is required when history_mode='replay'")
+
     exo_config = _load_exo_config_optional(fh_i)
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1749,7 +1848,11 @@ def run_t0_draft_round(
     for logical_ticker in ticker_list:
         runtime_t = _runtime_ticker(logical_ticker)
         forecasts = _run_models_for_ticker(
-            logical_ticker, fh=fh_i, exo_config=exo_config
+            logical_ticker,
+            fh=fh_i,
+            exo_config=exo_config,
+            history_mode=mode_text,
+            as_of_date=(as_of_text or None),
         )
         for model in MODEL_ORDER:
             all_rows.extend(
@@ -1769,7 +1872,9 @@ def run_t0_draft_round(
     dayn_df = _build_dayn_matrix(forecasts_df, fh_step=fh_i)
     metrics_df = _build_draft_metrics(dayn_df)
 
-    weights_map, src_round, src_path, src_status = _load_prior_weights_for_round(str(round_id))
+    weights_map, src_round, src_path, src_status = _load_prior_weights_for_round(
+        str(round_id)
+    )
     weighted_ensemble_df = _build_weighted_ensemble(
         cast(pd.DataFrame, dayn_df),
         weights_map,
@@ -1807,6 +1912,10 @@ def run_t0_draft_round(
             "source_path": src_path,
             "weights_status": src_status,
             "models": int(len(weights_map)),
+        },
+        "history": {
+            "mode": mode_text,
+            "as_of_date": as_of_text,
         },
         "outputs": {
             "forecasts_csv": str(forecasts_csv),
@@ -1863,7 +1972,11 @@ def render_t0_dashboard_for_round(round_id: str) -> Path:
     forecasts_csv = round_dir / "t0_forecasts.csv"
     draft_metrics_csv = round_dir / "t0_draft_metrics.csv"
 
-    if not context_json.exists() or not forecasts_csv.exists() or not draft_metrics_csv.exists():
+    if (
+        not context_json.exists()
+        or not forecasts_csv.exists()
+        or not draft_metrics_csv.exists()
+    ):
         raise FileNotFoundError(
             f"Round artifacts missing for {round_id}. Expected files in {round_dir}."
         )

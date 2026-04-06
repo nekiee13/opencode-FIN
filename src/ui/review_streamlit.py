@@ -6,6 +6,7 @@ from typing import Any
 
 from src.config import paths
 from src.ui.services.ann_ops import load_ann_store_summary, run_ann_markers_ingest
+from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
     load_marker_values,
@@ -201,6 +202,31 @@ def run_review_console(db_path: Path | None = None) -> None:
                 status_placeholder.success("Pipeline run completed successfully.")
             else:
                 status_placeholder.error("Pipeline run completed with failures.")
+
+        st.caption(
+            "Anchored backfill builds follow-up round artifacts for selected date and ingests/materializes VG in one flow."
+        )
+        if st.button("Run Anchored Backfill", key="run_anchored_backfill"):
+            result = run_anchored_backfill(
+                selected_date=selected_date,
+                selected_ticker=selected_ticker,
+            )
+            st.session_state["anchored_backfill_result"] = result
+
+        anchored_result = st.session_state.get("anchored_backfill_result")
+        if isinstance(anchored_result, dict):
+            if str(anchored_result.get("status") or "") == "success":
+                st.success(
+                    "Anchored backfill completed: "
+                    f"round_id={anchored_result.get('round_id')} "
+                    f"forecast_date={anchored_result.get('forecast_date')}"
+                )
+            else:
+                st.error(
+                    "Anchored backfill failed: "
+                    + str(anchored_result.get("index_code") or "BACKFILL_ERROR")
+                )
+            st.code(json.dumps(anchored_result, indent=2), language="json")
 
         run_id = str(st.session_state.get("ml_pipeline_run_id") or "").strip()
         _render_command_results(st, load_run(run_id) if run_id else None)
