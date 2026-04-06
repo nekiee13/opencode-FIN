@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -24,6 +25,47 @@ def _parse_iso_date(value: str) -> date | None:
         return datetime.strptime(text, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def resolve_target_forecast_date(
+    *,
+    selected_date: str,
+    fh3_dir: Path | None = None,
+) -> str:
+    selected_text = str(selected_date or "").strip()
+    if not selected_text:
+        return ""
+
+    selected = _parse_iso_date(selected_text)
+    if selected is None:
+        return selected_text
+
+    use_fh3 = (fh3_dir or paths.OUT_I_CALC_FH3_DIR).resolve()
+    if not use_fh3.exists():
+        return selected_text
+
+    matched_dates: list[str] = []
+    for csv_path in sorted(use_fh3.glob("FH3_TABLE_FULL_*.csv"), reverse=True):
+        try:
+            with csv_path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                file_hits: set[str] = set()
+                for row in reader:
+                    asof = str(row.get("AsOf_Cutoff") or "").strip()
+                    if asof != selected_text:
+                        continue
+                    fh1 = str(row.get("FH_Date1") or "").strip()
+                    if _parse_iso_date(fh1) is not None:
+                        file_hits.add(fh1)
+                if file_hits:
+                    matched_dates.extend(sorted(file_hits))
+                    break
+        except OSError:
+            continue
+
+    if matched_dates:
+        return sorted(matched_dates)[0]
+    return selected_text
 
 
 def list_violet_forecast_dates(db_path: Path | None = None) -> list[str]:
@@ -128,10 +170,14 @@ def materialize_for_selected_date(
     bootstrap_enabled: bool | None = None,
     bootstrap_score: float | None = None,
     policy_name: str | None = None,
+    fh3_dir: Path | None = None,
 ) -> dict[str, Any]:
     from src.followup_ml import vg_store
 
-    use_date = forecast_date or next_business_day(selected_date)
+    use_date = forecast_date or resolve_target_forecast_date(
+        selected_date=selected_date,
+        fh3_dir=fh3_dir,
+    )
     return vg_store.materialize_vbg_for_date(
         use_date,
         db_path=db_path,

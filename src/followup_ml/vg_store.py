@@ -880,6 +880,161 @@ def format_matrix_csv(
     return "\n".join(out_rows) + "\n"
 
 
+def write_vg_debug_log(
+    *,
+    stage: str,
+    payload: Dict[str, Any],
+    root_dir: Optional[Path] = None,
+    trace_id: Optional[str] = None,
+) -> Path:
+    base = (root_dir or (paths.OUT_I_CALC_DIR / "gui_ops" / "vg")).resolve()
+    base.mkdir(parents=True, exist_ok=True)
+
+    clean_stage = "".join(
+        ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(stage)
+    )
+    clean_stage = clean_stage or "stage"
+    trace = str(trace_id or f"VG-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_path = base / f"{stamp}_{trace}_{clean_stage}.json"
+
+    doc: Dict[str, Any] = {
+        "trace_id": trace,
+        "stage": str(stage),
+        "generated_at": _now_ts(),
+    }
+    doc.update(dict(payload))
+    out_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    return out_path
+
+
+def seed_dummy_green_snapshots(
+    *,
+    db_path: Optional[Path] = None,
+    snapshots: Optional[Sequence[Tuple[str, float]]] = None,
+    policy_name: str = "debug_seed_green_v1",
+    models: Optional[Sequence[str]] = None,
+    tickers: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    use_snapshots = list(
+        snapshots
+        if snapshots is not None
+        else [
+            ("2000-01-03", 99.1),
+            ("2000-01-10", 99.2),
+            ("2000-01-17", 99.3),
+            ("2000-01-24", 99.4),
+        ]
+    )
+    if not use_snapshots:
+        raise ValueError("snapshots cannot be empty")
+
+    model_labels = [str(x) for x in (models or MODEL_ORDER_DEFAULT)]
+    ticker_labels = [str(x) for x in (tickers or TICKER_ORDER_DEFAULT)]
+    if not model_labels or not ticker_labels:
+        raise ValueError("models and tickers must be non-empty")
+
+    normalized: List[Tuple[str, float]] = []
+    for raw_date, raw_value in use_snapshots:
+        date_norm = _to_date_or_none(raw_date)
+        if not date_norm:
+            raise ValueError(f"Invalid snapshot date: {raw_date!r}")
+        normalized.append((date_norm, float(raw_value)))
+
+    conn = connect_vg_db(db_path)
+    try:
+        initialize_vg_db(conn)
+        policy_id = upsert_transform_policy(
+            conn,
+            policy_name=str(policy_name),
+            mode="piecewise_linear",
+            points=_load_mapping_points_from_csv(),
+            set_active=False,
+        )
+
+        rows_per_date = int(len(model_labels) * len(ticker_labels))
+        created_dates: List[str] = []
+        per_date_rows: Dict[str, int] = {}
+
+        for forecast_date, score_value in normalized:
+            run_ts = _now_ts()
+            conn.execute(
+                "DELETE FROM materialized_scores WHERE forecast_date = ? AND table_name = 'green'",
+                (forecast_date,),
+            )
+            conn.execute(
+                """
+                INSERT INTO materialization_runs(
+                    forecast_date,
+                    policy_id,
+                    policy_name,
+                    memory_tail,
+                    bootstrap_enabled,
+                    bootstrap_score,
+                    cells_total,
+                    cells_green_real,
+                    cells_green_bootstrap,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    forecast_date,
+                    policy_id,
+                    str(policy_name),
+                    4,
+                    1,
+                    float(score_value),
+                    rows_per_date,
+                    0,
+                    rows_per_date,
+                    run_ts,
+                ),
+            )
+            run_id_row = conn.execute("SELECT last_insert_rowid() AS run_id").fetchone()
+            if run_id_row is None:
+                raise RuntimeError("Failed to resolve run id for dummy green snapshot")
+            run_id = int(run_id_row["run_id"])
+
+            payload: List[Tuple[int, str, str, str, str, float, str]] = []
+            for model in model_labels:
+                for ticker in ticker_labels:
+                    payload.append(
+                        (
+                            run_id,
+                            forecast_date,
+                            "green",
+                            str(model),
+                            str(ticker),
+                            float(score_value),
+                            run_ts,
+                        )
+                    )
+            conn.executemany(
+                """
+                INSERT INTO materialized_scores(
+                    run_id, forecast_date, table_name, model, ticker, score_value, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                payload,
+            )
+            created_dates.append(forecast_date)
+            per_date_rows[forecast_date] = len(payload)
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "db_path": str(resolve_vg_db_path(db_path)),
+        "policy_name": str(policy_name),
+        "dates_seeded": created_dates,
+        "rows_per_date": rows_per_date,
+        "rows_written_by_date": per_date_rows,
+        "models_count": len(model_labels),
+        "tickers_count": len(ticker_labels),
+    }
+
+
 __all__ = [
     "VG_SCHEMA_VERSION",
     "DEFAULT_POLICY_NAME",
@@ -893,4 +1048,6 @@ __all__ = [
     "ingest_round_from_artifacts",
     "materialize_vbg_for_date",
     "format_matrix_csv",
+    "write_vg_debug_log",
+    "seed_dummy_green_snapshots",
 ]

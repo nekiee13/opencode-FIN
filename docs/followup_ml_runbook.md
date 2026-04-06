@@ -109,6 +109,19 @@ Materialize violet/blue/green tables for one forecast date:
 python scripts/followup_ml_vg.py materialize --forecast-date 2026-02-27 --write-dir out/i_calc/ML/vg_exports
 ```
 
+Seed four deterministic debug green snapshots (for warm-up verification):
+
+```bash
+python scripts/followup_ml_vg.py seed-green-dummy
+```
+
+Seeded dates and values:
+
+- `2000-01-03`: `99.1`
+- `2000-01-10`: `99.2`
+- `2000-01-17`: `99.3`
+- `2000-01-24`: `99.4`
+
 Optional controls:
 
 - `--policy-name <name>`
@@ -122,6 +135,12 @@ Current baseline policy:
 - **Real data start boundary**: `2025-07-29`.
 - **Green warm-up**: uses `memory_tail` historical transformed scores; if history is shorter than tail, remaining slots are filled by bootstrap score.
 
+Date anchor rule for GUI operations:
+
+- `selected_date` in GUI is the primary anchor.
+- VG target forecast date is resolved from FH3 artifact rows where `AsOf_Cutoff == selected_date` (uses `FH_Date1`).
+- If no FH3 artifact match exists, fallback remains `selected_date` (no implicit date drift).
+
 Warm-up examples with `memory_tail=4`:
 
 - `2025-07-29`: real slots `0`, bootstrap slots `4`
@@ -129,6 +148,16 @@ Warm-up examples with `memory_tail=4`:
 - `2025-08-12`: real slots `2`, bootstrap slots `2`
 
 For Streamlit operations, supported warm-up depth options are `3`, `4`, and `5`.
+
+VG structured debug logs are written to:
+
+- `out/i_calc/gui_ops/vg/*.json`
+
+Current stages:
+
+- `ingest_preflight` / `ingest_result` / `ingest_error`
+- `materialize_preflight` / `materialize_result` / `materialize_error`
+- `seed_green_preflight` / `seed_green_result`
 
 ## LLM VBG and Markers Databases
 

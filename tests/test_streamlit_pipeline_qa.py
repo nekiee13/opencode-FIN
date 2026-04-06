@@ -124,6 +124,7 @@ def _seed_partial_scores_for_date(scores_dir: Path, selected_date: str) -> None:
 def _seed_fh3_full_table(
     fh3_dir: Path,
     forecast_date: str,
+    asof_cutoff: str = "2025-07-29",
     tickers: tuple[str, ...] = ("TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"),
 ) -> None:
     fh3_dir.mkdir(parents=True, exist_ok=True)
@@ -135,7 +136,7 @@ def _seed_fh3_full_table(
     for ticker in tickers:
         prefix = "GSPC" if ticker == "SPX" else ticker
         lines.append(
-            f"{ticker},{prefix},1.0,DYNAMIX,DYNAMIX_Pred,{forecast_date},1.1,{forecast_date},1.2,{forecast_date},1.3,replay,2025-07-29"
+            f"{ticker},{prefix},1.0,DYNAMIX,DYNAMIX_Pred,{forecast_date},1.1,{forecast_date},1.2,{forecast_date},1.3,replay,{asof_cutoff}"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -252,6 +253,34 @@ def test_evaluate_pipeline_state_flags_fh3_incomplete_coverage(tmp_path: Path) -
 
     assert report["index_code"] == "QA_FH3_INCOMPLETE"
     assert report["fh3_ticker_count"] == 1
+
+
+def test_evaluate_pipeline_state_maps_target_date_from_fh3_asof(
+    tmp_path: Path,
+) -> None:
+    runs_root = tmp_path / "runs"
+    vg_db = tmp_path / "ML_VG_tables.sqlite"
+    scores_dir = tmp_path / "scores"
+    fh3_dir = tmp_path / "fh3"
+    _seed_successful_all_ticker_run(runs_root, "2025-07-29")
+    _seed_fh3_full_table(
+        fh3_dir,
+        "2025-07-31",
+        asof_cutoff="2025-07-29",
+    )
+    _seed_partial_scores_for_date(scores_dir, "2025-07-31")
+
+    report = evaluate_pipeline_state(
+        selected_date="2025-07-29",
+        runs_root=runs_root,
+        vg_db_path=vg_db,
+        scores_dir=scores_dir,
+        fh3_dir=fh3_dir,
+    )
+
+    assert report["target_forecast_date"] == "2025-07-31"
+    assert report["partial_scores_has_target_forecast_date"] is True
+    assert report["index_code"] == "QA_VG_INGEST_MISSING"
 
 
 def test_write_pipeline_qa_log_persists_json(tmp_path: Path) -> None:

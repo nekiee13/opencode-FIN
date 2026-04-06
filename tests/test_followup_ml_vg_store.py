@@ -270,3 +270,85 @@ def test_piecewise_linear_policy_materialization(tmp_path, monkeypatch) -> None:
     got = out["blue"]["Torch"]["TNX"]
     assert got is not None
     assert abs(float(got) - 100.0) < 1e-9
+
+
+def test_seed_dummy_green_snapshots_creates_four_dates(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "out" / "i_calc" / "ML" / "ML_VG_tables.sqlite"
+    mapping_path = tmp_path / "config" / "followup_ml_value_assign.csv"
+    _write(mapping_path, "value,assign\n0,0\n99.99,100\n")
+
+    monkeypatch.setenv("FIN_ML_VG_DB", str(db_path))
+    monkeypatch.setattr(paths, "FOLLOWUP_ML_VALUE_ASSIGN_PATH", mapping_path)
+
+    result = vg_store.seed_dummy_green_snapshots(db_path=db_path)
+    assert result["dates_seeded"] == [
+        "2000-01-03",
+        "2000-01-10",
+        "2000-01-17",
+        "2000-01-24",
+    ]
+    assert result["rows_per_date"] == 54
+
+    conn = vg_store.connect_vg_db(db_path)
+    try:
+        run_rows = conn.execute(
+            """
+            SELECT forecast_date, COUNT(*)
+            FROM materialization_runs
+            GROUP BY forecast_date
+            ORDER BY forecast_date
+            """
+        ).fetchall()
+        assert [(str(r[0]), int(r[1])) for r in run_rows] == [
+            ("2000-01-03", 1),
+            ("2000-01-10", 1),
+            ("2000-01-17", 1),
+            ("2000-01-24", 1),
+        ]
+
+        score_rows = conn.execute(
+            """
+            SELECT forecast_date, table_name, COUNT(*)
+            FROM materialized_scores
+            GROUP BY forecast_date, table_name
+            ORDER BY forecast_date, table_name
+            """
+        ).fetchall()
+        assert [(str(r[0]), str(r[1]), int(r[2])) for r in score_rows] == [
+            ("2000-01-03", "green", 54),
+            ("2000-01-10", "green", 54),
+            ("2000-01-17", "green", 54),
+            ("2000-01-24", "green", 54),
+        ]
+
+        values = conn.execute(
+            """
+            SELECT forecast_date, MIN(score_value), MAX(score_value)
+            FROM materialized_scores
+            WHERE table_name = 'green'
+            GROUP BY forecast_date
+            ORDER BY forecast_date
+            """
+        ).fetchall()
+        assert [(str(r[0]), float(r[1]), float(r[2])) for r in values] == [
+            ("2000-01-03", 99.1, 99.1),
+            ("2000-01-10", 99.2, 99.2),
+            ("2000-01-17", 99.3, 99.3),
+            ("2000-01-24", 99.4, 99.4),
+        ]
+    finally:
+        conn.close()
+
+
+def test_write_vg_debug_log_persists_json(tmp_path) -> None:
+    out = vg_store.write_vg_debug_log(
+        stage="ingest_preflight",
+        payload={"round_id": "26-1-11", "db_path": "x"},
+        root_dir=tmp_path,
+        trace_id="TRACE-TEST-001",
+    )
+    assert out.exists()
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload["trace_id"] == "TRACE-TEST-001"
+    assert payload["stage"] == "ingest_preflight"
+    assert payload["round_id"] == "26-1-11"

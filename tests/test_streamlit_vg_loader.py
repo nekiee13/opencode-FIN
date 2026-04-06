@@ -10,12 +10,45 @@ from src.ui.services.vg_loader import (
     materialize_for_selected_date,
     matrix_to_rows,
     next_business_day,
+    resolve_target_forecast_date,
     suggest_forecast_date,
 )
 
 
 def test_next_business_day_skips_weekend() -> None:
     assert next_business_day("2026-03-27") == "2026-03-30"
+
+
+def test_resolve_target_forecast_date_uses_fh3_asof_cutoff(tmp_path: Path) -> None:
+    fh3_dir = tmp_path / "fh3"
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    path = fh3_dir / "FH3_TABLE_FULL_20260326.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "Ticker,FilePrefix,Last_Close_ASOF,Model_Used,Col_Used,FH_Date1,FH_Day1,FH_Date2,FH_Day2,FH_Date3,FH_Day3,Run_Mode,AsOf_Cutoff",
+                "TNX,TNX,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "DJI,DJI,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "SPX,GSPC,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "VIX,VIX,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "QQQ,QQQ,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "AAPL,AAPL,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = resolve_target_forecast_date(
+        selected_date="2026-03-24",
+        fh3_dir=fh3_dir,
+    )
+    assert out == "2026-03-26"
+
+
+def test_resolve_target_forecast_date_falls_back_to_selected_date() -> None:
+    out = resolve_target_forecast_date(selected_date="2026-03-24")
+    assert out == "2026-03-24"
 
 
 def test_matrix_to_rows_maps_models_and_tickers() -> None:
@@ -84,6 +117,49 @@ def test_materialize_for_selected_date_passes_overrides(monkeypatch) -> None:
     assert captured["memory_tail"] == 5
     assert captured["bootstrap_enabled"] is True
     assert captured["policy_name"] == "value_assign_v1"
+
+
+def test_materialize_for_selected_date_resolves_from_fh3_when_forecast_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeStore:
+        @staticmethod
+        def materialize_vbg_for_date(forecast_date: str, **kwargs):
+            captured["forecast_date"] = forecast_date
+            captured.update(kwargs)
+            return {"ok": True}
+
+    import sys
+
+    monkeypatch.setitem(
+        sys.modules,
+        "src.followup_ml",
+        types.SimpleNamespace(vg_store=_FakeStore),
+    )
+
+    fh3_dir = tmp_path / "fh3"
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    (fh3_dir / "FH3_TABLE_FULL_20260326.csv").write_text(
+        "\n".join(
+            [
+                "Ticker,FilePrefix,Last_Close_ASOF,Model_Used,Col_Used,FH_Date1,FH_Day1,FH_Date2,FH_Day2,FH_Date3,FH_Day3,Run_Mode,AsOf_Cutoff",
+                "TNX,TNX,1,DYNAMIX,DYNAMIX_Pred,2026-03-26,1,2026-03-27,1,2026-03-30,1,replay,2026-03-24",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = materialize_for_selected_date(
+        selected_date="2026-03-24",
+        fh3_dir=fh3_dir,
+    )
+
+    assert out == {"ok": True}
+    assert captured["forecast_date"] == "2026-03-26"
 
 
 def test_list_violet_forecast_dates_returns_descending(tmp_path: Path) -> None:

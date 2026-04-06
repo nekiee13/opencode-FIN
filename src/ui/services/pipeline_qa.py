@@ -12,7 +12,7 @@ from src.ui.services.pipeline_runner import TICKER_ORDER
 from src.ui.services.run_registry import latest_run_for_date
 from src.ui.services.vg_loader import (
     list_violet_forecast_dates,
-    next_business_day,
+    resolve_target_forecast_date,
     suggest_forecast_date,
 )
 
@@ -57,16 +57,6 @@ def _core_success_for_all_tickers(run_payload: dict[str, Any]) -> bool:
         if (ticker, "make_fh3_table") not in success_set:
             return False
     return True
-
-
-def _target_forecast_date(selected_date: str) -> str:
-    raw = str(selected_date or "").strip()
-    if not raw:
-        return ""
-    try:
-        return next_business_day(raw)
-    except ValueError:
-        return raw
 
 
 def _list_partial_score_forecast_dates(scores_dir: Path) -> list[str]:
@@ -123,10 +113,13 @@ def evaluate_pipeline_state(
     fh3_dir: Path | None = None,
 ) -> dict[str, Any]:
     latest = latest_run_for_date(selected_date, root_dir=runs_root)
-    target_forecast_date = _target_forecast_date(selected_date)
+    use_fh3_dir = (fh3_dir or paths.OUT_I_CALC_FH3_DIR).resolve()
+    target_forecast_date = resolve_target_forecast_date(
+        selected_date=selected_date,
+        fh3_dir=use_fh3_dir,
+    )
     violet_dates = list_violet_forecast_dates(vg_db_path)
     use_scores_dir = (scores_dir or paths.OUT_I_CALC_FOLLOWUP_ML_SCORES_DIR).resolve()
-    use_fh3_dir = (fh3_dir or paths.OUT_I_CALC_FH3_DIR).resolve()
     partial_score_dates = _list_partial_score_forecast_dates(use_scores_dir)
     suggested_violet = suggest_forecast_date(
         selected_date=target_forecast_date,
