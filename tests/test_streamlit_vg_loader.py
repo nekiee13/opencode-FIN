@@ -11,6 +11,7 @@ from src.ui.services.vg_loader import (
     materialize_for_selected_date,
     matrix_to_rows,
     next_business_day,
+    pick_anchored_violet_date,
     resolve_target_forecast_date,
     suggest_forecast_date,
 )
@@ -208,6 +209,46 @@ def test_suggest_forecast_date_uses_nearest_prior() -> None:
         available_dates=["2026-03-31", "2026-03-24", "2026-03-17"],
     )
     assert out == "2026-03-31"
+
+
+def test_pick_anchored_violet_date_prefers_selected_date() -> None:
+    out = pick_anchored_violet_date(
+        selected_date="2026-02-27",
+        available_dates=["2026-02-27", "2026-03-02"],
+    )
+    assert out == "2026-02-27"
+
+
+def test_pick_anchored_violet_date_uses_target_when_selected_missing(
+    tmp_path: Path,
+) -> None:
+    fh3_dir = tmp_path / "fh3"
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    (fh3_dir / "FH3_TABLE_FULL_20260302.csv").write_text(
+        "\n".join(
+            [
+                "Ticker,FilePrefix,Last_Close_ASOF,Model_Used,Col_Used,FH_Date1,FH_Day1,FH_Date2,FH_Day2,FH_Date3,FH_Day3,Run_Mode,AsOf_Cutoff",
+                "TNX,TNX,1,DYNAMIX,DYNAMIX_Pred,2026-03-02,1,2026-03-03,1,2026-03-04,1,replay,2026-02-27",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = pick_anchored_violet_date(
+        selected_date="2026-02-27",
+        available_dates=["2026-03-02"],
+        fh3_dir=fh3_dir,
+    )
+    assert out == "2026-03-02"
+
+
+def test_pick_anchored_violet_date_returns_none_when_unrelated() -> None:
+    out = pick_anchored_violet_date(
+        selected_date="2025-07-29",
+        available_dates=["2026-02-27"],
+    )
+    assert out is None
 
 
 def test_format_green_table_rows_uses_three_decimals() -> None:

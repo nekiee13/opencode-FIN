@@ -32,7 +32,8 @@ from src.ui.services.vg_loader import (
     list_violet_forecast_dates,
     materialize_for_selected_date,
     matrix_to_rows,
-    suggest_forecast_date,
+    pick_anchored_violet_date,
+    resolve_target_forecast_date,
 )
 
 
@@ -262,21 +263,18 @@ def run_review_console(db_path: Path | None = None) -> None:
             "Violet = true accuracy. Blue = transformed Violet (continuous piecewise interpolation). "
             "Green = moving average with dummy warm-up slots."
         )
-        forecast_date_default = ""
-        if selected_date:
-            try:
-                from src.ui.services.vg_loader import next_business_day
-
-                forecast_date_default = next_business_day(selected_date)
-            except Exception:
-                forecast_date_default = ""
-
         available_violet_dates = list_violet_forecast_dates()
-        suggested_forecast_date = suggest_forecast_date(
+        target_forecast_date = resolve_target_forecast_date(
+            selected_date=selected_date,
+            fh3_dir=paths.OUT_I_CALC_FH3_DIR,
+        )
+        anchored_forecast_date = pick_anchored_violet_date(
             selected_date=selected_date,
             available_dates=available_violet_dates,
+            fh3_dir=paths.OUT_I_CALC_FH3_DIR,
         )
         has_violet_dates = len(available_violet_dates) > 0
+        has_anchored_violet = False
         if not available_violet_dates:
             st.warning(
                 "No violet rows currently available. Run finalize+ingest to populate Violet scores."
@@ -290,34 +288,39 @@ def run_review_console(db_path: Path | None = None) -> None:
             )
             forecast_date = ""
             st.session_state["vg_error"] = ""
+        elif not anchored_forecast_date:
+            st.warning(
+                "No violet rows exist for the selected round anchor. "
+                "Run finalize+ingest for this selected date context."
+            )
+            st.caption(
+                f"Selected date: {selected_date} | target forecast date: {target_forecast_date}"
+            )
+            st.caption("Index: IDX_VIOLET_MISSING")
+            st.text_input(
+                "Forecast Date (anchored violet round)",
+                value="",
+                key="vg_forecast_date_select_unanchored",
+                disabled=True,
+            )
+            st.caption(
+                "Available violet dates: " + ", ".join(available_violet_dates[:12])
+            )
+            forecast_date = ""
+            st.session_state["vg_error"] = ""
         else:
-            forecast_options = available_violet_dates
-
-            default_forecast = (
-                suggested_forecast_date
-                if suggested_forecast_date
-                else (forecast_options[0] if forecast_options else "")
+            forecast_date = str(anchored_forecast_date)
+            st.text_input(
+                "Forecast Date (anchored violet round)",
+                value=forecast_date,
+                key="vg_forecast_date_select_anchored",
+                disabled=True,
             )
-            default_index = 0
-            if default_forecast in forecast_options:
-                default_index = forecast_options.index(default_forecast)
-
-            forecast_date = st.selectbox(
-                "Forecast Date (available violet rounds)",
-                options=forecast_options,
-                index=default_index,
-                key="vg_forecast_date_select",
-            )
-
-        if has_violet_dates and (
-            available_violet_dates
-            and selected_date
-            and str(forecast_date) != str(selected_date)
-        ):
-            st.info(
-                f"Selected round date {selected_date} has no direct violet row. "
-                f"Using nearest available forecast date {forecast_date}."
-            )
+            has_anchored_violet = True
+            if selected_date and str(forecast_date) != str(selected_date):
+                st.info(
+                    f"Selected round date {selected_date} maps to anchored forecast date {forecast_date}."
+                )
 
         warmup_depth = st.selectbox(
             "Warm-up Depth (dummy slot window)",
@@ -329,13 +332,14 @@ def run_review_console(db_path: Path | None = None) -> None:
         run_clicked = st.button(
             "Load Blue/Green",
             key="load_blue_green",
-            disabled=not has_violet_dates,
+            disabled=not has_anchored_violet,
         )
         if run_clicked:
             try:
                 result = materialize_for_selected_date(
                     selected_date=selected_date,
                     forecast_date=forecast_date or None,
+                    fh3_dir=paths.OUT_I_CALC_FH3_DIR,
                     memory_tail=int(warmup_depth),
                     bootstrap_enabled=True,
                     policy_name="value_assign_v1",

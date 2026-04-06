@@ -42,6 +42,28 @@ def test_load_model_table_uses_round_asof_date(tmp_path: Path) -> None:
     assert str(aapl["Torch"]) == "249.00-253.00 ~253.70"
 
 
+def test_load_model_table_returns_empty_when_selected_before_available_rounds(
+    tmp_path: Path,
+) -> None:
+    rounds_dir = tmp_path / "rounds"
+    csv_path = rounds_dir / "26-1-99" / "t0_forecasts.csv"
+    _write(
+        csv_path,
+        "\n".join(
+            [
+                "round_id,round_state,ticker,runtime_ticker,model,fh_step,forecast_date,pred_value,lower_ci,upper_ci,status,generated_at",
+                "26-1-99,DRAFT_T0,TNX,TNX,Torch,1,2026-03-25,4.0700,3.99,4.15,ok,2026-03-24 08:00:00",
+                "",
+            ]
+        ),
+    )
+
+    table = load_model_table("2025-07-29", rounds_dir=rounds_dir)
+    assert table.source_round_id is None
+    assert table.asof_date is None
+    assert table.rows == []
+
+
 def test_load_marker_values_for_selected_date(tmp_path: Path) -> None:
     markers_dir = tmp_path / "markers"
     _write(

@@ -68,6 +68,33 @@ def resolve_target_forecast_date(
     return selected_text
 
 
+def pick_anchored_violet_date(
+    *,
+    selected_date: str,
+    available_dates: list[str],
+    fh3_dir: Path | None = None,
+) -> str | None:
+    valid = {
+        str(x).strip()
+        for x in available_dates
+        if _parse_iso_date(str(x).strip()) is not None
+    }
+    if not valid:
+        return None
+
+    selected_text = str(selected_date or "").strip()
+    if selected_text in valid:
+        return selected_text
+
+    target_text = resolve_target_forecast_date(
+        selected_date=selected_text,
+        fh3_dir=fh3_dir,
+    )
+    if str(target_text) in valid:
+        return str(target_text)
+    return None
+
+
 def list_violet_forecast_dates(db_path: Path | None = None) -> list[str]:
     use_path = (db_path or paths.OUT_I_CALC_ML_VG_DB_PATH).resolve()
     if not use_path.exists():

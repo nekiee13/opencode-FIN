@@ -159,6 +159,8 @@ def _choose_round(
             asof, round_id, rows, _ = prior[-1]
             return round_id, rows, asof
 
+        return None, [], None
+
     candidates.sort(key=lambda x: x[0] if x[0] is not None else date.min)
     asof, round_id, rows, _ = candidates[-1]
     return round_id, rows, asof
