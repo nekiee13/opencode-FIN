@@ -1348,8 +1348,25 @@ def predict_arch_model(
 # ======================================================================
 
 
+def _resolve_var_best_lag(raw_lag: Any, max_lags: int) -> int:
+    max_i = max(1, int(max_lags))
+    if raw_lag is None:
+        return 1
+    try:
+        txt = str(raw_lag).strip().lower()
+        if txt in {"", "nan", "none", "null"}:
+            return 1
+        lag_i = int(float(txt))
+    except Exception:
+        return 1
+    if lag_i <= 0:
+        return 1
+    return min(lag_i, max_i)
+
+
 def predict_var(
     enriched_data: "DataFrame",
+    ticker: Optional[str] = None,
     progress_callback=None,
 ) -> Optional["DataFrame"]:
     if not opt.HAS_STATSMODELS:
@@ -1386,15 +1403,46 @@ def predict_var(
         if differenced.empty:
             return None
 
+        maxlags_i = max(1, int(getattr(C, "VAR_MAX_LAGS", 10)))
         model = VAR(differenced)
-        selected_order = model.select_order(maxlags=C.VAR_MAX_LAGS)
-        best_lag = selected_order.aic
+        selected_order = model.select_order(maxlags=maxlags_i)
+        raw_best_lag = getattr(selected_order, "aic", None)
+        best_lag = _resolve_var_best_lag(raw_best_lag, max_lags=maxlags_i)
 
-        if best_lag == 0:
+        try:
+            raw_best_lag_i = int(float(str(raw_best_lag)))
+        except Exception:
+            raw_best_lag_i = None
+        if raw_best_lag_i != best_lag:
+            log.warning(
+                "VAR: selected lag '%s' resolved to fallback lag=%d for %s.",
+                raw_best_lag,
+                best_lag,
+                str(ticker or "<ticker>"),
+            )
+
+        results = None
+        last_fit_error: Optional[Exception] = None
+        for lag_try in range(int(best_lag), 0, -1):
+            try:
+                results = model.fit(lag_try)
+                break
+            except Exception as fit_err:  # pragma: no cover - defensive fit fallback
+                last_fit_error = fit_err
+                log.warning(
+                    "VAR: fit failed at lag=%d for %s; retrying lower lag.",
+                    lag_try,
+                    str(ticker or "<ticker>"),
+                )
+                continue
+        if results is None:
+            if last_fit_error is not None:
+                raise last_fit_error
             return None
 
-        results = model.fit(best_lag)
-        lag_order = results.k_ar
+        lag_order = int(getattr(results, "k_ar", 0))
+        if lag_order <= 0:
+            return None
 
         if len(differenced) < lag_order:
             return None

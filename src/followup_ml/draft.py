@@ -354,7 +354,9 @@ def _run_models_for_ticker(
         log.warning("GARCH failed for %s: %s", logical_ticker, e)
 
     try:
-        out["VAR"] = _extract_forecast_df(models_api.predict_var(enriched))
+        out["VAR"] = _extract_forecast_df(
+            models_api.predict_var(enriched, ticker=runtime_ticker)
+        )
     except Exception as e:
         log.warning("VAR failed for %s: %s", logical_ticker, e)
 
