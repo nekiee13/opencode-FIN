@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from src.ui.services.vg_loader import (
+    format_blue_table_rows,
     format_green_table_rows,
     format_violet_blue_rows,
     green_meta_to_rows,
@@ -277,3 +278,17 @@ def test_format_violet_blue_rows_replaces_none_with_unavailable_label() -> None:
     assert out[0]["VAR"] == "model_unavailable"
     assert out[1]["Torch"] == "model_unavailable"
     assert out[1]["LSTM"] == 98.5
+
+
+def test_format_blue_table_rows_formats_two_decimals_and_labels_missing() -> None:
+    rows = [
+        {"Ticker": "TNX", "Torch": 99.2687, "LSTM": None, "VAR": ""},
+        {"Ticker": "AAPL", "Torch": "98.7", "LSTM": "model_unavailable", "VAR": 100},
+    ]
+    out = format_blue_table_rows(rows)
+    assert out[0]["Torch"] == "99.27"
+    assert out[0]["LSTM"] == "model_unavailable"
+    assert out[0]["VAR"] == "model_unavailable"
+    assert out[1]["Torch"] == "98.70"
+    assert out[1]["LSTM"] == "model_unavailable"
+    assert out[1]["VAR"] == "100.00"

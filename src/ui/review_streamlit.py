@@ -28,6 +28,7 @@ from src.ui.services.run_registry import (
     load_run,
 )
 from src.ui.services.vg_loader import (
+    format_blue_table_rows,
     format_green_table_rows,
     format_violet_blue_rows,
     green_meta_to_rows,
@@ -56,6 +57,27 @@ def _status_color(status: str) -> str:
     if value == "VIOLET":
         return "#7f39fb"
     return "#666666"
+
+
+def _style_table_rows(rows: list[dict[str, Any]], text_color: str) -> Any:
+    if not rows:
+        return rows
+    try:
+        import pandas as pd  # type: ignore
+
+        frame = pd.DataFrame(rows)
+        cols = [c for c in list(frame.columns) if str(c) != "Ticker"]
+        if not cols:
+            return frame
+        return frame.style.apply(
+            lambda row: [
+                "" if str(col) == "Ticker" else f"color: {text_color};"
+                for col in list(frame.columns)
+            ],
+            axis=1,
+        )
+    except Exception:
+        return rows
 
 
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
@@ -426,7 +448,7 @@ def run_review_console(db_path: Path | None = None) -> None:
                 models=models,
                 tickers=tickers,
             )
-            blue_rows = format_violet_blue_rows(blue_rows)
+            blue_rows = format_blue_table_rows(blue_rows)
             green_rows = matrix_to_rows(
                 matrix=dict(vg_result.get("green", {})),
                 models=models,
@@ -439,11 +461,20 @@ def run_review_console(db_path: Path | None = None) -> None:
                 tickers=tickers,
             )
             st.markdown("**Violet Table (True Accuracy)**")
-            st.dataframe(violet_rows, use_container_width=True)
+            st.dataframe(
+                _style_table_rows(violet_rows, "#9b59ff"),
+                use_container_width=True,
+            )
             st.markdown("**Blue Table**")
-            st.dataframe(blue_rows, use_container_width=True)
+            st.dataframe(
+                _style_table_rows(blue_rows, "#4aa8ff"),
+                use_container_width=True,
+            )
             st.markdown("**Green Table**")
-            st.dataframe(green_rows, use_container_width=True)
+            st.dataframe(
+                _style_table_rows(green_rows, "#2ecc71"),
+                use_container_width=True,
+            )
             st.markdown("**Green Provenance (Real vs Dummy Slots)**")
             st.dataframe(green_meta_rows, use_container_width=True)
 

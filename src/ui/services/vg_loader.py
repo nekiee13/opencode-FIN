@@ -209,6 +209,37 @@ def format_violet_blue_rows(
     return out
 
 
+def format_blue_table_rows(
+    rows: list[dict[str, Any]],
+    *,
+    missing_label: str = "model_unavailable",
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    label = str(missing_label or "model_unavailable")
+    for row in rows:
+        item: dict[str, Any] = {}
+        for key, value in dict(row).items():
+            if str(key) == "Ticker":
+                item[str(key)] = value
+                continue
+            if value is None:
+                item[str(key)] = label
+                continue
+            text = str(value).strip()
+            if text == "":
+                item[str(key)] = label
+                continue
+            if text == label:
+                item[str(key)] = label
+                continue
+            try:
+                item[str(key)] = format(float(text), "05.2f")
+            except ValueError:
+                item[str(key)] = value
+        out.append(item)
+    return out
+
+
 def green_meta_to_rows(
     *,
     green_meta: dict[str, dict[str, dict[str, int]]],

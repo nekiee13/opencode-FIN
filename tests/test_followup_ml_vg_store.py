@@ -133,11 +133,11 @@ def test_materialize_uses_bootstrap_padding(tmp_path, monkeypatch) -> None:
         bootstrap_score=99.0,
     )
 
-    # Blue: default policy is piecewise linear over value_assign anchors.
+    # Blue: default policy applies step-floor mapping over value_assign anchors.
     got_blue = out["blue"]["Torch"]["TNX"]
     assert got_blue is not None
-    assert abs(float(got_blue) - 99.4040404040404) < 1e-9
-    assert out["policy_mode"] == "piecewise_linear"
+    assert abs(float(got_blue) - 99.0) < 1e-9
+    assert out["policy_mode"] == "step_floor"
 
     # Green uses one prior transformed value (95) + three bootstrap slots (99).
     expected_green = (95.0 + 99.0 + 99.0 + 99.0) / 4.0

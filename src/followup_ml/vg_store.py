@@ -352,7 +352,7 @@ def ensure_default_transform_policy(conn: sqlite3.Connection) -> int:
     return upsert_transform_policy(
         conn,
         policy_name=DEFAULT_POLICY_NAME,
-        mode="piecewise_linear",
+        mode="step_floor",
         points=points,
         set_active=True,
     )
@@ -675,6 +675,8 @@ def materialize_vbg_for_date(
     conn = connect_vg_db(db_path)
     try:
         initialize_vg_db(conn)
+        if not policy_name or str(policy_name).strip() == DEFAULT_POLICY_NAME:
+            ensure_default_transform_policy(conn)
         policy_id, policy_name_resolved, mode, points = _get_policy(conn, policy_name)
 
         current_rows = conn.execute(

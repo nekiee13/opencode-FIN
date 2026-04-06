@@ -131,7 +131,7 @@ Optional controls:
 
 Current baseline policy:
 
-- **Blue transform default**: `piecewise_linear` interpolation over `config/followup_ml_value_assign.csv` anchor points.
+- **Blue transform default**: `step_floor` mapping over `config/followup_ml_value_assign.csv` anchor points.
 - **Real data start boundary**: `2025-07-29`.
 - **Green warm-up**: uses `memory_tail` historical transformed scores; if history is shorter than tail, remaining slots are filled by bootstrap score.
 
