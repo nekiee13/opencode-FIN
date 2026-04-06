@@ -187,6 +187,28 @@ def format_green_table_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def format_violet_blue_rows(
+    rows: list[dict[str, Any]],
+    *,
+    missing_label: str = "model_unavailable",
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    label = str(missing_label or "model_unavailable")
+    for row in rows:
+        item: dict[str, Any] = {}
+        for key, value in dict(row).items():
+            if str(key) == "Ticker":
+                item[str(key)] = value
+                continue
+            if value is None:
+                item[str(key)] = label
+                continue
+            text = str(value).strip()
+            item[str(key)] = label if text == "" else value
+        out.append(item)
+    return out
+
+
 def green_meta_to_rows(
     *,
     green_meta: dict[str, dict[str, dict[str, int]]],

@@ -29,6 +29,7 @@ from src.ui.services.run_registry import (
 )
 from src.ui.services.vg_loader import (
     format_green_table_rows,
+    format_violet_blue_rows,
     green_meta_to_rows,
     list_violet_forecast_dates,
     materialize_for_selected_date,
@@ -400,11 +401,13 @@ def run_review_console(db_path: Path | None = None) -> None:
                 models=models,
                 tickers=tickers,
             )
+            violet_rows = format_violet_blue_rows(violet_rows)
             blue_rows = matrix_to_rows(
                 matrix=dict(vg_result.get("blue", {})),
                 models=models,
                 tickers=tickers,
             )
+            blue_rows = format_violet_blue_rows(blue_rows)
             green_rows = matrix_to_rows(
                 matrix=dict(vg_result.get("green", {})),
                 models=models,

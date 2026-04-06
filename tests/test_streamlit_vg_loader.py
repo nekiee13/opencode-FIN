@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.ui.services.vg_loader import (
     format_green_table_rows,
+    format_violet_blue_rows,
     green_meta_to_rows,
     list_violet_forecast_dates,
     materialize_for_selected_date,
@@ -263,3 +264,16 @@ def test_format_green_table_rows_uses_three_decimals() -> None:
     assert out[1]["Torch"] == "09.877"
     assert out[1]["ARIMAX"] == "10.500"
     assert out[1]["PCE"] is None
+
+
+def test_format_violet_blue_rows_replaces_none_with_unavailable_label() -> None:
+    rows = [
+        {"Ticker": "TNX", "Torch": 99.1, "LSTM": None, "VAR": ""},
+        {"Ticker": "AAPL", "Torch": None, "LSTM": 98.5, "VAR": 97.0},
+    ]
+    out = format_violet_blue_rows(rows)
+    assert out[0]["Torch"] == 99.1
+    assert out[0]["LSTM"] == "model_unavailable"
+    assert out[0]["VAR"] == "model_unavailable"
+    assert out[1]["Torch"] == "model_unavailable"
+    assert out[1]["LSTM"] == 98.5
