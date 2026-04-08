@@ -223,6 +223,52 @@ Source lineage:
 
 ## JSON Schemas
 
+## A) ANN Training Summary (`out/i_calc/ann/training/run_*/summary.json`)
+
+```json
+{
+  "run_dir": "out/i_calc/ann/training/run_20260408-120000",
+  "rows": 1234,
+  "features_before_selection": 224,
+  "features_after_selection": 96,
+  "metrics": {
+    "r2": 0.7123,
+    "mae": 0.021,
+    "rmse": 0.033,
+    "mape": 8.77,
+    "directional_accuracy": 0.61
+  },
+  "best_epoch": 47
+}
+```
+
+## B) ANN Tuning Best Summary (`out/i_calc/ann/tuning/tune_*/best_summary.json`)
+
+```json
+{
+  "trial": 7,
+  "learning_rate": 0.001,
+  "scheduler_kind": "step",
+  "batch_size": 32,
+  "epochs": 100,
+  "early_stopping_patience": 12,
+  "depth": 2,
+  "width": 32,
+  "dropout": 0.1,
+  "weight_decay": 0.0001,
+  "window_length": 5,
+  "lag_depth": 4,
+  "feature_selection": "importance",
+  "features_before": 224,
+  "features_after": 112,
+  "r2": 0.734,
+  "mae": 0.019,
+  "rmse": 0.031,
+  "mape": 8.12,
+  "directional_accuracy": 0.63
+}
+```
+
 ## 1) DynaMix Worker Protocol Payload
 
 Source: `scripts/workers/dynamix_worker.py`.

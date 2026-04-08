@@ -234,6 +234,62 @@ python scripts\ann_feature_stores_ingest.py --force
 
 Legacy marker ingest remains available for marker store maintenance only and is not part of ANN input feature ingestion.
 
+### ANN training and tuning
+
+Train one ANN run from current input feature stores:
+
+```bash
+python scripts/ann_train.py --tickers TNX DJI SPX VIX QQQ AAPL
+```
+
+Key training options:
+
+- `--learning-rate`
+- `--scheduler-kind {none,step,cosine,reduce_on_plateau}`
+- `--batch-size`
+- `--epochs`
+- `--early-stopping-patience`
+- `--depth` / `--width`
+- `--dropout` / `--weight-decay`
+- `--window-length` / `--lag-depth`
+
+Feature-selection options:
+
+- `--feature-selection {none,correlation,importance,rfe}`
+- correlation: `--corr-threshold`
+- importance pruning: `--importance-keep-ratio`
+- recursive elimination: `--rfe-min-features` and `--rfe-drop-count`
+
+Train output artifacts are written under:
+
+- `out/i_calc/ann/training/run_*/`
+
+Core metric output includes:
+
+- `R2`, `MAE`, `RMSE`, `MAPE`, `directional_accuracy`
+
+Run tuning sweep (randomized trial search):
+
+```bash
+python scripts/ann_tune.py --max-trials 20
+```
+
+Tuning output artifacts are written under:
+
+- `out/i_calc/ann/tuning/tune_*/`
+- `trials.csv`
+- `best_config.json`
+- `best_summary.json`
+
+Windows CMD example (from active conda env):
+
+```bat
+conda activate F:\vEnv\opencode-FIN
+cd /d F:\xPy\FIN-Git\opencode-FIN
+python scripts\ann_train.py --tickers TNX DJI SPX VIX QQQ AAPL --feature-selection rfe --epochs 120
+python scripts\ann_tune.py --max-trials 20
+```
+
 ## Core Artifacts and Columns
 
 ### `scores/<round_id>_partial_scores.csv`

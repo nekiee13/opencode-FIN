@@ -82,3 +82,49 @@ def test_run_ann_feature_stores_ingest_builds_cli_command(monkeypatch) -> None:
     assert "--tda-dir" in cmd
     assert "--store-path" in cmd
     assert "--force" in cmd
+
+
+def test_run_ann_train_builds_cli_command(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_run(cmd, cwd, text, capture_output, check):
+        captured["cmd"] = list(cmd)
+        captured["cwd"] = str(cwd)
+        _ = text, capture_output, check
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(ann_ops.subprocess, "run", _fake_run)
+
+    out = ann_ops.run_ann_train(
+        tickers=["TNX", "SPX"],
+        window_length=4,
+        lag_depth=2,
+    )
+    assert out["returncode"] == 0
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert any(str(x).endswith("ann_train.py") for x in cmd)
+    assert "--tickers" in cmd
+    assert "TNX" in cmd
+    assert "SPX" in cmd
+    assert "--window-length" in cmd
+    assert "--lag-depth" in cmd
+
+
+def test_run_ann_tune_builds_cli_command(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_run(cmd, cwd, text, capture_output, check):
+        captured["cmd"] = list(cmd)
+        captured["cwd"] = str(cwd)
+        _ = text, capture_output, check
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(ann_ops.subprocess, "run", _fake_run)
+
+    out = ann_ops.run_ann_tune(max_trials=12)
+    assert out["returncode"] == 0
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert any(str(x).endswith("ann_tune.py") for x in cmd)
+    assert "--max-trials" in cmd

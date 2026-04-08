@@ -84,3 +84,60 @@ def run_ann_markers_ingest(
         "stdout": str(proc.stdout),
         "stderr": str(proc.stderr),
     }
+
+
+def run_ann_train(
+    *,
+    python_exec: str | None = None,
+    tickers: list[str] | None = None,
+    window_length: int | None = None,
+    lag_depth: int | None = None,
+) -> dict[str, Any]:
+    py = python_exec or sys.executable
+    scripts_dir = paths.APP_ROOT / "scripts"
+    cmd = [py, str(scripts_dir / "ann_train.py")]
+    if tickers:
+        cmd.append("--tickers")
+        cmd.extend([str(x).strip().upper() for x in tickers if str(x).strip()])
+    if window_length is not None:
+        cmd.extend(["--window-length", str(int(window_length))])
+    if lag_depth is not None:
+        cmd.extend(["--lag-depth", str(int(lag_depth))])
+
+    proc = subprocess.run(
+        cmd,
+        cwd=str(paths.APP_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return {
+        "command": cmd,
+        "returncode": int(proc.returncode),
+        "stdout": str(proc.stdout),
+        "stderr": str(proc.stderr),
+    }
+
+
+def run_ann_tune(
+    *,
+    python_exec: str | None = None,
+    max_trials: int = 20,
+) -> dict[str, Any]:
+    py = python_exec or sys.executable
+    scripts_dir = paths.APP_ROOT / "scripts"
+    cmd = [py, str(scripts_dir / "ann_tune.py"), "--max-trials", str(int(max_trials))]
+
+    proc = subprocess.run(
+        cmd,
+        cwd=str(paths.APP_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return {
+        "command": cmd,
+        "returncode": int(proc.returncode),
+        "stdout": str(proc.stdout),
+        "stderr": str(proc.stderr),
+    }

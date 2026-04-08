@@ -46,6 +46,18 @@ def test_build_pipeline_commands_all_tickers_in_sequence() -> None:
     assert ann[0].command[-1].endswith("ann_feature_stores_ingest.py")
 
 
+def test_build_pipeline_commands_can_include_ann_training_stage() -> None:
+    commands = build_pipeline_commands(
+        selected_date="2026-03-24",
+        selected_ticker="TNX",
+        run_ann_training=True,
+    )
+    training = [x for x in commands if x.stage == "ann_train"]
+    assert len(training) == 1
+    assert training[0].category == "ann"
+    assert any(str(x).endswith("ann_train.py") for x in training[0].command)
+
+
 def test_run_command_sets_utf8_pythonioencoding(tmp_path: Path) -> None:
     script = tmp_path / "check_env.py"
     script.write_text(

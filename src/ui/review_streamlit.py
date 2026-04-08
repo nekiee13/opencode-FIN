@@ -9,6 +9,8 @@ from src.ui.services.ann_ops import (
     load_ann_store_summary,
     run_ann_feature_stores_ingest,
     run_ann_markers_ingest,
+    run_ann_train,
+    run_ann_tune,
 )
 from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
@@ -527,6 +529,49 @@ def run_review_console(db_path: Path | None = None) -> None:
         if st.button("Run ANN Marker Ingest (Legacy)", key="run_ann_marker_ingest"):
             marker_store = paths.OUT_I_CALC_DIR / "stores" / "ann_markers_store.sqlite"
             result = run_ann_markers_ingest(store_path=marker_store)
+            st.session_state["ann_ingest_result"] = result
+
+        ann_train_col1, ann_train_col2, ann_train_col3 = st.columns(3)
+        ann_window_length = ann_train_col1.number_input(
+            "Window Length",
+            min_value=1,
+            max_value=30,
+            value=5,
+            step=1,
+            key="ann_window_length",
+        )
+        ann_lag_depth = ann_train_col2.number_input(
+            "Lag Depth",
+            min_value=0,
+            max_value=30,
+            value=4,
+            step=1,
+            key="ann_lag_depth",
+        )
+        ann_max_trials = ann_train_col3.number_input(
+            "Tune Max Trials",
+            min_value=1,
+            max_value=200,
+            value=20,
+            step=1,
+            key="ann_max_trials",
+        )
+
+        if st.button("Run ANN Train", key="run_ann_train"):
+            selected_scope = (
+                list(TICKER_ORDER)
+                if str(selected_ticker).strip().upper() in {"", "ALL", "ALL_TICKERS"}
+                else [str(selected_ticker).strip().upper()]
+            )
+            result = run_ann_train(
+                tickers=selected_scope,
+                window_length=int(ann_window_length),
+                lag_depth=int(ann_lag_depth),
+            )
+            st.session_state["ann_ingest_result"] = result
+
+        if st.button("Run ANN Tune", key="run_ann_tune"):
+            result = run_ann_tune(max_trials=int(ann_max_trials))
             st.session_state["ann_ingest_result"] = result
 
         ann_result = st.session_state.get("ann_ingest_result")

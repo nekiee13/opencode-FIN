@@ -55,6 +55,7 @@ def build_pipeline_commands(
     selected_date: str,
     selected_ticker: str,
     python_exec: str | None = None,
+    run_ann_training: bool = False,
 ) -> list[CommandSpec]:
     py = python_exec or sys.executable
     repo_root = paths.APP_ROOT
@@ -145,6 +146,22 @@ def build_pipeline_commands(
             command=[py, str(scripts_dir / "ann_feature_stores_ingest.py")],
         )
     )
+
+    if run_ann_training:
+        commands.append(
+            CommandSpec(
+                category="ann",
+                stage="ann_train",
+                ticker=None,
+                cwd=repo_root,
+                command=[
+                    py,
+                    str(scripts_dir / "ann_train.py"),
+                    "--tickers",
+                    *selected_tickers,
+                ],
+            )
+        )
     return commands
 
 
