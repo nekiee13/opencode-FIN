@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from src.ui.services.ann_feature_store import (
     initialize_ann_feature_store,
@@ -124,3 +126,63 @@ def test_ann_tune_writes_per_ticker_target_matrix(tmp_path: Path) -> None:
     assert "DJI" in payload
     assert "magnitude" in payload["TNX"]
     assert "sgn" in payload["TNX"]
+
+
+def _load_ann_tune_module() -> Any:
+    module_path = Path(__file__).resolve().parents[1] / "scripts" / "ann_tune.py"
+    spec = importlib.util.spec_from_file_location("ann_tune_module", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_rank_prefers_directional_accuracy_for_sgn() -> None:
+    module = _load_ann_tune_module()
+    rows = [
+        {
+            "trial": 1,
+            "target_mode": "sgn",
+            "directional_accuracy": 0.7,
+            "mae": 0.1,
+            "rmse": 0.1,
+            "r2": 0.99,
+        },
+        {
+            "trial": 2,
+            "target_mode": "sgn",
+            "directional_accuracy": 0.9,
+            "mae": 0.5,
+            "rmse": 0.5,
+            "r2": 0.10,
+        },
+    ]
+
+    ranked = module._rank(rows, target_mode="sgn")
+    assert ranked[0]["trial"] == 2
+
+
+def test_rank_prefers_rmse_for_magnitude() -> None:
+    module = _load_ann_tune_module()
+    rows = [
+        {
+            "trial": 1,
+            "target_mode": "magnitude",
+            "directional_accuracy": 1.0,
+            "mae": 0.1,
+            "rmse": 1.2,
+            "r2": 0.99,
+        },
+        {
+            "trial": 2,
+            "target_mode": "magnitude",
+            "directional_accuracy": 0.2,
+            "mae": 0.5,
+            "rmse": 0.4,
+            "r2": -5.0,
+        },
+    ]
+
+    ranked = module._rank(rows, target_mode="magnitude")
+    assert ranked[0]["trial"] == 2

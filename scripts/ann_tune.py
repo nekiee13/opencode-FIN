@@ -192,7 +192,47 @@ def _run_trials_for_setup(
     return rows
 
 
-def _rank(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _as_finite_float(value: Any, default: float) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not np.isfinite(out):
+        return default
+    return out
+
+
+def _rank_key_for_mode(
+    row: dict[str, Any], target_mode: str
+) -> tuple[float, float, float, float]:
+    mode = str(target_mode or "").strip().lower()
+    r2 = _as_finite_float(row.get("r2"), float("-inf"))
+    mae = _as_finite_float(row.get("mae"), float("inf"))
+    rmse = _as_finite_float(row.get("rmse"), float("inf"))
+    directional_accuracy = _as_finite_float(row.get("directional_accuracy"), 0.0)
+
+    if mode == "sgn":
+        return (-directional_accuracy, mae, rmse, -r2)
+    return (rmse, mae, -r2, -directional_accuracy)
+
+
+def _rank(
+    rows: list[dict[str, Any]],
+    *,
+    target_mode: str | None = None,
+) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+
+    mode = str(target_mode or "").strip().lower()
+    if not mode:
+        inferred = {str(x.get("target_mode") or "").strip().lower() for x in rows}
+        if len(inferred) == 1 and next(iter(inferred)) in {"magnitude", "sgn"}:
+            mode = next(iter(inferred))
+
+    if mode in {"magnitude", "sgn"}:
+        return sorted(rows, key=lambda x: _rank_key_for_mode(x, mode))
+
     return sorted(rows, key=lambda x: (-float(x["r2"]), float(x["rmse"])))
 
 
@@ -242,7 +282,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not trial_rows:
             print("[ann_tune] no trials produced usable datasets")
             return 2
-        ranked = _rank(trial_rows)
+        ranked = _rank(trial_rows, target_mode=mode)
         all_rows.extend(ranked)
     else:
         for ticker in tickers:
@@ -261,7 +301,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 if not trial_rows:
                     continue
-                ranked = _rank(trial_rows)
+                ranked = _rank(trial_rows, target_mode=mode)
                 all_rows.extend(ranked)
                 best = ranked[0]
                 matrix_best[ticker][mode] = {
