@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -7,6 +8,41 @@ from typing import Any
 
 from src.config import paths
 from src.ui.services.ann_feature_store import load_ann_feature_store_summary
+
+
+def extract_ann_train_run_dir(stdout: str) -> Path | None:
+    for raw_line in str(stdout or "").splitlines():
+        line = str(raw_line).strip()
+        if not line.startswith("[ann_train] run_dir="):
+            continue
+        path_text = line.split("=", 1)[-1].strip()
+        if not path_text:
+            continue
+        return Path(path_text)
+    return None
+
+
+def load_ann_train_artifacts(run_dir: Path) -> dict[str, Any]:
+    summary_path = run_dir / "summary.json"
+    impacts_path = run_dir / "top_feature_impacts.json"
+    out: dict[str, Any] = {
+        "run_dir": str(run_dir),
+        "summary": None,
+        "top_feature_impacts": [],
+    }
+    if summary_path.exists():
+        try:
+            out["summary"] = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            out["summary"] = None
+    if impacts_path.exists():
+        try:
+            payload = json.loads(impacts_path.read_text(encoding="utf-8"))
+            if isinstance(payload, list):
+                out["top_feature_impacts"] = payload
+        except Exception:
+            out["top_feature_impacts"] = []
+    return out
 
 
 def load_ann_store_summary(store_path: Path) -> dict[str, Any]:
@@ -94,6 +130,10 @@ def run_ann_train(
     lag_depth: int | None = None,
     train_end_date: str | None = None,
     target_mode: str | None = None,
+    feature_selection: str | None = None,
+    importance_keep_ratio: float | None = None,
+    feature_allowlist_file: Path | None = None,
+    save_selected_features_file: Path | None = None,
 ) -> dict[str, Any]:
     py = python_exec or sys.executable
     scripts_dir = paths.APP_ROOT / "scripts"
@@ -109,6 +149,14 @@ def run_ann_train(
         cmd.extend(["--train-end-date", str(train_end_date).strip()])
     if target_mode is not None and str(target_mode).strip():
         cmd.extend(["--target-mode", str(target_mode).strip().lower()])
+    if feature_selection is not None and str(feature_selection).strip():
+        cmd.extend(["--feature-selection", str(feature_selection).strip().lower()])
+    if importance_keep_ratio is not None:
+        cmd.extend(["--importance-keep-ratio", str(float(importance_keep_ratio))])
+    if feature_allowlist_file is not None:
+        cmd.extend(["--feature-allowlist-file", str(feature_allowlist_file)])
+    if save_selected_features_file is not None:
+        cmd.extend(["--save-selected-features-file", str(save_selected_features_file)])
 
     proc = subprocess.run(
         cmd,

@@ -131,9 +131,9 @@ def _row_generated_at(rows: list[dict[str, str]]) -> str:
 def _choose_round(
     selected_date: str,
     rounds_dir: Path,
-) -> tuple[str | None, list[dict[str, str]], date | None]:
+) -> tuple[str | None, list[dict[str, str]], date | None, Path | None]:
     selected = _parse_iso(selected_date)
-    candidates: list[tuple[date | None, str, list[dict[str, str]], str]] = []
+    candidates: list[tuple[date | None, str, list[dict[str, str]], str, Path]] = []
 
     for csv_path in sorted(rounds_dir.glob("*/t0_forecasts.csv")):
         rows = _read_rows(csv_path)
@@ -144,29 +144,29 @@ def _choose_round(
         )
         asof = _round_asof_date(rows)
         generated = _row_generated_at(rows)
-        candidates.append((asof, round_id, rows, generated))
+        candidates.append((asof, round_id, rows, generated, csv_path.parent))
 
     if not candidates:
-        return None, [], None
+        return None, [], None, None
 
     if selected is not None:
         exact = [x for x in candidates if x[0] == selected]
         if exact:
             exact.sort(key=lambda x: x[3])
-            asof, round_id, rows, _ = exact[-1]
-            return round_id, rows, asof
+            asof, round_id, rows, _, round_path = exact[-1]
+            return round_id, rows, asof, round_path
 
         prior = [x for x in candidates if x[0] is not None and x[0] <= selected]
         if prior:
             prior.sort(key=lambda x: x[0] if x[0] is not None else date.min)
-            asof, round_id, rows, _ = prior[-1]
-            return round_id, rows, asof
+            asof, round_id, rows, _, round_path = prior[-1]
+            return round_id, rows, asof, round_path
 
-        return None, [], None
+        return None, [], None, None
 
     candidates.sort(key=lambda x: x[0] if x[0] is not None else date.min)
-    asof, round_id, rows, _ = candidates[-1]
-    return round_id, rows, asof
+    asof, round_id, rows, _, round_path = candidates[-1]
+    return round_id, rows, asof, round_path
 
 
 def load_model_table(
@@ -174,7 +174,7 @@ def load_model_table(
     rounds_dir: Path | None = None,
 ) -> ModelTableData:
     use_rounds = rounds_dir or paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR
-    round_id, rows, asof = _choose_round(selected_date, use_rounds)
+    round_id, rows, asof, _ = _choose_round(selected_date, use_rounds)
     if not rows:
         return ModelTableData(source_round_id=None, asof_date=None, rows=[])
 
@@ -212,6 +212,44 @@ def load_model_table(
         asof_date=asof.isoformat() if asof else None,
         rows=out_rows,
     )
+
+
+def load_weighted_ensemble_values(
+    selected_date: str,
+    rounds_dir: Path | None = None,
+) -> dict[str, float]:
+    use_rounds = rounds_dir or paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR
+    round_id, rows, _, round_path = _choose_round(selected_date, use_rounds)
+    if not rows:
+        return {}
+
+    candidate_paths: list[Path] = []
+    if round_path is not None:
+        candidate_paths.append(round_path / "t0_day1_weighted_ensemble.csv")
+    if round_id:
+        candidate_paths.append(
+            use_rounds / str(round_id) / "t0_day1_weighted_ensemble.csv"
+        )
+
+    weighted_path: Path | None = None
+    for path in candidate_paths:
+        if path.exists():
+            weighted_path = path
+            break
+    if weighted_path is None:
+        return {}
+
+    out: dict[str, float] = {}
+    with weighted_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            ticker = str(row.get("ticker", "") or "").strip().upper()
+            if not ticker:
+                continue
+            value = _to_float(row.get("weighted_ensemble"))
+            if value is not None:
+                out[ticker] = float(value)
+    return out
 
 
 def load_marker_values(
@@ -286,12 +324,16 @@ def build_marker_comparison_rows(
     *,
     model_rows: list[dict[str, Any]],
     marker_values: dict[str, dict[str, float | None]],
+    ml_values_by_ticker: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     by_ticker = {str(row.get("Ticker", "")): row for row in model_rows}
     out: list[dict[str, Any]] = []
     for ticker in TICKER_ORDER:
         model_row = by_ticker.get(ticker, {})
-        ml_value = _extract_numeric(model_row.get("Torch"))
+        if ml_values_by_ticker is not None and ticker in ml_values_by_ticker:
+            ml_value = float(ml_values_by_ticker[ticker])
+        else:
+            ml_value = _extract_numeric(model_row.get("Torch"))
         oraclum = marker_values.get("oraclum", {}).get(ticker)
         rd_value = marker_values.get("rd", {}).get(ticker)
         v85220 = marker_values.get("85220", {}).get(ticker)

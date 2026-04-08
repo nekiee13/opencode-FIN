@@ -54,7 +54,9 @@ def _forward(
 
     h = X
     for i in range(len(W) - 1):
-        z = h @ W[i] + b[i]
+        with np.errstate(over="ignore", invalid="ignore"):
+            z = h @ W[i] + b[i]
+        z = np.nan_to_num(z, nan=0.0, posinf=1e6, neginf=-1e6)
         pre.append(z)
         h = _relu(z)
         if train_mode and dropout > 0:
@@ -64,9 +66,12 @@ def _forward(
             masks.append(mask)
         else:
             masks.append(np.ones_like(h))
+        h = np.nan_to_num(h, nan=0.0, posinf=1e6, neginf=-1e6)
         act.append(h)
 
-    z_out = h @ W[-1] + b[-1]
+    with np.errstate(over="ignore", invalid="ignore"):
+        z_out = h @ W[-1] + b[-1]
+    z_out = np.nan_to_num(z_out, nan=0.0, posinf=1e6, neginf=-1e6)
     pre.append(z_out)
     act.append(z_out)
     return z_out.reshape(-1), {"act": act, "pre": pre, "masks": masks}
@@ -78,11 +83,17 @@ def _loss(
     params: dict[str, list[np.ndarray]],
     wd: float,
 ) -> float:
-    err = y_pred - y_true
-    mse = float(np.mean(np.square(err)))
+    with np.errstate(over="ignore", invalid="ignore"):
+        err = y_pred - y_true
+        mse = float(np.mean(np.square(err)))
+    if not np.isfinite(mse):
+        return float("inf")
     if wd <= 0:
         return mse
-    reg = sum(float(np.sum(np.square(w))) for w in params["W"])
+    with np.errstate(over="ignore", invalid="ignore"):
+        reg = sum(float(np.sum(np.square(w))) for w in params["W"])
+    if not np.isfinite(reg):
+        return float("inf")
     return mse + wd * reg
 
 
@@ -100,24 +111,45 @@ def _backward(
     masks = cache["masks"]
 
     n = max(1, y_true.shape[0])
-    delta = ((y_pred - y_true).reshape(-1, 1) * (2.0 / n)).astype(float)
+    with np.errstate(over="ignore", invalid="ignore"):
+        delta = ((y_pred - y_true).reshape(-1, 1) * (2.0 / n)).astype(float)
+    delta = np.nan_to_num(delta, nan=0.0, posinf=1e6, neginf=-1e6)
 
     grad_W: list[np.ndarray] = [np.zeros_like(w) for w in W]
     grad_b: list[np.ndarray] = [np.zeros((1, w.shape[1])) for w in W]
 
     for layer in range(len(W) - 1, -1, -1):
         a_prev = act[layer]
-        grad_W[layer] = a_prev.T @ delta
+        with np.errstate(over="ignore", invalid="ignore"):
+            grad_W[layer] = a_prev.T @ delta
         if weight_decay > 0:
             grad_W[layer] += 2.0 * weight_decay * W[layer]
-        grad_b[layer] = np.sum(delta, axis=0, keepdims=True)
+        grad_W[layer] = np.nan_to_num(grad_W[layer], nan=0.0, posinf=1e6, neginf=-1e6)
+        with np.errstate(over="ignore", invalid="ignore"):
+            grad_b[layer] = np.sum(delta, axis=0, keepdims=True)
+        grad_b[layer] = np.nan_to_num(grad_b[layer], nan=0.0, posinf=1e6, neginf=-1e6)
 
         if layer > 0:
-            delta = delta @ W[layer].T
+            with np.errstate(over="ignore", invalid="ignore"):
+                delta = delta @ W[layer].T
             delta = delta * _relu_grad(pre[layer - 1])
             delta = delta * masks[layer - 1]
+            delta = np.nan_to_num(delta, nan=0.0, posinf=1e6, neginf=-1e6)
 
     return {"W": grad_W, "b": grad_b}
+
+
+def _clip_gradients(grads: dict[str, list[np.ndarray]], max_norm: float = 10.0) -> None:
+    total_sq = 0.0
+    for arr in grads["W"] + grads["b"]:
+        total_sq += float(np.sum(np.square(arr)))
+    total_norm = float(np.sqrt(total_sq))
+    if not np.isfinite(total_norm) or total_norm <= 0.0 or total_norm <= max_norm:
+        return
+    scale = float(max_norm / total_norm)
+    for i in range(len(grads["W"])):
+        grads["W"][i] *= scale
+        grads["b"][i] *= scale
 
 
 def _apply_scheduler(
@@ -241,10 +273,17 @@ def train_ann_regressor(
                 cache,
                 weight_decay=float(config.weight_decay),
             )
+            _clip_gradients(grads, max_norm=10.0)
 
             for i in range(len(params["W"])):
                 params["W"][i] -= lr * grads["W"][i]
                 params["b"][i] -= lr * grads["b"][i]
+                params["W"][i] = np.nan_to_num(
+                    params["W"][i], nan=0.0, posinf=1e6, neginf=-1e6
+                )
+                params["b"][i] = np.nan_to_num(
+                    params["b"][i], nan=0.0, posinf=1e6, neginf=-1e6
+                )
 
             batch_loss = _loss(yb, pred, params, float(config.weight_decay))
             epoch_loss += float(batch_loss)
@@ -258,6 +297,8 @@ def train_ann_regressor(
             rng=rng,
         )
         val_loss = _loss(y_val, val_pred, params, float(config.weight_decay))
+        if not np.isfinite(train_loss) or not np.isfinite(val_loss):
+            break
         train_loss_history.append(float(train_loss))
         val_loss_history.append(float(val_loss))
         lr_history.append(float(lr))

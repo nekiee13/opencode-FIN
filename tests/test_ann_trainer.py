@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import warnings
 
 from src.ann.config import ANNTrainingConfig, SchedulerConfig
 from src.ann.metrics import regression_metrics
@@ -38,3 +39,28 @@ def test_regression_metrics_include_r2() -> None:
     assert set(["r2", "mae", "rmse", "mape", "directional_accuracy"]).issubset(
         out.keys()
     )
+
+
+def test_train_ann_regressor_suppresses_runtime_overflow_warnings() -> None:
+    rng = np.random.default_rng(99)
+    X = rng.normal(size=(100, 12))
+    y = rng.choice([-1.0, 1.0], size=100).astype(float)
+
+    cfg = ANNTrainingConfig(
+        learning_rate=0.05,
+        batch_size=16,
+        epochs=60,
+        early_stopping_patience=8,
+        depth=3,
+        width=64,
+        dropout=0.2,
+        weight_decay=0.001,
+    )
+
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        out = train_ann_regressor(X, y, config=cfg, seed=11)
+
+    runtime_warns = [w for w in seen if issubclass(w.category, RuntimeWarning)]
+    assert not runtime_warns
+    assert np.isfinite(out.metrics["r2"])

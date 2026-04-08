@@ -6,7 +6,9 @@ from typing import Any
 
 from src.config import paths
 from src.ui.services.ann_ops import (
+    extract_ann_train_run_dir,
     load_ann_store_summary,
+    load_ann_train_artifacts,
     run_ann_feature_stores_ingest,
     run_ann_markers_ingest,
     run_ann_train,
@@ -17,6 +19,7 @@ from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
     load_marker_values,
     load_model_table,
+    load_weighted_ensemble_values,
 )
 from src.ui.services.date_sources import load_sidebar_date_options
 from src.ui.services.pipeline_runner import (
@@ -186,7 +189,7 @@ def run_review_console(db_path: Path | None = None) -> None:
         )
 
     tab_ml, tab_dashboard, tab_vg, tab_ann = st.tabs(
-        ["ML Calculations", "Dashboard", "Blue/Green ML", "ANN Training"]
+        ["ML Calculations", "Dashboard", "Blue/Green ML", "ANN"]
     )
 
     with tab_ml:
@@ -325,9 +328,11 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.warning("No model table rows were found for selected date context.")
 
         marker_values = load_marker_values(selected_date)
+        ml_weighted_values = load_weighted_ensemble_values(selected_date)
         comparison_rows = build_marker_comparison_rows(
             model_rows=model_table.rows,
             marker_values=marker_values,
+            ml_values_by_ticker=ml_weighted_values,
         )
         st.subheader("Marker Comparison: Oraclum / RD / 85220")
         st.dataframe(comparison_rows, use_container_width=True)
@@ -486,13 +491,13 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.dataframe(green_meta_rows, use_container_width=True)
 
     with tab_ann:
-        st.subheader("ANN Training / Store")
+        st.subheader("ANN")
 
         ann_signal_rows = build_ann_t0_p_sgn_rows(
             selected_date=selected_date,
             tickers=list(TICKER_ORDER),
         )
-        st.markdown("**T0 / P / SGN / Magnitude**")
+        st.markdown("**T0 / P / +3-day / Delta / SGN / Magnitude**")
         st.dataframe(ann_signal_rows, use_container_width=True)
 
         store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
@@ -540,13 +545,22 @@ def run_review_console(db_path: Path | None = None) -> None:
             result = run_ann_markers_ingest(store_path=marker_store)
             st.session_state["ann_ingest_result"] = result
 
+        profile_dir = paths.OUT_I_CALC_DIR / "ann" / "feature_profiles"
+        profile_path = profile_dir / "pruned_inputs.json"
+        profile_active = profile_path.exists()
+        st.caption(
+            "Input Profile: "
+            + (f"Pruned ({profile_path})" if profile_active else "Full feature set")
+        )
+
         (
             ann_train_col1,
             ann_train_col2,
             ann_train_col3,
             ann_train_col4,
             ann_train_col5,
-        ) = st.columns(5)
+            ann_train_col6,
+        ) = st.columns(6)
         ann_window_length = ann_train_col1.number_input(
             "Window Length",
             min_value=1,
@@ -591,6 +605,39 @@ def run_review_console(db_path: Path | None = None) -> None:
             index=0,
             key="ann_target_mode",
         )
+        ann_prune_keep_ratio = ann_train_col6.number_input(
+            "Prune Keep Ratio",
+            min_value=0.10,
+            max_value=0.95,
+            value=0.50,
+            step=0.05,
+            key="ann_prune_keep_ratio",
+        )
+
+        if st.button("Prune Inputs", key="run_ann_prune_inputs"):
+            selected_scope = (
+                list(TICKER_ORDER)
+                if str(selected_ticker).strip().upper() in {"", "ALL", "ALL_TICKERS"}
+                else [str(selected_ticker).strip().upper()]
+            )
+            result = run_ann_train(
+                tickers=selected_scope,
+                window_length=int(ann_window_length),
+                lag_depth=int(ann_lag_depth),
+                train_end_date=str(ann_train_end_date or "").strip() or None,
+                target_mode=str(ann_target_mode or "magnitude").strip().lower(),
+                feature_selection="importance",
+                importance_keep_ratio=float(ann_prune_keep_ratio),
+                save_selected_features_file=profile_path,
+            )
+            st.session_state["ann_ingest_result"] = result
+
+        if st.button("Reset ANN", key="run_ann_reset"):
+            if profile_path.exists():
+                profile_path.unlink()
+                st.success("ANN input profile reset to full feature set.")
+            else:
+                st.info("ANN input profile already using full feature set.")
 
         if st.button("Run ANN Train", key="run_ann_train"):
             selected_scope = (
@@ -604,6 +651,7 @@ def run_review_console(db_path: Path | None = None) -> None:
                 lag_depth=int(ann_lag_depth),
                 train_end_date=str(ann_train_end_date or "").strip() or None,
                 target_mode=str(ann_target_mode or "magnitude").strip().lower(),
+                feature_allowlist_file=profile_path if profile_path.exists() else None,
             )
             st.session_state["ann_ingest_result"] = result
 
@@ -627,3 +675,11 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.code(str(ann_result.get("stdout", "")) or "<empty>")
             st.text("stderr")
             st.code(str(ann_result.get("stderr", "")) or "<empty>")
+
+            run_dir = extract_ann_train_run_dir(str(ann_result.get("stdout", "") or ""))
+            if run_dir is not None and run_dir.exists():
+                artifacts = load_ann_train_artifacts(run_dir)
+                top = list(artifacts.get("top_feature_impacts") or [])
+                if top:
+                    st.markdown("**Top 5 Input Impact**")
+                    st.dataframe(top[:5], use_container_width=True)

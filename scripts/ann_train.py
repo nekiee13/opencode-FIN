@@ -5,7 +5,9 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence, cast
+
+import numpy as np
 
 
 def _bootstrap_sys_path() -> Path:
@@ -85,6 +87,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--importance-keep-ratio", type=float, default=0.5)
     p.add_argument("--rfe-min-features", type=int, default=12)
     p.add_argument("--rfe-drop-count", type=int, default=4)
+    p.add_argument(
+        "--feature-allowlist-file",
+        type=str,
+        default="",
+        help="Optional JSON file with selected_columns list to constrain ANN inputs",
+    )
+    p.add_argument(
+        "--save-selected-features-file",
+        type=str,
+        default="",
+        help="Optional JSON output path to persist selected feature set",
+    )
 
     p.add_argument(
         "--output-dir", default=str(paths.OUT_I_CALC_DIR / "ann" / "training")
@@ -134,11 +148,59 @@ def _select_columns(
     return rfe.selected_columns, list(rfe.history)
 
 
+def _load_feature_allowlist(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    if isinstance(payload, list):
+        return {str(x).strip() for x in payload if str(x).strip()}
+    if isinstance(payload, dict):
+        values = payload.get("selected_columns")
+        if isinstance(values, list):
+            return {str(x).strip() for x in values if str(x).strip()}
+    return set()
+
+
+def _rank_feature_impacts(
+    X: np.ndarray,
+    y: np.ndarray,
+    columns: list[str],
+    *,
+    top_n: int = 5,
+) -> list[dict[str, object]]:
+    x = np.asarray(X, dtype=float)
+    t = np.asarray(y, dtype=float).reshape(-1)
+    if x.ndim != 2 or x.shape[0] == 0 or x.shape[1] == 0:
+        return []
+
+    ranked: list[tuple[str, float]] = []
+    for i, name in enumerate(columns):
+        xi = x[:, i]
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            corr = np.corrcoef(xi, t)[0, 1]
+        score = abs(float(corr)) if np.isfinite(corr) else 0.0
+        ranked.append((str(name), score))
+
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    top = ranked[: max(1, int(top_n))]
+    return [
+        {
+            "rank": int(idx + 1),
+            "feature": str(name),
+            "impact_score": float(score),
+        }
+        for idx, (name, score) in enumerate(top)
+    ]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
 
     scheduler = SchedulerConfig(
-        kind=str(args.scheduler_kind),
+        kind=cast(Any, str(args.scheduler_kind)),
         step_size=int(args.scheduler_step_size),
         gamma=float(args.scheduler_gamma),
     )
@@ -170,24 +232,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("[ann_train] no training rows or features available")
         return 2
 
+    dataset_X = dataset.X
+    dataset_columns = list(dataset.feature_columns)
+    allowlist_path = Path(str(args.feature_allowlist_file or "").strip())
+    allowlist_used = False
+    if str(args.feature_allowlist_file or "").strip():
+        allowed = _load_feature_allowlist(allowlist_path)
+        if allowed:
+            idx = [i for i, name in enumerate(dataset_columns) if name in allowed]
+            if not idx:
+                print("[ann_train] feature allowlist removed all available features")
+                return 2
+            dataset_X = dataset_X[:, idx]
+            dataset_columns = [dataset_columns[i] for i in idx]
+            allowlist_used = True
+
     selected_columns, selection_history = _select_columns(
         method=str(args.feature_selection),
-        X=dataset.X,
+        X=dataset_X,
         y=dataset.y,
-        columns=dataset.feature_columns,
+        columns=dataset_columns,
         corr_threshold=float(args.corr_threshold),
         importance_keep_ratio=float(args.importance_keep_ratio),
         rfe_min_features=int(args.rfe_min_features),
         rfe_drop_count=int(args.rfe_drop_count),
     )
-    idx_map = {name: i for i, name in enumerate(dataset.feature_columns)}
+    idx_map = {name: i for i, name in enumerate(dataset_columns)}
     selected_idx = [idx_map[name] for name in selected_columns if name in idx_map]
     if not selected_idx:
         print("[ann_train] feature selection removed all features")
         return 2
 
-    X_sel = dataset.X[:, selected_idx]
+    X_sel = dataset_X[:, selected_idx]
     result = train_ann_regressor(X_sel, dataset.y, config=config, seed=int(args.seed))
+    top_feature_impacts = _rank_feature_impacts(
+        X_sel,
+        dataset.y,
+        selected_columns,
+        top_n=5,
+    )
 
     out_dir = Path(args.output_dir).resolve() / f"run_{_utc_tag()}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -200,6 +283,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "importance_keep_ratio": float(args.importance_keep_ratio),
             "rfe_min_features": int(args.rfe_min_features),
             "rfe_drop_count": int(args.rfe_drop_count),
+            "allowlist_path": str(allowlist_path) if allowlist_used else None,
         },
         "tickers": [str(x).strip().upper() for x in args.tickers],
         "seed": int(args.seed),
@@ -223,6 +307,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         encoding="utf-8",
     )
+    (out_dir / "top_feature_impacts.json").write_text(
+        json.dumps(top_feature_impacts, indent=2),
+        encoding="utf-8",
+    )
     (out_dir / "training_history.json").write_text(
         json.dumps(
             {
@@ -240,10 +328,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = {
         "run_dir": str(out_dir),
         "rows": int(dataset.X.shape[0]),
-        "features_before_selection": int(len(dataset.feature_columns)),
+        "features_before_selection": int(len(dataset_columns)),
         "features_after_selection": int(len(selected_columns)),
         "metrics": result.metrics,
         "best_epoch": int(result.best_epoch),
+        "top_feature_impacts": top_feature_impacts,
     }
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"
@@ -256,6 +345,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"{summary['features_after_selection']}/{summary['features_before_selection']}"
     )
     print(f"[ann_train] r2={result.metrics.get('r2', 0.0):.6f}")
+    for item in top_feature_impacts:
+        impact_raw = item.get("impact_score")
+        impact = float(impact_raw) if isinstance(impact_raw, (int, float)) else 0.0
+        print(
+            "[ann_train] top_feature "
+            f"#{item.get('rank')} {item.get('feature')} score={impact:.6f}"
+        )
+
+    save_selected_path = Path(str(args.save_selected_features_file or "").strip())
+    if str(args.save_selected_features_file or "").strip():
+        save_selected_path.parent.mkdir(parents=True, exist_ok=True)
+        save_selected_path.write_text(
+            json.dumps(
+                {
+                    "source_run_dir": str(out_dir),
+                    "selected_count": len(selected_columns),
+                    "selected_columns": selected_columns,
+                    "generated_at": datetime.now(timezone.utc)
+                    .replace(microsecond=0)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"[ann_train] saved_selected_features={save_selected_path}")
     return 0
 
 

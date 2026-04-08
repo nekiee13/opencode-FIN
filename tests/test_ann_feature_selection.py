@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import warnings
 
 from src.ann.feature_selection import (
     correlation_filter,
@@ -49,3 +50,21 @@ def test_recursive_feature_elimination_reaches_min_features() -> None:
     )
     assert len(out.selected_columns) == 2
     assert out.history
+
+
+def test_correlation_filter_constant_columns_no_runtime_warning() -> None:
+    X = np.array(
+        [
+            [1.0, 1.0, 4.0],
+            [1.0, 1.0, 5.0],
+            [1.0, 1.0, 6.0],
+            [1.0, 1.0, 7.0],
+        ],
+        dtype=float,
+    )
+    cols = ["c1", "c2", "c3"]
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        kept = correlation_filter(X, cols, threshold=0.95)
+    assert kept
+    assert not [w for w in seen if issubclass(w.category, RuntimeWarning)]

@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 
 import numpy as np
 
@@ -40,9 +40,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("--raw-tickers-dir", default=str(paths.DATA_TICKERS_DIR))
     p.add_argument(
+        "--rounds-dir",
+        default=str(paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR),
+    )
+    p.add_argument(
         "--tickers",
         nargs="+",
         default=["TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"],
+    )
+    p.add_argument(
+        "--target-modes",
+        nargs="+",
+        default=["magnitude", "sgn"],
+        choices=["magnitude", "sgn"],
+    )
+    p.add_argument(
+        "--tune-scope",
+        choices=["matrix", "global"],
+        default="matrix",
+        help="matrix=tune per ticker and target mode; global=tune one shared setup",
+    )
+    p.add_argument(
+        "--train-end-date",
+        type=str,
+        default="",
+        help="Inclusive training end date (YYYY-MM-DD)",
     )
     p.add_argument("--max-trials", type=int, default=20)
     p.add_argument("--seed", type=int, default=42)
@@ -95,15 +117,22 @@ def _select_columns(
     return rfe.selected_columns
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
-    rng = np.random.default_rng(int(args.seed))
-    tickers = [str(x).strip().upper() for x in args.tickers]
-
-    trial_rows: list[dict[str, Any]] = []
-    for trial in range(1, max(1, int(args.max_trials)) + 1):
+def _run_trials_for_setup(
+    *,
+    rng: np.random.Generator,
+    setup_tickers: list[str],
+    target_mode: str,
+    max_trials: int,
+    seed: int,
+    store_path: Path,
+    raw_tickers_dir: Path,
+    rounds_dir: Path,
+    train_end_date: str | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for trial in range(1, max(1, int(max_trials)) + 1):
         sampled = _sample_config(rng)
-        scheduler = SchedulerConfig(kind=str(sampled["scheduler_kind"]))
+        scheduler = SchedulerConfig(kind=cast(Any, str(sampled["scheduler_kind"])))
         cfg = ANNTrainingConfig(
             learning_rate=float(sampled["learning_rate"]),
             batch_size=int(sampled["batch_size"]),
@@ -119,10 +148,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         ds = build_training_dataset(
-            store_path=Path(args.store_path),
-            raw_tickers_dir=Path(args.raw_tickers_dir),
-            tickers=tickers,
+            store_path=store_path,
+            raw_tickers_dir=raw_tickers_dir,
+            tickers=setup_tickers,
             config=cfg,
+            rounds_dir=rounds_dir,
+            train_end_date=train_end_date,
+            target_mode=target_mode,
         )
         if ds.X.shape[0] == 0 or ds.X.shape[1] == 0:
             continue
@@ -139,13 +171,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             ds.X[:, selected_idx],
             ds.y,
             config=cfg,
-            seed=int(args.seed) + trial,
+            seed=int(seed) + int(trial),
         )
         row = {
-            "trial": trial,
+            "trial": int(trial),
+            "target_mode": str(target_mode),
+            "tickers": "|".join(setup_tickers),
             **sampled,
-            "features_before": len(ds.feature_columns),
-            "features_after": len(selected_idx),
+            "features_before": int(len(ds.feature_columns)),
+            "features_after": int(len(selected_idx)),
             "r2": float(result.metrics.get("r2", 0.0)),
             "mae": float(result.metrics.get("mae", 0.0)),
             "rmse": float(result.metrics.get("rmse", 0.0)),
@@ -154,38 +188,110 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result.metrics.get("directional_accuracy", 0.0)
             ),
         }
-        trial_rows.append(row)
+        rows.append(row)
+    return rows
 
-    if not trial_rows:
-        print("[ann_tune] no trials produced usable datasets")
-        return 2
 
-    ranked = sorted(trial_rows, key=lambda x: (-float(x["r2"]), float(x["rmse"])))
-    best = ranked[0]
+def _rank(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=lambda x: (-float(x["r2"]), float(x["rmse"])))
+
+
+def _best_config_fields(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "learning_rate": row["learning_rate"],
+        "batch_size": row["batch_size"],
+        "epochs": row["epochs"],
+        "early_stopping_patience": row["early_stopping_patience"],
+        "depth": row["depth"],
+        "width": row["width"],
+        "dropout": row["dropout"],
+        "weight_decay": row["weight_decay"],
+        "window_length": row["window_length"],
+        "lag_depth": row["lag_depth"],
+        "scheduler_kind": row["scheduler_kind"],
+        "feature_selection": row["feature_selection"],
+    }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    rng = np.random.default_rng(int(args.seed))
+    tickers = [str(x).strip().upper() for x in args.tickers if str(x).strip()]
+    target_modes = [str(x).strip().lower() for x in args.target_modes if str(x).strip()]
+    store_path = Path(args.store_path).resolve()
+    raw_tickers_dir = Path(args.raw_tickers_dir).resolve()
+    rounds_dir = Path(args.rounds_dir).resolve()
+    train_end_date = str(args.train_end_date or "").strip() or None
+
+    all_rows: list[dict[str, Any]] = []
+    matrix_best: dict[str, dict[str, dict[str, Any]]] = {}
+
+    if str(args.tune_scope) == "global":
+        mode = target_modes[0] if target_modes else "magnitude"
+        trial_rows = _run_trials_for_setup(
+            rng=rng,
+            setup_tickers=tickers,
+            target_mode=mode,
+            max_trials=int(args.max_trials),
+            seed=int(args.seed),
+            store_path=store_path,
+            raw_tickers_dir=raw_tickers_dir,
+            rounds_dir=rounds_dir,
+            train_end_date=train_end_date,
+        )
+        if not trial_rows:
+            print("[ann_tune] no trials produced usable datasets")
+            return 2
+        ranked = _rank(trial_rows)
+        all_rows.extend(ranked)
+    else:
+        for ticker in tickers:
+            matrix_best[ticker] = {}
+            for mode in target_modes:
+                trial_rows = _run_trials_for_setup(
+                    rng=rng,
+                    setup_tickers=[ticker],
+                    target_mode=mode,
+                    max_trials=int(args.max_trials),
+                    seed=int(args.seed),
+                    store_path=store_path,
+                    raw_tickers_dir=raw_tickers_dir,
+                    rounds_dir=rounds_dir,
+                    train_end_date=train_end_date,
+                )
+                if not trial_rows:
+                    continue
+                ranked = _rank(trial_rows)
+                all_rows.extend(ranked)
+                best = ranked[0]
+                matrix_best[ticker][mode] = {
+                    **_best_config_fields(best),
+                    "r2": best["r2"],
+                    "mae": best["mae"],
+                    "rmse": best["rmse"],
+                    "mape": best["mape"],
+                    "directional_accuracy": best["directional_accuracy"],
+                    "features_before": best["features_before"],
+                    "features_after": best["features_after"],
+                }
+
+        if not all_rows:
+            print("[ann_tune] no trials produced usable datasets")
+            return 2
+
+    ranked_all = _rank(all_rows)
+    best = ranked_all[0]
 
     out_dir = Path(args.output_dir).resolve() / f"tune_{_utc_tag()}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     trials_path = out_dir / "trials.csv"
     with trials_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(ranked[0].keys()))
+        writer = csv.DictWriter(handle, fieldnames=list(ranked_all[0].keys()))
         writer.writeheader()
-        writer.writerows(ranked)
+        writer.writerows(ranked_all)
 
-    best_config = {
-        "learning_rate": best["learning_rate"],
-        "batch_size": best["batch_size"],
-        "epochs": best["epochs"],
-        "early_stopping_patience": best["early_stopping_patience"],
-        "depth": best["depth"],
-        "width": best["width"],
-        "dropout": best["dropout"],
-        "weight_decay": best["weight_decay"],
-        "window_length": best["window_length"],
-        "lag_depth": best["lag_depth"],
-        "scheduler_kind": best["scheduler_kind"],
-        "feature_selection": best["feature_selection"],
-    }
+    best_config = _best_config_fields(best)
     (out_dir / "best_config.json").write_text(
         json.dumps(best_config, indent=2),
         encoding="utf-8",
@@ -195,8 +301,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         encoding="utf-8",
     )
 
+    if matrix_best:
+        (out_dir / "best_config_matrix.json").write_text(
+            json.dumps(matrix_best, indent=2),
+            encoding="utf-8",
+        )
+
+    setup_count = sum(len(v) for v in matrix_best.values()) if matrix_best else 1
+
     print(f"[ann_tune] output_dir={out_dir}")
-    print(f"[ann_tune] trials={len(ranked)}")
+    print(f"[ann_tune] trials={len(ranked_all)}")
+    print(f"[ann_tune] setups={setup_count}")
     print(f"[ann_tune] best_r2={float(best['r2']):.6f}")
     return 0
 

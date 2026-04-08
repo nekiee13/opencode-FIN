@@ -11,10 +11,12 @@ def _ridge_importance(X: np.ndarray, y: np.ndarray, alpha: float = 1e-6) -> np.n
     if x.ndim != 2 or x.shape[0] == 0:
         return np.zeros((x.shape[1] if x.ndim == 2 else 0,), dtype=float)
 
-    xtx = x.T @ x
-    reg = alpha * np.eye(xtx.shape[0], dtype=float)
-    xty = x.T @ t
-    beta = np.linalg.pinv(xtx + reg) @ xty
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        xtx = x.T @ x
+        reg = alpha * np.eye(xtx.shape[0], dtype=float)
+        xty = x.T @ t
+        beta = np.linalg.pinv(xtx + reg) @ xty
+    beta = np.nan_to_num(beta, nan=0.0, posinf=0.0, neginf=0.0)
     return np.abs(beta)
 
 
@@ -35,7 +37,8 @@ def correlation_filter(
     if x.shape[1] <= 1:
         return list(columns)
 
-    corr = np.corrcoef(x, rowvar=False)
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(x, rowvar=False)
     corr = np.nan_to_num(corr, nan=0.0)
     keep = [True] * x.shape[1]
     for i in range(x.shape[1]):

@@ -6,6 +6,7 @@ from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
     load_marker_values,
     load_model_table,
+    load_weighted_ensemble_values,
 )
 
 
@@ -173,3 +174,50 @@ def test_build_marker_comparison_rows_applies_ticker_formats() -> None:
     assert by_ticker["VIX"]["ML"] == "25.50"
     assert by_ticker["QQQ"]["ML"] == "581.80"
     assert by_ticker["AAPL"]["ML"] == "251.00"
+
+
+def test_load_weighted_ensemble_values_reads_selected_round(tmp_path: Path) -> None:
+    rounds_dir = tmp_path / "rounds"
+    _write(
+        rounds_dir / "anchor-20260331" / "t0_forecasts.csv",
+        "\n".join(
+            [
+                "round_id,round_state,ticker,runtime_ticker,model,fh_step,forecast_date,pred_value,lower_ci,upper_ci,status,generated_at",
+                "anchor-20260331,DRAFT_T0,TNX,TNX,Torch,1,2026-04-01,4.31,,,ok,2026-04-08 01:00:00",
+                "",
+            ]
+        ),
+    )
+    _write(
+        rounds_dir / "anchor-20260331" / "t0_day1_weighted_ensemble.csv",
+        "\n".join(
+            [
+                "ticker,weighted_ensemble,weights_used_sum",
+                "TNX,4.320749,1.0",
+                "SPX,6526.962058,1.0",
+                "",
+            ]
+        ),
+    )
+
+    out = load_weighted_ensemble_values("2026-03-31", rounds_dir=rounds_dir)
+    assert out["TNX"] == 4.320749
+    assert out["SPX"] == 6526.962058
+
+
+def test_build_marker_comparison_rows_uses_weighted_p_values_when_provided() -> None:
+    model_rows = [{"Ticker": "TNX", "Torch": "4.111"}]
+    marker_values: dict[str, dict[str, float | None]] = {
+        "oraclum": {"TNX": 4.289},
+        "rd": {"TNX": 4.330},
+        "85220": {"TNX": 4.320},
+    }
+
+    rows = build_marker_comparison_rows(
+        model_rows=model_rows,
+        marker_values=marker_values,
+        ml_values_by_ticker={"TNX": 4.320749},
+    )
+
+    by_ticker = {row["Ticker"]: row for row in rows}
+    assert by_ticker["TNX"]["ML"] == "4.321"
