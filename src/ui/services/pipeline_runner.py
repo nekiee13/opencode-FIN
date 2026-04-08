@@ -139,10 +139,10 @@ def build_pipeline_commands(
     commands.append(
         CommandSpec(
             category="store",
-            stage="ann_ingest",
+            stage="ann_feature_ingest",
             ticker=None,
             cwd=repo_root,
-            command=[py, str(scripts_dir / "ann_markers_ingest.py")],
+            command=[py, str(scripts_dir / "ann_feature_stores_ingest.py")],
         )
     )
     return commands

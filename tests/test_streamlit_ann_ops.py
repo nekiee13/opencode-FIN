@@ -1,49 +1,84 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
+from src.ui.services import ann_ops
 from src.ui.services.ann_ops import load_ann_store_summary
+from src.ui.services.ann_feature_store import (
+    initialize_ann_feature_store,
+    upsert_ann_feature_records,
+)
 
 
 def test_load_ann_store_summary_missing_store(tmp_path: Path) -> None:
     out = load_ann_store_summary(tmp_path / "missing.sqlite")
     assert out["exists"] is False
-    assert out["rows"] == 0
+    assert out["families"]["ti"]["rows"] == 0
 
 
 def test_load_ann_store_summary_reads_latest_date(tmp_path: Path) -> None:
-    db_path = tmp_path / "ann_markers_store.sqlite"
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            """
-            CREATE TABLE ann_marker_values (
-                as_of_date TEXT NOT NULL,
-                ticker TEXT NOT NULL,
-                marker_name_canonical TEXT NOT NULL,
-                marker_value_decimal REAL,
-                PRIMARY KEY (as_of_date, ticker, marker_name_canonical)
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO ann_marker_values(as_of_date, ticker, marker_name_canonical, marker_value_decimal)
-            VALUES ('2026-03-24', 'TNX', 'RD', 4.33)
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO ann_marker_values(as_of_date, ticker, marker_name_canonical, marker_value_decimal)
-            VALUES ('2026-03-31', 'TNX', 'RD', 4.34)
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    db_path = tmp_path / "ann_input_features.sqlite"
+    initialize_ann_feature_store(db_path)
+    upsert_ann_feature_records(
+        store_path=db_path,
+        source_batch="20260331",
+        records=[
+            {
+                "as_of_date": "2026-03-31",
+                "ticker": "TNX",
+                "feature_name": "RSI (14)",
+                "feature_value": 54.3,
+                "source_family": "ti",
+                "source_file": "/tmp/TI/TNX.csv",
+                "value_status": "present",
+            },
+            {
+                "as_of_date": "2026-03-24",
+                "ticker": "TNX",
+                "feature_name": "H1_Entropy",
+                "feature_value": 2.014,
+                "source_family": "tda_h1",
+                "source_file": "/tmp/tda/TDA_METRICS_20260324.csv",
+                "value_status": "present",
+            },
+        ],
+    )
 
     out = load_ann_store_summary(db_path)
     assert out["exists"] is True
-    assert out["rows"] == 2
-    assert out["latest_as_of_date"] == "2026-03-31"
+    assert out["families"]["ti"]["rows"] == 1
+    assert out["families"]["ti"]["latest_as_of_date"] == "2026-03-31"
+    assert out["families"]["tda_h1"]["rows"] == 1
+
+
+def test_run_ann_feature_stores_ingest_builds_cli_command(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_run(cmd, cwd, text, capture_output, check):
+        captured["cmd"] = list(cmd)
+        captured["cwd"] = str(cwd)
+        _ = text, capture_output, check
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(ann_ops.subprocess, "run", _fake_run)
+
+    out = ann_ops.run_ann_feature_stores_ingest(
+        ti_dir=Path("/tmp/TI"),
+        pp_dir=Path("/tmp/PP"),
+        svl_dir=Path("/tmp/svl"),
+        tda_dir=Path("/tmp/tda"),
+        store_path=Path("/tmp/ann_input_features.sqlite"),
+        force=True,
+    )
+
+    assert out["returncode"] == 0
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert any(str(x).endswith("ann_feature_stores_ingest.py") for x in cmd)
+    assert "--ti-dir" in cmd
+    assert "--pp-dir" in cmd
+    assert "--svl-dir" in cmd
+    assert "--tda-dir" in cmd
+    assert "--store-path" in cmd
+    assert "--force" in cmd

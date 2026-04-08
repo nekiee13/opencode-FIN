@@ -196,6 +196,44 @@ Policy note:
 - LLM green memory uses last `N` available scored observations per canonical model+ticker (missing weeks are skipped).
 - Bootstrap fill is applied only when available observations are fewer than `N`.
 
+## ANN Input Feature Stores
+
+Canonical sqlite path:
+
+- `out/i_calc/stores/ann_input_features.sqlite`
+
+ANN input families (used for ANN feature ingestion):
+
+- technical indicators from `out/i_calc/TI/*.csv`
+- pivot levels from `out/i_calc/PP/*.csv`
+- SVL Hurst current values (`H20/H60/H120`) from `out/i_calc/svl/SVL_METRICS_*.csv`
+- TDA CPI metrics (`H1_MaxPersistence`, `H1_CountAbove_Thr`, `H1_Entropy`) from `out/i_calc/tda/TDA_METRICS_*.csv`
+
+Policy note:
+
+- `RD`, `85220`, and `MICHO` are not ANN input features.
+
+Ingest ANN input feature stores (bash):
+
+```bash
+python scripts/ann_feature_stores_ingest.py
+```
+
+Force reprocess (bash):
+
+```bash
+python scripts/ann_feature_stores_ingest.py --force
+```
+
+Windows CMD example (from active conda env):
+
+```bat
+conda activate F:\vEnv\opencode-FIN
+python scripts\ann_feature_stores_ingest.py --force
+```
+
+Legacy marker ingest remains available for marker store maintenance only and is not part of ANN input feature ingestion.
+
 ## Core Artifacts and Columns
 
 ### `scores/<round_id>_partial_scores.csv`

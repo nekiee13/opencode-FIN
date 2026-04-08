@@ -41,6 +41,10 @@ def test_build_pipeline_commands_all_tickers_in_sequence() -> None:
     for ticker in TICKER_ORDER:
         assert ticker in fh3[0].command
 
+    ann = [x for x in commands if x.category == "store" and "ann" in x.stage]
+    assert len(ann) == 1
+    assert ann[0].command[-1].endswith("ann_feature_stores_ingest.py")
+
 
 def test_run_command_sets_utf8_pythonioencoding(tmp_path: Path) -> None:
     script = tmp_path / "check_env.py"

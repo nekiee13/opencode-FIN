@@ -203,6 +203,24 @@ erDiagram
   }
 ```
 
+## 5) ANN Input Feature Store (`out/i_calc/stores/ann_input_features.sqlite`)
+
+Defined in `src/ui/services/ann_feature_store.py` and populated by `scripts/ann_feature_stores_ingest.py`.
+
+Main tables:
+- `ann_ti_inputs((as_of_date, ticker, feature_name) PK, feature_value, value_status, source_file, source_batch, loaded_at, updated_at)`
+- `ann_pivot_inputs((as_of_date, ticker, feature_name) PK, feature_value, value_status, source_file, source_batch, loaded_at, updated_at)`
+- `ann_hurst_inputs((as_of_date, ticker, feature_name) PK, feature_value, value_status, source_file, source_batch, loaded_at, updated_at)`
+- `ann_tda_h1_inputs((as_of_date, ticker, feature_name) PK, feature_value, value_status, source_file, source_batch, loaded_at, updated_at)`
+- `ann_feature_ingest_files(ingest_id PK, file_path, source_family, source_batch, rows_written, status, ingested_at, note, UNIQUE(file_path, source_family, source_batch))`
+- `schema_meta`
+
+Source lineage:
+- TI inputs from `out/i_calc/TI/*.csv` (classical indicators)
+- Pivot inputs from `out/i_calc/PP/*.csv` (classic/fibonacci/camarilla/woodie/demark levels)
+- Hurst inputs from `out/i_calc/svl/SVL_METRICS_*.csv` (`H20/H60/H120`)
+- TDA CPI inputs from `out/i_calc/tda/TDA_METRICS_*.csv` (`H1_MaxPersistence`, `H1_CountAbove_Thr`, `H1_Entropy`)
+
 ## JSON Schemas
 
 ## 1) DynaMix Worker Protocol Payload

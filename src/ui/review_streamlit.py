@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from src.config import paths
-from src.ui.services.ann_ops import load_ann_store_summary, run_ann_markers_ingest
+from src.ui.services.ann_ops import (
+    load_ann_store_summary,
+    run_ann_feature_stores_ingest,
+    run_ann_markers_ingest,
+)
 from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
@@ -480,16 +484,49 @@ def run_review_console(db_path: Path | None = None) -> None:
 
     with tab_ann:
         st.subheader("ANN Training / Store")
-        store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_markers_store.sqlite"
+        store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
         summary = load_ann_store_summary(store_path)
         c1, c2, c3 = st.columns(3)
+
+        families = dict(summary.get("families") or {})
+        total_rows = 0
+        latest_dates: list[str] = []
+        for payload in families.values():
+            if not isinstance(payload, dict):
+                continue
+            total_rows += int(payload.get("rows") or 0)
+            latest_value = str(payload.get("latest_as_of_date") or "").strip()
+            if latest_value:
+                latest_dates.append(latest_value)
+
         c1.metric("Store Exists", "Yes" if summary["exists"] else "No")
-        c2.metric("Rows", int(summary["rows"]))
-        c3.metric("Latest As-Of", str(summary["latest_as_of_date"] or "N/A"))
+        c2.metric("Rows", int(total_rows))
+        c3.metric("Latest As-Of", max(latest_dates) if latest_dates else "N/A")
         st.caption(str(summary["store_path"]))
 
-        if st.button("Run ANN Ingest", key="run_ann_ingest"):
-            result = run_ann_markers_ingest(store_path=store_path)
+        if families:
+            st.dataframe(
+                [
+                    {
+                        "family": str(name),
+                        "rows": int(payload.get("rows") or 0),
+                        "latest_as_of_date": str(
+                            payload.get("latest_as_of_date") or "N/A"
+                        ),
+                    }
+                    for name, payload in families.items()
+                    if isinstance(payload, dict)
+                ],
+                use_container_width=True,
+            )
+
+        if st.button("Run ANN Feature Ingest", key="run_ann_feature_ingest"):
+            result = run_ann_feature_stores_ingest(store_path=store_path)
+            st.session_state["ann_ingest_result"] = result
+
+        if st.button("Run ANN Marker Ingest (Legacy)", key="run_ann_marker_ingest"):
+            marker_store = paths.OUT_I_CALC_DIR / "stores" / "ann_markers_store.sqlite"
+            result = run_ann_markers_ingest(store_path=marker_store)
             st.session_state["ann_ingest_result"] = result
 
         ann_result = st.session_state.get("ann_ingest_result")
