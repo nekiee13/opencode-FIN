@@ -252,6 +252,15 @@ Key training options:
 - `--depth` / `--width`
 - `--dropout` / `--weight-decay`
 - `--window-length` / `--lag-depth`
+- `--train-end-date YYYY-MM-DD` (inclusive training cutoff)
+- `--target-mode {magnitude,sgn}`
+
+Target mode definitions:
+
+- `magnitude`: `ABS(T0 - P)` where `T0` is ticker close at anchor date and `P` is weighted forecast from model outputs + green weights.
+- `sgn`: trend-survival label using `T0`, `P`, and future close (`+h`):
+  - `+1` when predicted trend survives (`P>T0` and future close `>T0`, or `P<T0` and future close `<T0`)
+  - `-1` for all other cases (broken trend prognosis)
 
 Feature-selection options:
 

@@ -92,6 +92,8 @@ def run_ann_train(
     tickers: list[str] | None = None,
     window_length: int | None = None,
     lag_depth: int | None = None,
+    train_end_date: str | None = None,
+    target_mode: str | None = None,
 ) -> dict[str, Any]:
     py = python_exec or sys.executable
     scripts_dir = paths.APP_ROOT / "scripts"
@@ -103,6 +105,10 @@ def run_ann_train(
         cmd.extend(["--window-length", str(int(window_length))])
     if lag_depth is not None:
         cmd.extend(["--lag-depth", str(int(lag_depth))])
+    if train_end_date is not None and str(train_end_date).strip():
+        cmd.extend(["--train-end-date", str(train_end_date).strip()])
+    if target_mode is not None and str(target_mode).strip():
+        cmd.extend(["--target-mode", str(target_mode).strip().lower()])
 
     proc = subprocess.run(
         cmd,

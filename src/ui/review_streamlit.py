@@ -34,6 +34,7 @@ from src.ui.services.run_registry import (
     load_run,
 )
 from src.ui.services.vg_loader import (
+    build_ann_t0_p_sgn_rows,
     format_blue_table_rows,
     format_green_table_rows,
     format_violet_blue_rows,
@@ -486,6 +487,14 @@ def run_review_console(db_path: Path | None = None) -> None:
 
     with tab_ann:
         st.subheader("ANN Training / Store")
+
+        ann_signal_rows = build_ann_t0_p_sgn_rows(
+            selected_date=selected_date,
+            tickers=list(TICKER_ORDER),
+        )
+        st.markdown("**T0 / P / SGN / Magnitude**")
+        st.dataframe(ann_signal_rows, use_container_width=True)
+
         store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
         summary = load_ann_store_summary(store_path)
         c1, c2, c3 = st.columns(3)
@@ -531,7 +540,13 @@ def run_review_console(db_path: Path | None = None) -> None:
             result = run_ann_markers_ingest(store_path=marker_store)
             st.session_state["ann_ingest_result"] = result
 
-        ann_train_col1, ann_train_col2, ann_train_col3 = st.columns(3)
+        (
+            ann_train_col1,
+            ann_train_col2,
+            ann_train_col3,
+            ann_train_col4,
+            ann_train_col5,
+        ) = st.columns(5)
         ann_window_length = ann_train_col1.number_input(
             "Window Length",
             min_value=1,
@@ -556,6 +571,26 @@ def run_review_console(db_path: Path | None = None) -> None:
             step=1,
             key="ann_max_trials",
         )
+        ann_end_date_options = [str(x) for x in date_options if str(x).strip()]
+        default_end_date = str(selected_date or "").strip()
+        default_end_index = 0
+        if ann_end_date_options:
+            if default_end_date in ann_end_date_options:
+                default_end_index = ann_end_date_options.index(default_end_date)
+            else:
+                default_end_index = len(ann_end_date_options) - 1
+        ann_train_end_date = ann_train_col4.selectbox(
+            "Train End Date",
+            options=ann_end_date_options if ann_end_date_options else [""],
+            index=default_end_index,
+            key="ann_train_end_date",
+        )
+        ann_target_mode = ann_train_col5.selectbox(
+            "Target Mode",
+            options=["magnitude", "sgn"],
+            index=0,
+            key="ann_target_mode",
+        )
 
         if st.button("Run ANN Train", key="run_ann_train"):
             selected_scope = (
@@ -567,6 +602,8 @@ def run_review_console(db_path: Path | None = None) -> None:
                 tickers=selected_scope,
                 window_length=int(ann_window_length),
                 lag_depth=int(ann_lag_depth),
+                train_end_date=str(ann_train_end_date or "").strip() or None,
+                target_mode=str(ann_target_mode or "magnitude").strip().lower(),
             )
             st.session_state["ann_ingest_result"] = result
 

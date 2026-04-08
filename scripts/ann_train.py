@@ -62,6 +62,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--window-length", type=int, default=5)
     p.add_argument("--lag-depth", type=int, default=4)
+    p.add_argument(
+        "--train-end-date",
+        type=str,
+        default="",
+        help="Inclusive training end date (YYYY-MM-DD)",
+    )
+    p.add_argument(
+        "--target-mode",
+        choices=["magnitude", "sgn"],
+        default="magnitude",
+        help="Training target mode: return magnitude or sign-only",
+    )
     p.add_argument("--forecast-horizon", type=int, default=1)
 
     p.add_argument(
@@ -151,6 +163,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raw_tickers_dir=Path(args.raw_tickers_dir),
         tickers=[str(x).strip().upper() for x in args.tickers],
         config=config,
+        train_end_date=str(args.train_end_date or "").strip() or None,
+        target_mode=str(args.target_mode or "magnitude").strip().lower(),
     )
     if dataset.X.shape[0] == 0 or dataset.X.shape[1] == 0:
         print("[ann_train] no training rows or features available")
@@ -189,6 +203,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         "tickers": [str(x).strip().upper() for x in args.tickers],
         "seed": int(args.seed),
+        "train_end_date": str(args.train_end_date or "").strip() or None,
+        "target_mode": str(args.target_mode or "magnitude").strip().lower(),
     }
     (out_dir / "config.json").write_text(
         json.dumps(config_payload, indent=2), encoding="utf-8"

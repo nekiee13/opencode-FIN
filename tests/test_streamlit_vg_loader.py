@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from src.ui.services.vg_loader import (
+    build_ann_t0_p_sgn_rows,
     format_blue_table_rows,
     format_green_table_rows,
     format_violet_blue_rows,
@@ -50,8 +51,12 @@ def test_resolve_target_forecast_date_uses_fh3_asof_cutoff(tmp_path: Path) -> No
     assert out == "2026-03-26"
 
 
-def test_resolve_target_forecast_date_falls_back_to_selected_date() -> None:
-    out = resolve_target_forecast_date(selected_date="2026-03-24")
+def test_resolve_target_forecast_date_falls_back_to_selected_date(
+    tmp_path: Path,
+) -> None:
+    fh3_dir = tmp_path / "fh3_empty"
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    out = resolve_target_forecast_date(selected_date="2026-03-24", fh3_dir=fh3_dir)
     assert out == "2026-03-24"
 
 
@@ -292,3 +297,65 @@ def test_format_blue_table_rows_formats_two_decimals_and_labels_missing() -> Non
     assert out[1]["Torch"] == "98.70"
     assert out[1]["LSTM"] == "model_unavailable"
     assert out[1]["VAR"] == "100.00"
+
+
+def test_build_ann_t0_p_sgn_rows_uses_selected_date_and_round_data(
+    tmp_path: Path,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "TNX_data.csv").write_text(
+        "Date,Open,High,Low,Close,Adj Close,Volume\n"
+        '"Mar 31, 2026",4.3000,4.3300,4.2800,4.3110,4.3110,-\n',
+        encoding="utf-8",
+    )
+    (raw_dir / "GSPC_data.csv").write_text(
+        "Date,Open,High,Low,Close,Adj Close,Volume\n"
+        '"Mar 31, 2026",6500.0,6510.0,6490.0,6500.0,6500.0,-\n',
+        encoding="utf-8",
+    )
+
+    rounds_dir = tmp_path / "rounds"
+    round_dir = rounds_dir / "anchor-20260331"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "t0_day1_weighted_ensemble.csv").write_text(
+        "ticker,weighted_ensemble,weights_used_sum\n"
+        "TNX,4.3200,1.0\n"
+        "SPX,6400.0000,1.0\n",
+        encoding="utf-8",
+    )
+    (round_dir / "actuals_tplus3.csv").write_text(
+        "round_id,ticker,runtime_ticker,expected_actual_date,lookup_actual_date,actual_close,status,source_csv\n"
+        "anchor-20260331,TNX,TNX,2026-04-01,2026-04-01,4.3300,ok,TNX_data.csv\n"
+        "anchor-20260331,SPX,GSPC,2026-04-01,2026-04-01,6600.0000,ok,GSPC_data.csv\n",
+        encoding="utf-8",
+    )
+
+    rows = build_ann_t0_p_sgn_rows(
+        selected_date="2026-03-31",
+        tickers=["TNX", "SPX", "QQQ"],
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_dir,
+    )
+    by_ticker = {str(x["Ticker"]): x for x in rows}
+
+    assert by_ticker["TNX"]["T0"] == "4.3110"
+    assert by_ticker["TNX"]["P"] == "4.3200"
+    assert by_ticker["TNX"]["+3-day"] == "4.3300"
+    assert by_ticker["TNX"]["Delta"] == "0.0100"
+    assert by_ticker["TNX"]["SGN"] == "+"
+    assert by_ticker["TNX"]["Magnitude"] == "0.0090"
+
+    assert by_ticker["SPX"]["T0"] == "6500.0000"
+    assert by_ticker["SPX"]["P"] == "6400.0000"
+    assert by_ticker["SPX"]["+3-day"] == "6600.0000"
+    assert by_ticker["SPX"]["Delta"] == "0.0000"
+    assert by_ticker["SPX"]["SGN"] == "-"
+    assert by_ticker["SPX"]["Magnitude"] == "100.0000"
+
+    assert by_ticker["QQQ"]["T0"] == ""
+    assert by_ticker["QQQ"]["P"] == ""
+    assert by_ticker["QQQ"]["+3-day"] == "N/A"
+    assert by_ticker["QQQ"]["Delta"] == "N/A"
+    assert by_ticker["QQQ"]["SGN"] == ""
+    assert by_ticker["QQQ"]["Magnitude"] == ""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,174 @@ def _parse_iso_date(value: str) -> date | None:
         return datetime.strptime(text, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _parse_any_date(value: str) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _format_metric_value(value: float | None) -> str:
+    if value is None or not math.isfinite(float(value)):
+        return ""
+    return format(float(value), ".4f")
+
+
+def _ticker_file_symbol(ticker: str) -> str:
+    t = str(ticker or "").strip().upper()
+    return "GSPC" if t == "SPX" else t
+
+
+def _load_t0_map(
+    *, selected_date: str, raw_tickers_dir: Path, tickers: list[str]
+) -> dict[str, float]:
+    out: dict[str, float] = {}
+    selected = _parse_any_date(selected_date)
+    if selected is None:
+        return out
+    for ticker in tickers:
+        symbol = _ticker_file_symbol(ticker)
+        csv_path = raw_tickers_dir / f"{symbol}_data.csv"
+        if not csv_path.exists():
+            continue
+        try:
+            with csv_path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    d = _parse_any_date(str(row.get("Date") or ""))
+                    if d != selected:
+                        continue
+                    raw_close = str(row.get("Close") or "").strip().replace(",", "")
+                    try:
+                        out[str(ticker).strip().upper()] = float(raw_close)
+                    except ValueError:
+                        pass
+                    break
+        except OSError:
+            continue
+    return out
+
+
+def _load_weighted_p_map(*, round_dir: Path) -> dict[str, float]:
+    out: dict[str, float] = {}
+    path = round_dir / "t0_day1_weighted_ensemble.csv"
+    if not path.exists():
+        return out
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                ticker = str(row.get("ticker") or "").strip().upper()
+                raw = str(row.get("weighted_ensemble") or "").strip().replace(",", "")
+                if not ticker:
+                    continue
+                try:
+                    out[ticker] = float(raw)
+                except ValueError:
+                    continue
+    except OSError:
+        return {}
+    return out
+
+
+def _load_future_close_map(*, round_dir: Path) -> dict[str, float]:
+    out: dict[str, float] = {}
+    path = round_dir / "actuals_tplus3.csv"
+    if not path.exists():
+        return out
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                ticker = str(row.get("ticker") or "").strip().upper()
+                raw = str(row.get("actual_close") or "").strip().replace(",", "")
+                if not ticker:
+                    continue
+                try:
+                    out[ticker] = float(raw)
+                except ValueError:
+                    continue
+    except OSError:
+        return {}
+    return out
+
+
+def build_ann_t0_p_sgn_rows(
+    *,
+    selected_date: str,
+    tickers: list[str],
+    rounds_dir: Path | None = None,
+    raw_tickers_dir: Path | None = None,
+) -> list[dict[str, str]]:
+    selected = str(selected_date or "").strip()
+    canonical = [str(x).strip().upper() for x in tickers if str(x).strip()]
+
+    if not selected:
+        return [
+            {
+                "Ticker": t,
+                "T0": "",
+                "P": "",
+                "+3-day": "N/A",
+                "SGN": "",
+                "Magnitude": "",
+            }
+            for t in canonical
+        ]
+
+    use_rounds = (rounds_dir or paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR).resolve()
+    use_raw = (raw_tickers_dir or paths.DATA_TICKERS_DIR).resolve()
+    round_id = f"anchor-{selected.replace('-', '')}"
+    round_dir = use_rounds / round_id
+
+    t0_map = _load_t0_map(
+        selected_date=selected, raw_tickers_dir=use_raw, tickers=canonical
+    )
+    p_map = _load_weighted_p_map(round_dir=round_dir)
+    future_map = _load_future_close_map(round_dir=round_dir)
+
+    rows: list[dict[str, str]] = []
+    for ticker in canonical:
+        t0 = t0_map.get(ticker)
+        p = p_map.get(ticker)
+        future = future_map.get(ticker)
+
+        magnitude_value: float | None = None
+        if t0 is not None and p is not None:
+            magnitude_value = abs(float(t0) - float(p))
+
+        delta_value: float | None = None
+        if t0 is not None and magnitude_value is not None and future is not None:
+            delta_value = abs(float(t0) + float(magnitude_value) - float(future))
+
+        sgn = ""
+        if t0 is not None and p is not None and future is not None:
+            trend = 1 if p > t0 else -1 if p < t0 else 0
+            realized = 1 if future > t0 else -1 if future < t0 else 0
+            sgn = "+" if trend != 0 and trend == realized else "-"
+
+        rows.append(
+            {
+                "Ticker": ticker,
+                "T0": _format_metric_value(t0),
+                "P": _format_metric_value(p),
+                "+3-day": _format_metric_value(future) if future is not None else "N/A",
+                "Delta": _format_metric_value(delta_value)
+                if delta_value is not None
+                else "N/A",
+                "SGN": sgn,
+                "Magnitude": _format_metric_value(magnitude_value),
+            }
+        )
+
+    return rows
 
 
 def resolve_target_forecast_date(

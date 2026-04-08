@@ -99,6 +99,8 @@ def test_run_ann_train_builds_cli_command(monkeypatch) -> None:
         tickers=["TNX", "SPX"],
         window_length=4,
         lag_depth=2,
+        train_end_date="2026-03-31",
+        target_mode="sgn",
     )
     assert out["returncode"] == 0
     cmd = captured["cmd"]
@@ -109,6 +111,10 @@ def test_run_ann_train_builds_cli_command(monkeypatch) -> None:
     assert "SPX" in cmd
     assert "--window-length" in cmd
     assert "--lag-depth" in cmd
+    assert "--train-end-date" in cmd
+    assert "2026-03-31" in cmd
+    assert "--target-mode" in cmd
+    assert "sgn" in cmd
 
 
 def test_run_ann_tune_builds_cli_command(monkeypatch) -> None:
