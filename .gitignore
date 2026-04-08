@@ -17,6 +17,7 @@ ENV/
 
 # Project-local runtime artifacts
 .tmp/
+.worktrees/
 .opencode/
 .serena/
 logs/
