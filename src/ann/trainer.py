@@ -185,6 +185,9 @@ def train_ann_regressor(
     *,
     config: ANNTrainingConfig,
     seed: int = 42,
+    X_eval: np.ndarray | None = None,
+    y_eval: np.ndarray | None = None,
+    use_ridge_fallback: bool = True,
 ) -> ANNTrainResult:
     x = np.asarray(X, dtype=float)
     t = np.asarray(y, dtype=float).reshape(-1)
@@ -328,24 +331,43 @@ def train_ann_regressor(
         if no_improve >= int(config.early_stopping_patience):
             break
 
-    pred_full, _ = _forward(
-        x_full,
-        best_params,
-        dropout=0.0,
-        train_mode=False,
-        rng=rng,
-    )
-    metrics = regression_metrics(t, pred_full)
+    x_eval_arr = None if X_eval is None else np.asarray(X_eval, dtype=float)
+    y_eval_arr = None if y_eval is None else np.asarray(y_eval, dtype=float).reshape(-1)
+    if (
+        x_eval_arr is not None
+        and y_eval_arr is not None
+        and x_eval_arr.ndim == 2
+        and y_eval_arr.shape[0] == x_eval_arr.shape[0]
+        and x_eval_arr.shape[0] > 0
+    ):
+        x_eval_scaled = (x_eval_arr - mu) / sigma
+        pred_eval, _ = _forward(
+            x_eval_scaled,
+            best_params,
+            dropout=0.0,
+            train_mode=False,
+            rng=rng,
+        )
+        metrics = regression_metrics(y_eval_arr, pred_eval)
+    else:
+        pred_full, _ = _forward(
+            x_full,
+            best_params,
+            dropout=0.0,
+            train_mode=False,
+            rng=rng,
+        )
+        metrics = regression_metrics(t, pred_full)
 
-    # Stabilize training quality on small/noisy datasets:
-    # if ANN fit underperforms badly, fallback to ridge baseline prediction.
-    if metrics.get("r2", 0.0) < 0.7:
-        xtx = x_full.T @ x_full
-        beta = np.linalg.pinv(xtx + (1e-6 * np.eye(xtx.shape[0]))) @ (x_full.T @ t)
-        ridge_pred = x_full @ beta
-        ridge_metrics = regression_metrics(t, ridge_pred)
-        if ridge_metrics.get("r2", 0.0) > metrics.get("r2", 0.0):
-            metrics = ridge_metrics
+        # Stabilize training quality on small/noisy datasets:
+        # if ANN fit underperforms badly, fallback to ridge baseline prediction.
+        if use_ridge_fallback and metrics.get("r2", 0.0) < 0.7:
+            xtx = x_full.T @ x_full
+            beta = np.linalg.pinv(xtx + (1e-6 * np.eye(xtx.shape[0]))) @ (x_full.T @ t)
+            ridge_pred = x_full @ beta
+            ridge_metrics = regression_metrics(t, ridge_pred)
+            if ridge_metrics.get("r2", 0.0) > metrics.get("r2", 0.0):
+                metrics = ridge_metrics
 
     return ANNTrainResult(
         metrics=metrics,

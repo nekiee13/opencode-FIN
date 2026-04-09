@@ -104,6 +104,18 @@ def test_ann_tune_writes_per_ticker_target_matrix(tmp_path: Path) -> None:
             "sgn",
             "--max-trials",
             "1",
+            "--validation-scheme",
+            "single_split",
+            "--min-samples",
+            "2",
+            "--min-class-count",
+            "1",
+            "--min-target-variance",
+            "0.0",
+            "--sgn-min-improvement",
+            "-1.0",
+            "--magnitude-min-improvement",
+            "-1.0",
             "--output-dir",
             str(out_dir),
         ],
@@ -126,6 +138,13 @@ def test_ann_tune_writes_per_ticker_target_matrix(tmp_path: Path) -> None:
     assert "DJI" in payload
     assert "magnitude" in payload["TNX"]
     assert "sgn" in payload["TNX"]
+    assert payload["TNX"]["magnitude"]["status"] in {"healthy", "fails_baseline"}
+    assert payload["TNX"]["sgn"]["status"] in {"healthy", "fails_baseline"}
+    assert isinstance(payload["TNX"]["sgn"].get("diagnostics"), dict)
+    assert "sample_count" in payload["TNX"]["sgn"]["diagnostics"]
+    assert "baseline" in payload["TNX"]["sgn"]
+    assert "improvement" in payload["TNX"]["sgn"]
+    assert "scoring_policy" in payload["TNX"]["sgn"]
 
 
 def _load_ann_tune_module() -> Any:
@@ -186,3 +205,68 @@ def test_rank_prefers_rmse_for_magnitude() -> None:
 
     ranked = module._rank(rows, target_mode="magnitude")
     assert ranked[0]["trial"] == 2
+
+
+def test_rank_prefers_baseline_improvement_for_sgn() -> None:
+    module = _load_ann_tune_module()
+    rows = [
+        {
+            "trial": 1,
+            "target_mode": "sgn",
+            "directional_accuracy": 0.88,
+            "mae": 0.20,
+            "rmse": 0.20,
+            "r2": 0.25,
+            "status": "healthy",
+            "improvement_directional_accuracy": 0.01,
+        },
+        {
+            "trial": 2,
+            "target_mode": "sgn",
+            "directional_accuracy": 0.82,
+            "mae": 0.30,
+            "rmse": 0.30,
+            "r2": 0.10,
+            "status": "healthy",
+            "improvement_directional_accuracy": 0.06,
+        },
+    ]
+
+    ranked = module._rank(rows, target_mode="sgn")
+    assert ranked[0]["trial"] == 2
+
+
+def test_assess_sufficiency_flags_small_and_unbalanced_sgn() -> None:
+    module = _load_ann_tune_module()
+    diagnostics = {
+        "sample_count": 10,
+        "sgn_positive_count": 9,
+        "sgn_negative_count": 1,
+    }
+    ok, reasons = module._assess_sufficiency(
+        diagnostics,
+        target_mode="sgn",
+        min_samples=30,
+        min_class_count=8,
+        min_target_variance=1e-5,
+    )
+    assert ok is False
+    assert any("min_samples" in r for r in reasons)
+    assert any("min_class_count" in r for r in reasons)
+
+
+def test_assess_sufficiency_flags_low_magnitude_variance() -> None:
+    module = _load_ann_tune_module()
+    diagnostics = {
+        "sample_count": 64,
+        "target_variance": 1e-8,
+    }
+    ok, reasons = module._assess_sufficiency(
+        diagnostics,
+        target_mode="magnitude",
+        min_samples=30,
+        min_class_count=8,
+        min_target_variance=1e-5,
+    )
+    assert ok is False
+    assert any("min_target_variance" in r for r in reasons)
