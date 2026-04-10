@@ -236,6 +236,10 @@ Legacy marker ingest remains available for marker store maintenance only and is 
 
 ### ANN training and tuning
 
+ANN tab operator controls guide:
+
+- `docs/ann_tab_operator_guide.md`
+
 Train one ANN run from current input feature stores:
 
 ```bash

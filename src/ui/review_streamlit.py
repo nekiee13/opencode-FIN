@@ -14,6 +14,11 @@ from src.ui.services.ann_ops import (
     run_ann_train,
     run_ann_tune,
 )
+from src.ui.services.ann_info import (
+    build_ann_guides_markdown,
+    build_ann_info_rows,
+    load_ann_info,
+)
 from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
@@ -69,6 +74,61 @@ def _status_color(status: str) -> str:
     return "#666666"
 
 
+def _global_right_align_css() -> str:
+    return """
+<style>
+/* Global text/header alignment */
+div[data-testid="stAppViewContainer"] h1,
+div[data-testid="stAppViewContainer"] h2,
+div[data-testid="stAppViewContainer"] h3,
+div[data-testid="stAppViewContainer"] h4,
+div[data-testid="stAppViewContainer"] h5,
+div[data-testid="stAppViewContainer"] h6,
+div[data-testid="stAppViewContainer"] p,
+div[data-testid="stAppViewContainer"] label,
+div[data-testid="stAppViewContainer"] .stMarkdown,
+div[data-testid="stAppViewContainer"] .stCaption,
+div[data-testid="stAppViewContainer"] .stTabs,
+div[data-testid="stAppViewContainer"] .stTabs [role="tab"],
+div[data-testid="stAppViewContainer"] .stSelectbox label,
+div[data-testid="stAppViewContainer"] .stNumberInput label,
+div[data-testid="stAppViewContainer"] .stTextInput label,
+div[data-testid="stAppViewContainer"] .stButton button,
+div[data-testid="stAppViewContainer"] .stSelectbox,
+div[data-testid="stAppViewContainer"] .stNumberInput,
+div[data-testid="stAppViewContainer"] .stTextInput {
+  text-align: right !important;
+}
+
+/* DataFrame / table headers and values */
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataFrame"] [role="gridcell"],
+div[data-testid="stDataFrame"] [role="rowheader"],
+div[data-testid="stDataFrameGlideDataEditor"] [role="columnheader"],
+div[data-testid="stDataFrameGlideDataEditor"] [role="gridcell"],
+div[data-testid="stDataFrameGlideDataEditor"] [role="rowheader"],
+div[data-testid="stDataFrameGlideDataEditor"] [data-testid="StyledDataFrameCell"],
+div[data-testid="stTable"] th,
+div[data-testid="stTable"] td {
+  text-align: right !important;
+  justify-content: flex-end !important;
+}
+
+/* Metric widgets */
+div[data-testid="stMetricLabel"],
+div[data-testid="stMetricValue"] {
+  text-align: right !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+}
+</style>
+""".strip()
+
+
+def _apply_global_right_alignment(st: Any) -> None:
+    st.markdown(_global_right_align_css(), unsafe_allow_html=True)
+
+
 def _style_table_rows(rows: list[dict[str, Any]], text_color: str) -> Any:
     if not rows:
         return rows
@@ -88,6 +148,34 @@ def _style_table_rows(rows: list[dict[str, Any]], text_color: str) -> Any:
         )
     except Exception:
         return rows
+
+
+def _render_aligned_table(st: Any, data: Any) -> None:
+    try:
+        import pandas as pd  # type: ignore
+
+        if hasattr(data, "set_table_styles") and hasattr(data, "set_properties"):
+            styled = data.set_table_styles(
+                [
+                    {"selector": "th", "props": [("text-align", "right")]},
+                    {"selector": "td", "props": [("text-align", "right")]},
+                ],
+                overwrite=False,
+            ).set_properties(**{"text-align": "right"})
+            st.table(styled)
+            return
+
+        frame = data if hasattr(data, "columns") else pd.DataFrame(data)
+        styled = frame.style.set_table_styles(
+            [
+                {"selector": "th", "props": [("text-align", "right")]},
+                {"selector": "td", "props": [("text-align", "right")]},
+            ]
+        ).set_properties(**{"text-align": "right"})
+        st.table(styled)
+        return
+    except Exception:
+        st.table(data)
 
 
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
@@ -130,7 +218,8 @@ def _render_command_results(st: Any, run_payload: dict[str, Any] | None) -> None
     failed_rows = [row for row in results if str(row.get("status") or "") == "failed"]
     if failed_rows:
         st.error("One or more stages failed. Details are listed below.")
-        st.dataframe(
+        _render_aligned_table(
+            st,
             [
                 {
                     "stage": row.get("stage"),
@@ -142,7 +231,6 @@ def _render_command_results(st: Any, run_payload: dict[str, Any] | None) -> None
                 }
                 for row in failed_rows
             ],
-            use_container_width=True,
         )
 
     for item in results:
@@ -170,6 +258,7 @@ def run_review_console(db_path: Path | None = None) -> None:
 
     st.set_page_config(page_title="FIN Streamlit Console", layout="wide")
     st.title("FIN Streamlit Console")
+    _apply_global_right_alignment(st)
 
     date_options = load_sidebar_date_options()
     if not date_options:
@@ -288,7 +377,8 @@ def run_review_console(db_path: Path | None = None) -> None:
         if not history:
             st.info("No persisted runs found for selected date.")
         else:
-            st.dataframe(
+            _render_aligned_table(
+                st,
                 [
                     {
                         "run_id": item.get("run_id"),
@@ -301,7 +391,6 @@ def run_review_console(db_path: Path | None = None) -> None:
                     }
                     for item in history
                 ],
-                use_container_width=True,
             )
 
         st.subheader("Pipeline QA")
@@ -323,7 +412,7 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.caption(
                 f"Round: {model_table.source_round_id or 'N/A'} | As-of: {model_table.asof_date or 'N/A'}"
             )
-            st.dataframe(model_table.rows, use_container_width=True)
+            _render_aligned_table(st, model_table.rows)
         else:
             st.warning("No model table rows were found for selected date context.")
 
@@ -335,7 +424,7 @@ def run_review_console(db_path: Path | None = None) -> None:
             ml_values_by_ticker=ml_weighted_values,
         )
         st.subheader("Marker Comparison: Oraclum / RD / 85220")
-        st.dataframe(comparison_rows, use_container_width=True)
+        _render_aligned_table(st, comparison_rows)
 
     with tab_vg:
         st.subheader("Blue / Green / Violet ML Tables")
@@ -473,22 +562,13 @@ def run_review_console(db_path: Path | None = None) -> None:
                 tickers=tickers,
             )
             st.markdown("**Violet Table (True Accuracy)**")
-            st.dataframe(
-                _style_table_rows(violet_rows, "#9b59ff"),
-                use_container_width=True,
-            )
+            _render_aligned_table(st, _style_table_rows(violet_rows, "#9b59ff"))
             st.markdown("**Blue Table**")
-            st.dataframe(
-                _style_table_rows(blue_rows, "#4aa8ff"),
-                use_container_width=True,
-            )
+            _render_aligned_table(st, _style_table_rows(blue_rows, "#4aa8ff"))
             st.markdown("**Green Table**")
-            st.dataframe(
-                _style_table_rows(green_rows, "#2ecc71"),
-                use_container_width=True,
-            )
+            _render_aligned_table(st, _style_table_rows(green_rows, "#2ecc71"))
             st.markdown("**Green Provenance (Real vs Dummy Slots)**")
-            st.dataframe(green_meta_rows, use_container_width=True)
+            _render_aligned_table(st, green_meta_rows)
 
     with tab_ann:
         st.subheader("ANN")
@@ -498,7 +578,7 @@ def run_review_console(db_path: Path | None = None) -> None:
             tickers=list(TICKER_ORDER),
         )
         st.markdown("**T0 / P / +3-day / Delta / SGN / Magnitude**")
-        st.dataframe(ann_signal_rows, use_container_width=True)
+        _render_aligned_table(st, ann_signal_rows)
 
         store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
         summary = load_ann_store_summary(store_path)
@@ -521,7 +601,8 @@ def run_review_console(db_path: Path | None = None) -> None:
         st.caption(str(summary["store_path"]))
 
         if families:
-            st.dataframe(
+            _render_aligned_table(
+                st,
                 [
                     {
                         "family": str(name),
@@ -533,8 +614,49 @@ def run_review_console(db_path: Path | None = None) -> None:
                     for name, payload in families.items()
                     if isinstance(payload, dict)
                 ],
-                use_container_width=True,
             )
+
+        if st.button("Info", key="show_ann_info"):
+            st.session_state["ann_show_info"] = True
+
+        if bool(st.session_state.get("ann_show_info")):
+            info_payload = load_ann_info(
+                selected_ticker=selected_ticker,
+                tickers=list(TICKER_ORDER),
+                store_summary=summary,
+            )
+            scope_raw = info_payload.get("scope")
+            scope: dict[str, Any] = scope_raw if isinstance(scope_raw, dict) else {}
+            selected_scope = [
+                str(x)
+                for x in list(scope.get("selected_tickers") or [])
+                if str(x).strip()
+            ]
+            st.markdown("**ANN Setup Info**")
+            st.caption(
+                "Scope: " + (", ".join(selected_scope) if selected_scope else "N/A")
+            )
+            info_rows = build_ann_info_rows(info_payload)
+            if info_rows:
+                _render_aligned_table(st, info_rows)
+            else:
+                st.info("No ANN setup artifacts were found for selected ticker scope.")
+
+            profile_raw = info_payload.get("profile")
+            profile_payload: dict[str, Any] = (
+                profile_raw if isinstance(profile_raw, dict) else {}
+            )
+            if profile_payload:
+                st.caption(
+                    "Profile active: "
+                    + ("Yes" if bool(profile_payload.get("is_active")) else "No")
+                    + f" | selected features: {int(profile_payload.get('selected_feature_count') or 0)}"
+                )
+
+            with st.expander("ANN Info (raw JSON)"):
+                st.code(json.dumps(info_payload, indent=2), language="json")
+
+            st.markdown(build_ann_guides_markdown())
 
         if st.button("Run ANN Feature Ingest", key="run_ann_feature_ingest"):
             result = run_ann_feature_stores_ingest(store_path=store_path)
@@ -682,4 +804,4 @@ def run_review_console(db_path: Path | None = None) -> None:
                 top = list(artifacts.get("top_feature_impacts") or [])
                 if top:
                     st.markdown("**Top 5 Input Impact**")
-                    st.dataframe(top[:5], use_container_width=True)
+                    _render_aligned_table(st, top[:5])
