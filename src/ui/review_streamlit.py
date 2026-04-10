@@ -396,6 +396,23 @@ def _parse_ann_train_stdout_tables(
     return summary_rows, feature_rows
 
 
+def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        sgn_raw = str(item.get("SGN") or "").strip()
+        if sgn_raw == "+":
+            item["SGN"] = "+1"
+        elif sgn_raw == "-":
+            item["SGN"] = "-1"
+        elif sgn_raw == "0":
+            item["SGN"] = "0"
+        else:
+            item["SGN"] = "N/A"
+        out.append(item)
+    return out
+
+
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
     status = str(status_payload.get("status") or "UNKNOWN")
     reason = str(status_payload.get("reason") or "")
@@ -810,7 +827,11 @@ def run_review_console(db_path: Path | None = None) -> None:
             tickers=list(TICKER_ORDER),
         )
         st.markdown("**T0 / P / +3-day / Delta / SGN / Magnitude**")
-        _render_aligned_table(st, ann_signal_rows)
+        _render_aligned_table(st, _normalize_ann_signal_rows(ann_signal_rows))
+        st.latex(r"\mathrm{Magnitude} = \left|T_0 - P\right|")
+        st.caption(
+            "T0 = close on selected date, P = weighted day+1 ensemble prediction."
+        )
 
         store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
         summary = load_ann_store_summary(store_path)

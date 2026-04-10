@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.ui.review_streamlit import (
+    _normalize_ann_signal_rows,
     _parse_ann_train_stdout_tables,
     _summarize_ann_training_health,
     _target_modes_from_selection,
@@ -86,3 +87,17 @@ def test_parse_ann_train_stdout_tables_parses_summary_and_features() -> None:
     assert feature_rows[0]["Rank"] == "1"
     assert feature_rows[0]["Feature"] == "ti::RSI__lag0"
     assert feature_rows[0]["Score"] == "0.33"
+
+
+def test_normalize_ann_signal_rows_maps_sgn_symbols_for_display() -> None:
+    rows = [
+        {"Ticker": "TNX", "SGN": "+", "Magnitude": "0.1000"},
+        {"Ticker": "DJI", "SGN": "-", "Magnitude": "0.2000"},
+        {"Ticker": "SPX", "SGN": "", "Magnitude": ""},
+    ]
+
+    out = _normalize_ann_signal_rows(rows)
+
+    assert out[0]["SGN"] == "+1"
+    assert out[1]["SGN"] == "-1"
+    assert out[2]["SGN"] == "N/A"
