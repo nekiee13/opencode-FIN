@@ -149,6 +149,18 @@ div[data-testid="stAppViewContainer"] .json-left pre {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Training stdout/stderr blocks are left aligned */
+div[data-testid="stAppViewContainer"] .log-left,
+div[data-testid="stAppViewContainer"] .log-left * {
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
+
+div[data-testid="stAppViewContainer"] .log-left pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>
 """.strip()
 
@@ -210,6 +222,14 @@ def _render_json_payload(st: Any, payload: Any) -> None:
     text = json.dumps(payload, indent=2)
     st.markdown(
         "<div class='json-left'><pre>" + html.escape(text) + "</pre></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_log_payload(st: Any, text: str) -> None:
+    content = str(text or "") or "<empty>"
+    st.markdown(
+        "<div class='log-left'><pre>" + html.escape(content) + "</pre></div>",
         unsafe_allow_html=True,
     )
 
@@ -1032,9 +1052,9 @@ def run_review_console(db_path: Path | None = None) -> None:
                 },
             )
             st.text("stdout")
-            st.code(str(ann_result.get("stdout", "")) or "<empty>")
+            _render_log_payload(st, str(ann_result.get("stdout", "") or ""))
             st.text("stderr")
-            st.code(str(ann_result.get("stderr", "")) or "<empty>")
+            _render_log_payload(st, str(ann_result.get("stderr", "") or ""))
 
             run_dir = extract_ann_train_run_dir(str(ann_result.get("stdout", "") or ""))
             if run_dir is not None and run_dir.exists():

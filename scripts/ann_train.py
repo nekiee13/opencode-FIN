@@ -55,7 +55,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--scheduler-step-size", type=int, default=10)
     p.add_argument("--scheduler-gamma", type=float, default=0.8)
     p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--epochs", type=int, default=300)
+    p.add_argument("--epochs", type=int, default=600)
     p.add_argument("--early-stopping-patience", type=int, default=12)
     p.add_argument("--early-stopping-min-delta", type=float, default=1e-5)
     p.add_argument("--depth", type=int, default=2)

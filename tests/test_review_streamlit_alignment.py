@@ -28,3 +28,10 @@ def test_global_right_align_css_has_json_left_override() -> None:
 
     assert "json-left" in css
     assert "text-align: left" in css
+
+
+def test_global_right_align_css_has_log_left_override() -> None:
+    css = _global_right_align_css()
+
+    assert "log-left" in css
+    assert "text-align: left" in css
