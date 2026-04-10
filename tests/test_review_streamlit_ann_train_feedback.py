@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.ui.review_streamlit import (
+    _parse_ann_train_stdout_tables,
     _summarize_ann_training_health,
     _target_modes_from_selection,
 )
@@ -59,3 +60,29 @@ def test_summarize_ann_training_health_reports_success_when_all_healthy() -> Non
 
     assert level == "success"
     assert "completed successfully" in text
+
+
+def test_parse_ann_train_stdout_tables_parses_summary_and_features() -> None:
+    stdout = (
+        "[mode=sgn] "
+        "[ann_train] run_dir=/tmp/run_sgn "
+        "[ann_train] rows=48 "
+        "[ann_train] features=230/230 "
+        "[ann_train] r2=0.999993 "
+        "[ann_train] top_feature #1 ti::RSI__lag0 score=0.33 "
+        "[ann_train] top_feature #2 ti::ROC__lag0 score=0.27"
+    )
+
+    summary_rows, feature_rows = _parse_ann_train_stdout_tables(stdout)
+
+    assert len(summary_rows) == 1
+    assert summary_rows[0]["Mode"] == "sgn"
+    assert summary_rows[0]["Rows"] == "48"
+    assert summary_rows[0]["Features"] == "230/230"
+    assert summary_rows[0]["R2"] == "0.999993"
+
+    assert len(feature_rows) == 2
+    assert feature_rows[0]["Mode"] == "sgn"
+    assert feature_rows[0]["Rank"] == "1"
+    assert feature_rows[0]["Feature"] == "ti::RSI__lag0"
+    assert feature_rows[0]["Score"] == "0.33"

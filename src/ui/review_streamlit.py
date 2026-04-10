@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -341,6 +342,60 @@ def _summarize_ann_training_health(
     )
 
 
+def _parse_ann_train_stdout_tables(
+    stdout_text: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    text = str(stdout_text or "")
+    if not text.strip():
+        return [], []
+
+    segments = [seg.strip() for seg in re.split(r"(?=\[mode=)", text) if seg.strip()]
+    if not segments:
+        segments = [text]
+
+    summary_rows: list[dict[str, Any]] = []
+    feature_rows: list[dict[str, Any]] = []
+
+    for segment in segments:
+        mode_match = re.search(r"\[mode=([^\]]+)\]", segment)
+        mode = str(mode_match.group(1)).strip() if mode_match else "single"
+
+        run_dir_match = re.search(r"\[ann_train\]\s+run_dir=([^\[]+)", segment)
+        rows_match = re.search(r"\[ann_train\]\s+rows=(\d+)", segment)
+        features_match = re.search(r"\[ann_train\]\s+features=([^\s\[]+)", segment)
+        r2_match = re.search(r"\[ann_train\]\s+r2=([-+0-9.eE]+)", segment)
+
+        if run_dir_match or rows_match or features_match or r2_match:
+            summary_rows.append(
+                {
+                    "Mode": mode,
+                    "Run Dir": str(run_dir_match.group(1)).strip()
+                    if run_dir_match
+                    else "",
+                    "Rows": str(rows_match.group(1)).strip() if rows_match else "",
+                    "Features": str(features_match.group(1)).strip()
+                    if features_match
+                    else "",
+                    "R2": str(r2_match.group(1)).strip() if r2_match else "",
+                }
+            )
+
+        for feat_match in re.finditer(
+            r"\[ann_train\]\s+top_feature\s+#(\d+)\s+(.+?)\s+score=([-+0-9.eE]+)",
+            segment,
+        ):
+            feature_rows.append(
+                {
+                    "Mode": mode,
+                    "Rank": str(feat_match.group(1)).strip(),
+                    "Feature": str(feat_match.group(2)).strip(),
+                    "Score": str(feat_match.group(3)).strip(),
+                }
+            )
+
+    return summary_rows, feature_rows
+
+
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
     status = str(status_payload.get("status") or "UNKNOWN")
     reason = str(status_payload.get("reason") or "")
@@ -677,14 +732,19 @@ def run_review_console(db_path: Path | None = None) -> None:
         )
         if run_clicked:
             try:
-                result = materialize_for_selected_date(
-                    selected_date=selected_date,
-                    forecast_date=forecast_date or None,
-                    fh3_dir=paths.OUT_I_CALC_FH3_DIR,
-                    memory_tail=int(warmup_depth),
-                    bootstrap_enabled=True,
-                    policy_name="value_assign_v1",
+                result, elapsed_seconds = _run_with_elapsed_progress(
+                    st,
+                    label="Load Blue/Green in progress",
+                    fn=lambda: materialize_for_selected_date(
+                        selected_date=selected_date,
+                        forecast_date=forecast_date or None,
+                        fh3_dir=paths.OUT_I_CALC_FH3_DIR,
+                        memory_tail=int(warmup_depth),
+                        bootstrap_enabled=True,
+                        policy_name="value_assign_v1",
+                    ),
                 )
+                result["elapsed_seconds"] = float(round(elapsed_seconds, 3))
                 st.session_state["vg_result"] = result
                 st.session_state["vg_error"] = ""
             except Exception as exc:
@@ -1037,6 +1097,12 @@ def run_review_console(db_path: Path | None = None) -> None:
                 else:
                     st.info(text)
 
+                if "insufficient_data" in text or "fails_baseline" in text:
+                    st.markdown(
+                        "- `insufficient_data`: setup failed minimum data gates (sample size/class balance/target variance)."
+                        "\n- `fails_baseline`: ANN did not beat naive baseline by required margin."
+                    )
+
         if st.button("Run ANN Tune", key="run_ann_tune"):
             result = run_ann_tune(max_trials=int(ann_max_trials))
             st.session_state["ann_ingest_result"] = result
@@ -1052,7 +1118,15 @@ def run_review_console(db_path: Path | None = None) -> None:
                 },
             )
             st.text("stdout")
-            _render_log_payload(st, str(ann_result.get("stdout", "") or ""))
+            stdout_text = str(ann_result.get("stdout", "") or "")
+            summary_rows, feature_rows = _parse_ann_train_stdout_tables(stdout_text)
+            if summary_rows:
+                _render_aligned_table(st, summary_rows)
+            if feature_rows:
+                st.markdown("**Top Features (Parsed)**")
+                _render_aligned_table(st, feature_rows)
+            if not summary_rows and not feature_rows:
+                _render_log_payload(st, stdout_text)
             st.text("stderr")
             _render_log_payload(st, str(ann_result.get("stderr", "") or ""))
 
