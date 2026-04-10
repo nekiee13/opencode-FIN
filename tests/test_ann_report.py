@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.ui.services.ann_report import load_ann_report_sections
+from src.ui.services.ann_report import (
+    build_export_filename,
+    export_ann_report_markdown,
+    load_ann_report_sections,
+)
 
 
 def _write(path: Path, text: str) -> None:
@@ -146,3 +150,69 @@ def test_load_ann_report_sections_builds_compare_and_best_setup_rows(
     assert setup_rows[0]["Learning Rate"] == 0.001
     assert setup_rows[1]["Mode"] == "sgn"
     assert setup_rows[1]["Status"] == "fails_baseline"
+
+
+def test_build_export_filename_uses_selected_date_and_ticker_option() -> None:
+    name = build_export_filename(selected_date="2025-07-29", selected_ticker="ALL")
+    assert name == "Export_report_2025-07-29_ALL.md"
+
+    name_single = build_export_filename(
+        selected_date="2025-07-29",
+        selected_ticker="tnx",
+    )
+    assert name_single == "Export_report_2025-07-29_TNX.md"
+
+
+def test_export_ann_report_markdown_writes_all_scope_file(tmp_path: Path) -> None:
+    out_i_calc_dir = tmp_path / "i_calc"
+    rounds_dir = tmp_path / "rounds"
+    raw_dir = tmp_path / "raw"
+    _seed_raw(raw_dir)
+    _seed_round(rounds_dir)
+    _seed_setup_and_matrix(out_i_calc_dir)
+
+    out = export_ann_report_markdown(
+        selected_date="2026-03-31",
+        selected_ticker="ALL",
+        tickers=["TNX", "DJI"],
+        out_i_calc_dir=out_i_calc_dir,
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_dir,
+    )
+
+    output_path = Path(str(out["output_path"]))
+    assert output_path.name == "Export_report_2026-03-31_ALL.md"
+    assert output_path.exists()
+
+    text = output_path.read_text(encoding="utf-8")
+    assert "# ANN Report" in text
+    assert "## TNX" in text
+    assert "## DJI" in text
+    assert (
+        "| Ticker | Real SGN | Computed SGN | Real Magnitude | Computed Magnitude |"
+        in text
+    )
+
+
+def test_export_ann_report_markdown_writes_single_ticker_scope(tmp_path: Path) -> None:
+    out_i_calc_dir = tmp_path / "i_calc"
+    rounds_dir = tmp_path / "rounds"
+    raw_dir = tmp_path / "raw"
+    _seed_raw(raw_dir)
+    _seed_round(rounds_dir)
+    _seed_setup_and_matrix(out_i_calc_dir)
+
+    out = export_ann_report_markdown(
+        selected_date="2026-03-31",
+        selected_ticker="TNX",
+        tickers=["TNX", "DJI"],
+        out_i_calc_dir=out_i_calc_dir,
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_dir,
+    )
+
+    output_path = Path(str(out["output_path"]))
+    assert output_path.name == "Export_report_2026-03-31_TNX.md"
+    text = output_path.read_text(encoding="utf-8")
+    assert "## TNX" in text
+    assert "## DJI" not in text

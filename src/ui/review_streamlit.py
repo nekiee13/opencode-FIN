@@ -23,7 +23,10 @@ from src.ui.services.ann_info import (
     build_ann_info_rows,
     load_ann_info,
 )
-from src.ui.services.ann_report import load_ann_report_sections
+from src.ui.services.ann_report import (
+    export_ann_report_markdown,
+    load_ann_report_sections,
+)
 from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
@@ -1165,6 +1168,28 @@ def run_review_console(db_path: Path | None = None) -> None:
         st.caption(
             "Per-ticker ANN report with real-vs-computed comparison and best setup details."
         )
+        if st.button("Export", key="export_ann_report"):
+            try:
+                export_payload = export_ann_report_markdown(
+                    selected_date=selected_date,
+                    selected_ticker=selected_ticker,
+                    tickers=list(TICKER_ORDER),
+                )
+                st.session_state["ann_report_export"] = export_payload
+            except Exception as exc:
+                st.session_state["ann_report_export"] = {"error": str(exc)}
+
+        export_state_raw = st.session_state.get("ann_report_export")
+        export_state = export_state_raw if isinstance(export_state_raw, dict) else {}
+        if export_state:
+            err = str(export_state.get("error") or "").strip()
+            if err:
+                st.error("Report export failed: " + err)
+            else:
+                st.success(
+                    "Report exported: " + str(export_state.get("output_path") or "")
+                )
+
         report_payload = load_ann_report_sections(
             selected_date=selected_date,
             tickers=list(TICKER_ORDER),

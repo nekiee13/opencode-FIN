@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -10,6 +11,14 @@ from src.ui.services.vg_loader import build_ann_real_vs_computed_rows
 
 def _coerce_payload(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _selected_tickers(selected_ticker: str, tickers: Sequence[str]) -> list[str]:
+    value = str(selected_ticker or "").strip().upper()
+    canonical = [str(x).strip().upper() for x in tickers if str(x).strip()]
+    if value in {"", "ALL", "ALL_TICKERS"}:
+        return canonical
+    return [value]
 
 
 def _mode_status_note(mode_rows: list[dict[str, Any]]) -> str:
@@ -122,4 +131,110 @@ def load_ann_report_sections(
     }
 
 
-__all__ = ["load_ann_report_sections"]
+def build_export_filename(*, selected_date: str, selected_ticker: str) -> str:
+    date_part = str(selected_date or "").strip() or "NA"
+    ticker_part = str(selected_ticker or "").strip().upper() or "ALL"
+    return f"Export_report_{date_part}_{ticker_part}.md"
+
+
+def _markdown_table(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "_No rows available._"
+    columns = [str(x) for x in rows[0].keys()]
+    header = "| " + " | ".join(columns) + " |"
+    divider = "| " + " | ".join(["---"] * len(columns)) + " |"
+    body = []
+    for row in rows:
+        body.append("| " + " | ".join(str(row.get(col, "")) for col in columns) + " |")
+    return "\n".join([header, divider, *body])
+
+
+def build_ann_report_markdown(
+    *,
+    report_payload: dict[str, Any],
+    selected_date: str,
+    selected_ticker: str,
+) -> str:
+    lines: list[str] = []
+    lines.append("# ANN Report")
+    lines.append("")
+    lines.append(
+        f"- Generated At (UTC): {datetime.now(timezone.utc).replace(microsecond=0).isoformat()}"
+    )
+    lines.append(f"- Selected Date: {str(selected_date or '').strip()}")
+    lines.append(
+        f"- Selected Ticker Option: {str(selected_ticker or '').strip().upper() or 'ALL'}"
+    )
+    lines.append(
+        f"- Latest Tune Run: {str(report_payload.get('latest_tune_run_id') or 'N/A')}"
+    )
+    lines.append("")
+
+    sections_raw = report_payload.get("sections")
+    sections = sections_raw if isinstance(sections_raw, dict) else {}
+    for ticker, payload_raw in sections.items():
+        payload = payload_raw if isinstance(payload_raw, dict) else {}
+        lines.append(f"## {ticker}")
+        lines.append("")
+        lines.append("### Real vs Computed (SGN / Magnitude)")
+        compare = payload.get("compare_row")
+        compare_row = compare if isinstance(compare, dict) else {"Ticker": ticker}
+        lines.append(_markdown_table([compare_row]))
+        lines.append("")
+        lines.append("### Best ANN Setup Details")
+        setup_rows_raw = payload.get("best_setup_rows")
+        setup_rows = setup_rows_raw if isinstance(setup_rows_raw, list) else []
+        lines.append(_markdown_table(setup_rows))
+        status_note = str(payload.get("status_note") or "").strip()
+        if status_note:
+            lines.append("")
+            lines.append(f"- Status Note: {status_note}")
+        lines.append("")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def export_ann_report_markdown(
+    *,
+    selected_date: str,
+    selected_ticker: str,
+    tickers: Sequence[str],
+    out_i_calc_dir: Path | None = None,
+    rounds_dir: Path | None = None,
+    raw_tickers_dir: Path | None = None,
+) -> dict[str, Any]:
+    selected_scope = _selected_tickers(selected_ticker, tickers)
+    base_dir = (out_i_calc_dir or paths.OUT_I_CALC_DIR).resolve()
+    report_payload = load_ann_report_sections(
+        selected_date=selected_date,
+        tickers=selected_scope,
+        out_i_calc_dir=base_dir,
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_tickers_dir,
+    )
+    markdown = build_ann_report_markdown(
+        report_payload=report_payload,
+        selected_date=selected_date,
+        selected_ticker=selected_ticker,
+    )
+    output_dir = base_dir / "ANN" / "reports"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / build_export_filename(
+        selected_date=selected_date,
+        selected_ticker=selected_ticker,
+    )
+    output_path.write_text(markdown, encoding="utf-8")
+    return {
+        "output_path": str(output_path),
+        "scope_tickers": selected_scope,
+        "latest_tune_run_id": str(report_payload.get("latest_tune_run_id") or ""),
+        "bytes_written": len(markdown.encode("utf-8")),
+    }
+
+
+__all__ = [
+    "build_ann_report_markdown",
+    "build_export_filename",
+    "export_ann_report_markdown",
+    "load_ann_report_sections",
+]
