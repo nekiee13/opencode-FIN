@@ -32,7 +32,7 @@ class SchedulerConfig:
 class ANNTrainingConfig:
     learning_rate: float = 1e-3
     batch_size: int = 32
-    epochs: int = 120
+    epochs: int = 300
     early_stopping_patience: int = 12
     early_stopping_min_delta: float = 1e-5
 

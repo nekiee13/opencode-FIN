@@ -21,3 +21,10 @@ def test_global_right_align_css_has_pipeline_qa_left_override() -> None:
 
     assert "pipeline-qa-left" in css
     assert "text-align: left" in css
+
+
+def test_global_right_align_css_has_json_left_override() -> None:
+    css = _global_right_align_css()
+
+    assert "json-left" in css
+    assert "text-align: left" in css

@@ -9,7 +9,7 @@ def test_ann_training_config_defaults_are_valid() -> None:
     cfg = ANNTrainingConfig()
     assert cfg.learning_rate > 0
     assert cfg.batch_size > 0
-    assert cfg.epochs > 0
+    assert cfg.epochs == 300
     assert cfg.window_length > 0
     assert cfg.lag_depth >= 0
 

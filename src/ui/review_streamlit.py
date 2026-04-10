@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import html
 import json
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +137,18 @@ div[data-testid="stAppViewContainer"] .pipeline-qa-left pre {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* JSON payload blocks are always left aligned */
+div[data-testid="stAppViewContainer"] .json-left,
+div[data-testid="stAppViewContainer"] .json-left * {
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
+
+div[data-testid="stAppViewContainer"] .json-left pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>
 """.strip()
 
@@ -190,6 +204,56 @@ def _render_aligned_table(st: Any, data: Any) -> None:
         return
     except Exception:
         st.table(data)
+
+
+def _render_json_payload(st: Any, payload: Any) -> None:
+    text = json.dumps(payload, indent=2)
+    st.markdown(
+        "<div class='json-left'><pre>" + html.escape(text) + "</pre></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _run_with_elapsed_progress(
+    st: Any,
+    *,
+    label: str,
+    fn: Any,
+) -> tuple[dict[str, Any], float]:
+    result_box: dict[str, Any] = {}
+    error_box: dict[str, BaseException] = {}
+
+    def _worker() -> None:
+        try:
+            value = fn()
+            if isinstance(value, dict):
+                result_box["result"] = value
+            else:
+                result_box["result"] = {"returncode": 1, "stdout": "", "stderr": ""}
+        except BaseException as exc:
+            error_box["error"] = exc
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+
+    start = time.monotonic()
+    bar = st.progress(0.0, text=f"{label} (0.0s elapsed)")
+    while thread.is_alive():
+        elapsed = time.monotonic() - start
+        pulse = min(0.95, (elapsed % 20.0) / 20.0)
+        bar.progress(pulse, text=f"{label} ({elapsed:.1f}s elapsed)")
+        time.sleep(0.2)
+
+    thread.join()
+    elapsed_total = time.monotonic() - start
+    bar.progress(1.0, text=f"{label} complete ({elapsed_total:.1f}s)")
+    if "error" in error_box:
+        raise error_box["error"]
+
+    result = result_box.get("result")
+    if not isinstance(result, dict):
+        result = {"returncode": 1, "stdout": "", "stderr": ""}
+    return result, float(elapsed_total)
 
 
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
@@ -381,7 +445,7 @@ def run_review_console(db_path: Path | None = None) -> None:
                     "Anchored backfill failed: "
                     + str(anchored_result.get("index_code") or "BACKFILL_ERROR")
                 )
-            st.code(json.dumps(anchored_result, indent=2), language="json")
+            _render_json_payload(st, anchored_result)
 
         run_id = str(st.session_state.get("ml_pipeline_run_id") or "").strip()
         _render_command_results(st, load_run(run_id) if run_id else None)
@@ -680,7 +744,7 @@ def run_review_console(db_path: Path | None = None) -> None:
                 )
 
             with st.expander("ANN Info (raw JSON)"):
-                st.code(json.dumps(info_payload, indent=2), language="json")
+                _render_json_payload(st, info_payload)
 
             st.markdown(build_ann_guides_markdown())
 
@@ -805,14 +869,21 @@ def run_review_console(db_path: Path | None = None) -> None:
                 if str(selected_ticker).strip().upper() in {"", "ALL", "ALL_TICKERS"}
                 else [str(selected_ticker).strip().upper()]
             )
-            result = run_ann_train(
-                tickers=selected_scope,
-                window_length=int(ann_window_length),
-                lag_depth=int(ann_lag_depth),
-                train_end_date=str(ann_train_end_date or "").strip() or None,
-                target_mode=str(ann_target_mode or "magnitude").strip().lower(),
-                feature_allowlist_file=profile_path if profile_path.exists() else None,
+            result, elapsed_seconds = _run_with_elapsed_progress(
+                st,
+                label="ANN training in progress",
+                fn=lambda: run_ann_train(
+                    tickers=selected_scope,
+                    window_length=int(ann_window_length),
+                    lag_depth=int(ann_lag_depth),
+                    train_end_date=str(ann_train_end_date or "").strip() or None,
+                    target_mode=str(ann_target_mode or "magnitude").strip().lower(),
+                    feature_allowlist_file=profile_path
+                    if profile_path.exists()
+                    else None,
+                ),
             )
+            result["elapsed_seconds"] = float(round(elapsed_seconds, 3))
             st.session_state["ann_ingest_result"] = result
 
         if st.button("Run ANN Tune", key="run_ann_tune"):
@@ -821,15 +892,13 @@ def run_review_console(db_path: Path | None = None) -> None:
 
         ann_result = st.session_state.get("ann_ingest_result")
         if isinstance(ann_result, dict):
-            st.code(
-                json.dumps(
-                    {
-                        "returncode": ann_result.get("returncode"),
-                        "command": ann_result.get("command"),
-                    },
-                    indent=2,
-                ),
-                language="json",
+            _render_json_payload(
+                st,
+                {
+                    "returncode": ann_result.get("returncode"),
+                    "command": ann_result.get("command"),
+                    "elapsed_seconds": ann_result.get("elapsed_seconds"),
+                },
             )
             st.text("stdout")
             st.code(str(ann_result.get("stdout", "")) or "<empty>")
