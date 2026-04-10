@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ from src.ui.services.run_registry import (
     load_run,
 )
 from src.ui.services.vg_loader import (
+    build_ann_real_vs_computed_rows,
     build_ann_t0_p_sgn_rows,
     format_blue_table_rows,
     format_green_table_rows,
@@ -120,6 +122,18 @@ div[data-testid="stMetricValue"] {
   text-align: right !important;
   justify-content: flex-end !important;
   width: 100% !important;
+}
+
+/* Local override for Pipeline QA block */
+div[data-testid="stAppViewContainer"] .pipeline-qa-left,
+div[data-testid="stAppViewContainer"] .pipeline-qa-left * {
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
+
+div[data-testid="stAppViewContainer"] .pipeline-qa-left pre {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>
 """.strip()
@@ -393,9 +407,18 @@ def run_review_console(db_path: Path | None = None) -> None:
                 ],
             )
 
-        st.subheader("Pipeline QA")
+        st.markdown(
+            "<div class='pipeline-qa-left'><h3>Pipeline QA</h3></div>",
+            unsafe_allow_html=True,
+        )
         qa_report = evaluate_pipeline_state(selected_date=selected_date)
-        st.code(json.dumps(qa_report, indent=2), language="json")
+        qa_report_json = json.dumps(qa_report, indent=2)
+        st.markdown(
+            "<div class='pipeline-qa-left'><pre>"
+            + html.escape(qa_report_json)
+            + "</pre></div>",
+            unsafe_allow_html=True,
+        )
 
         if st.button("Write QA Log", key="write_pipeline_qa_log"):
             qa_path = write_pipeline_qa_log(report=qa_report)
@@ -616,8 +639,11 @@ def run_review_console(db_path: Path | None = None) -> None:
                 ],
             )
 
-        if st.button("Info", key="show_ann_info"):
+        info_col, compare_col = st.columns(2)
+        if info_col.button("Info", key="show_ann_info"):
             st.session_state["ann_show_info"] = True
+        if compare_col.button("Compare", key="show_ann_compare"):
+            st.session_state["ann_show_compare"] = True
 
         if bool(st.session_state.get("ann_show_info")):
             info_payload = load_ann_info(
@@ -657,6 +683,18 @@ def run_review_console(db_path: Path | None = None) -> None:
                 st.code(json.dumps(info_payload, indent=2), language="json")
 
             st.markdown(build_ann_guides_markdown())
+
+        if bool(st.session_state.get("ann_show_compare")):
+            compare_rows = build_ann_real_vs_computed_rows(
+                selected_date=selected_date,
+                tickers=list(TICKER_ORDER),
+            )
+            st.markdown("**Real vs Computed (SGN / Magnitude)**")
+            st.caption(
+                "Computed values are derived from ANN P prediction against T0; "
+                "Real values are derived from realized +3-day actual close against T0."
+            )
+            _render_aligned_table(st, compare_rows)
 
         if st.button("Run ANN Feature Ingest", key="run_ann_feature_ingest"):
             result = run_ann_feature_stores_ingest(store_path=store_path)

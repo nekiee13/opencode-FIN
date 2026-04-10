@@ -196,6 +196,79 @@ def build_ann_t0_p_sgn_rows(
     return rows
 
 
+def _sgn_symbol(t0: float | None, value: float | None) -> str:
+    if t0 is None or value is None:
+        return ""
+    if float(value) > float(t0):
+        return "+"
+    if float(value) < float(t0):
+        return "-"
+    return "0"
+
+
+def build_ann_real_vs_computed_rows(
+    *,
+    selected_date: str,
+    tickers: list[str],
+    rounds_dir: Path | None = None,
+    raw_tickers_dir: Path | None = None,
+) -> list[dict[str, str]]:
+    selected = str(selected_date or "").strip()
+    canonical = [str(x).strip().upper() for x in tickers if str(x).strip()]
+
+    if not selected:
+        return [
+            {
+                "Ticker": t,
+                "Real SGN": "",
+                "Computed SGN": "",
+                "Real Magnitude": "",
+                "Computed Magnitude": "",
+            }
+            for t in canonical
+        ]
+
+    use_rounds = (rounds_dir or paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR).resolve()
+    use_raw = (raw_tickers_dir or paths.DATA_TICKERS_DIR).resolve()
+    round_id = f"anchor-{selected.replace('-', '')}"
+    round_dir = use_rounds / round_id
+
+    t0_map = _load_t0_map(
+        selected_date=selected,
+        raw_tickers_dir=use_raw,
+        tickers=canonical,
+    )
+    p_map = _load_weighted_p_map(round_dir=round_dir)
+    future_map = _load_future_close_map(round_dir=round_dir)
+
+    rows: list[dict[str, str]] = []
+    for ticker in canonical:
+        t0 = t0_map.get(ticker)
+        computed = p_map.get(ticker)
+        real = future_map.get(ticker)
+        real_magnitude = (
+            abs(float(real) - float(t0))
+            if real is not None and t0 is not None
+            else None
+        )
+        computed_magnitude = (
+            abs(float(computed) - float(t0))
+            if computed is not None and t0 is not None
+            else None
+        )
+
+        rows.append(
+            {
+                "Ticker": ticker,
+                "Real SGN": _sgn_symbol(t0, real),
+                "Computed SGN": _sgn_symbol(t0, computed),
+                "Real Magnitude": _format_metric_value(real_magnitude),
+                "Computed Magnitude": _format_metric_value(computed_magnitude),
+            }
+        )
+    return rows
+
+
 def resolve_target_forecast_date(
     *,
     selected_date: str,

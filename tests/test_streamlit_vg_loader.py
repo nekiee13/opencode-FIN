@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from src.ui.services.vg_loader import (
+    build_ann_real_vs_computed_rows,
     build_ann_t0_p_sgn_rows,
     format_blue_table_rows,
     format_green_table_rows,
@@ -359,3 +360,68 @@ def test_build_ann_t0_p_sgn_rows_uses_selected_date_and_round_data(
     assert by_ticker["QQQ"]["Delta"] == "N/A"
     assert by_ticker["QQQ"]["SGN"] == ""
     assert by_ticker["QQQ"]["Magnitude"] == ""
+
+
+def test_build_ann_real_vs_computed_rows_uses_round_actuals_and_predictions(
+    tmp_path: Path,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "TNX_data.csv").write_text(
+        "Date,Open,High,Low,Close,Adj Close,Volume\n"
+        '"Mar 31, 2026",4.3000,4.3300,4.2800,4.3110,4.3110,-\n',
+        encoding="utf-8",
+    )
+    (raw_dir / "GSPC_data.csv").write_text(
+        "Date,Open,High,Low,Close,Adj Close,Volume\n"
+        '"Mar 31, 2026",6500.0,6510.0,6490.0,6500.0,6500.0,-\n',
+        encoding="utf-8",
+    )
+
+    rounds_dir = tmp_path / "rounds"
+    round_dir = rounds_dir / "anchor-20260331"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "t0_day1_weighted_ensemble.csv").write_text(
+        "ticker,weighted_ensemble,weights_used_sum\n"
+        "TNX,4.3200,1.0\n"
+        "SPX,6400.0000,1.0\n",
+        encoding="utf-8",
+    )
+    (round_dir / "actuals_tplus3.csv").write_text(
+        "round_id,ticker,runtime_ticker,expected_actual_date,lookup_actual_date,actual_close,status,source_csv\n"
+        "anchor-20260331,TNX,TNX,2026-04-01,2026-04-01,4.3300,ok,TNX_data.csv\n"
+        "anchor-20260331,SPX,GSPC,2026-04-01,2026-04-01,6600.0000,ok,GSPC_data.csv\n",
+        encoding="utf-8",
+    )
+
+    rows = build_ann_real_vs_computed_rows(
+        selected_date="2026-03-31",
+        tickers=["TNX", "SPX", "QQQ"],
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_dir,
+    )
+    by_ticker = {str(x["Ticker"]): x for x in rows}
+
+    assert by_ticker["TNX"] == {
+        "Ticker": "TNX",
+        "Real SGN": "+",
+        "Computed SGN": "+",
+        "Real Magnitude": "0.0190",
+        "Computed Magnitude": "0.0090",
+    }
+
+    assert by_ticker["SPX"] == {
+        "Ticker": "SPX",
+        "Real SGN": "+",
+        "Computed SGN": "-",
+        "Real Magnitude": "100.0000",
+        "Computed Magnitude": "100.0000",
+    }
+
+    assert by_ticker["QQQ"] == {
+        "Ticker": "QQQ",
+        "Real SGN": "",
+        "Computed SGN": "",
+        "Real Magnitude": "",
+        "Computed Magnitude": "",
+    }

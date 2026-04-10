@@ -14,3 +14,10 @@ def test_global_right_align_css_targets_headers_values_and_tables() -> None:
     assert "stMetricLabel" in css
     assert "stSelectbox" in css
     assert "stNumberInput" in css
+
+
+def test_global_right_align_css_has_pipeline_qa_left_override() -> None:
+    css = _global_right_align_css()
+
+    assert "pipeline-qa-left" in css
+    assert "text-align: left" in css
