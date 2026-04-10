@@ -23,6 +23,7 @@ from src.ui.services.ann_info import (
     build_ann_info_rows,
     load_ann_info,
 )
+from src.ui.services.ann_report import load_ann_report_sections
 from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
@@ -512,8 +513,8 @@ def run_review_console(db_path: Path | None = None) -> None:
             compute_round_status(selected_date=selected_date),
         )
 
-    tab_ml, tab_dashboard, tab_vg, tab_ann = st.tabs(
-        ["ML Calculations", "Dashboard", "Blue/Green ML", "ANN"]
+    tab_ml, tab_dashboard, tab_vg, tab_ann, tab_report = st.tabs(
+        ["ML Calculations", "Dashboard", "Blue/Green ML", "ANN", "Report"]
     )
 
     with tab_ml:
@@ -1158,3 +1159,43 @@ def run_review_console(db_path: Path | None = None) -> None:
                 if top:
                     st.markdown("**Top 5 Input Impact**")
                     _render_aligned_table(st, top[:5])
+
+    with tab_report:
+        st.subheader("Report")
+        st.caption(
+            "Per-ticker ANN report with real-vs-computed comparison and best setup details."
+        )
+        report_payload = load_ann_report_sections(
+            selected_date=selected_date,
+            tickers=list(TICKER_ORDER),
+        )
+        tune_run_id = str(report_payload.get("latest_tune_run_id") or "").strip()
+        if tune_run_id:
+            st.caption(f"Latest tune run: {tune_run_id}")
+
+        sections_raw = report_payload.get("sections")
+        sections = sections_raw if isinstance(sections_raw, dict) else {}
+        for ticker in TICKER_ORDER:
+            payload_raw = sections.get(ticker)
+            payload = payload_raw if isinstance(payload_raw, dict) else {}
+            st.markdown(f"### {ticker}")
+
+            st.markdown("**Real vs Computed (SGN / Magnitude)**")
+            compare_row = payload.get("compare_row")
+            compare = (
+                compare_row if isinstance(compare_row, dict) else {"Ticker": ticker}
+            )
+            _render_aligned_table(st, [compare])
+
+            st.markdown("**Best ANN Setup Details**")
+            setup_rows_raw = payload.get("best_setup_rows")
+            setup_rows = setup_rows_raw if isinstance(setup_rows_raw, list) else []
+            if setup_rows:
+                _render_aligned_table(st, setup_rows)
+            else:
+                st.info("No setup details available.")
+
+            status_note = str(payload.get("status_note") or "").strip()
+            if status_note:
+                st.caption("Status note: " + status_note)
+            st.markdown("---")
