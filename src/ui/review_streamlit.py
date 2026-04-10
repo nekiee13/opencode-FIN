@@ -256,6 +256,71 @@ def _run_with_elapsed_progress(
     return result, float(elapsed_total)
 
 
+def _target_modes_from_selection(target_mode: str) -> list[str]:
+    value = str(target_mode or "").strip().lower()
+    if value == "all":
+        return ["magnitude", "sgn"]
+    if value == "sgn":
+        return ["sgn"]
+    return ["magnitude"]
+
+
+def _summarize_ann_training_health(
+    info_payload: dict[str, Any],
+    *,
+    target_modes: list[str],
+) -> tuple[str, str]:
+    tickers_payload = info_payload.get("tickers")
+    if not isinstance(tickers_payload, dict) or not tickers_payload:
+        return (
+            "warning",
+            "ANN training completed, but no tuning status is available for selected scope.",
+        )
+
+    requested_modes = [str(x).strip().lower() for x in target_modes if str(x).strip()]
+    if not requested_modes:
+        requested_modes = ["magnitude"]
+
+    failed_entries: list[str] = []
+    unknown_entries: list[str] = []
+    checked_entries: list[str] = []
+
+    for ticker, payload in sorted(tickers_payload.items()):
+        if not isinstance(payload, dict):
+            continue
+        matrix = payload.get("tune_matrix")
+        matrix_dict = matrix if isinstance(matrix, dict) else {}
+        for mode in requested_modes:
+            mode_payload = matrix_dict.get(mode)
+            mode_dict = mode_payload if isinstance(mode_payload, dict) else {}
+            status = str(mode_dict.get("status") or "").strip().lower()
+            key = f"{ticker}/{mode}"
+            if status in {"fails_baseline", "insufficient_data"}:
+                failed_entries.append(f"{key}={status}")
+            elif status == "healthy":
+                checked_entries.append(f"{key}=healthy")
+            else:
+                unknown_entries.append(f"{key}=missing")
+
+    if failed_entries:
+        return (
+            "error",
+            "ANN training completed but status is unsuccessful: "
+            + "; ".join(failed_entries),
+        )
+    if checked_entries and not unknown_entries:
+        return (
+            "success",
+            "ANN training completed successfully for requested mode(s): "
+            + ", ".join(requested_modes),
+        )
+    return (
+        "warning",
+        "ANN training completed, but status could not be confirmed for all selections: "
+        + "; ".join(unknown_entries),
+    )
+
+
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
     status = str(status_payload.get("status") or "UNKNOWN")
     reason = str(status_payload.get("reason") or "")
@@ -825,7 +890,7 @@ def run_review_console(db_path: Path | None = None) -> None:
         )
         ann_target_mode = ann_train_col5.selectbox(
             "Target Mode",
-            options=["magnitude", "sgn"],
+            options=["magnitude", "sgn", "all"],
             index=0,
             key="ann_target_mode",
         )
@@ -844,12 +909,13 @@ def run_review_console(db_path: Path | None = None) -> None:
                 if str(selected_ticker).strip().upper() in {"", "ALL", "ALL_TICKERS"}
                 else [str(selected_ticker).strip().upper()]
             )
+            selected_modes = _target_modes_from_selection(str(ann_target_mode))
             result = run_ann_train(
                 tickers=selected_scope,
                 window_length=int(ann_window_length),
                 lag_depth=int(ann_lag_depth),
                 train_end_date=str(ann_train_end_date or "").strip() or None,
-                target_mode=str(ann_target_mode or "magnitude").strip().lower(),
+                target_mode=str(selected_modes[0]),
                 feature_selection="importance",
                 importance_keep_ratio=float(ann_prune_keep_ratio),
                 save_selected_features_file=profile_path,
@@ -869,22 +935,87 @@ def run_review_console(db_path: Path | None = None) -> None:
                 if str(selected_ticker).strip().upper() in {"", "ALL", "ALL_TICKERS"}
                 else [str(selected_ticker).strip().upper()]
             )
-            result, elapsed_seconds = _run_with_elapsed_progress(
-                st,
-                label="ANN training in progress",
-                fn=lambda: run_ann_train(
-                    tickers=selected_scope,
-                    window_length=int(ann_window_length),
-                    lag_depth=int(ann_lag_depth),
-                    train_end_date=str(ann_train_end_date or "").strip() or None,
-                    target_mode=str(ann_target_mode or "magnitude").strip().lower(),
-                    feature_allowlist_file=profile_path
-                    if profile_path.exists()
-                    else None,
-                ),
-            )
-            result["elapsed_seconds"] = float(round(elapsed_seconds, 3))
+            selected_modes = _target_modes_from_selection(str(ann_target_mode))
+            mode_runs: list[dict[str, Any]] = []
+            combined_stdout: list[str] = []
+            combined_stderr: list[str] = []
+            total_elapsed = 0.0
+            for mode in selected_modes:
+                run_result, elapsed_seconds = _run_with_elapsed_progress(
+                    st,
+                    label=f"ANN training in progress ({mode})",
+                    fn=lambda current_mode=mode: run_ann_train(
+                        tickers=selected_scope,
+                        window_length=int(ann_window_length),
+                        lag_depth=int(ann_lag_depth),
+                        train_end_date=str(ann_train_end_date or "").strip() or None,
+                        target_mode=str(current_mode),
+                        feature_allowlist_file=profile_path
+                        if profile_path.exists()
+                        else None,
+                    ),
+                )
+                run_result["target_mode"] = mode
+                run_result["elapsed_seconds"] = float(round(elapsed_seconds, 3))
+                mode_runs.append(run_result)
+                total_elapsed += float(elapsed_seconds)
+                combined_stdout.append(
+                    f"[mode={mode}]\n{str(run_result.get('stdout', '') or '')}".strip()
+                )
+                combined_stderr.append(
+                    f"[mode={mode}]\n{str(run_result.get('stderr', '') or '')}".strip()
+                )
+
+            returncode = 0
+            for item in mode_runs:
+                if int(item.get("returncode") or 0) != 0:
+                    returncode = int(item.get("returncode") or 1)
+                    break
+            result = {
+                "returncode": int(returncode),
+                "target_modes": list(selected_modes),
+                "mode_runs": mode_runs,
+                "command": [item.get("command") for item in mode_runs],
+                "stdout": "\n\n".join(combined_stdout).strip(),
+                "stderr": "\n\n".join(combined_stderr).strip(),
+                "elapsed_seconds": float(round(total_elapsed, 3)),
+            }
             st.session_state["ann_ingest_result"] = result
+
+            if int(result.get("returncode") or 0) != 0:
+                st.session_state["ann_train_feedback"] = {
+                    "level": "error",
+                    "text": "ANN training failed. Check stderr details below.",
+                }
+            else:
+                info_payload = load_ann_info(
+                    selected_ticker=selected_ticker,
+                    tickers=list(TICKER_ORDER),
+                    store_summary=summary,
+                )
+                level, text = _summarize_ann_training_health(
+                    info_payload,
+                    target_modes=selected_modes,
+                )
+                st.session_state["ann_train_feedback"] = {
+                    "level": level,
+                    "text": text,
+                }
+
+        feedback_raw = st.session_state.get("ann_train_feedback")
+        feedback = feedback_raw if isinstance(feedback_raw, dict) else None
+        if feedback:
+            level = str(feedback.get("level") or "info").strip().lower()
+            text = str(feedback.get("text") or "").strip()
+            if text:
+                if level == "success":
+                    st.success(text)
+                elif level == "error":
+                    st.error(text)
+                elif level == "warning":
+                    st.warning(text)
+                else:
+                    st.info(text)
 
         if st.button("Run ANN Tune", key="run_ann_tune"):
             result = run_ann_tune(max_trials=int(ann_max_trials))
