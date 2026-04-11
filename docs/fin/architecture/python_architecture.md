@@ -1,5 +1,8 @@
 # Python Architecture Diagram
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 This diagram documents the current FIN runtime architecture and ownership boundaries.
 
 ```mermaid
@@ -15,6 +18,11 @@ flowchart TB
     E8[scripts/followup_llm_vg.py]
     E9[scripts/ann_markers_ingest.py]
     E10[scripts/followup_ml_scope_audit.py]
+    E11[scripts/ann_feature_stores_ingest.py]
+    E12[scripts/ann_train.py]
+    E13[scripts/ann_tune.py]
+    E14[scripts/review_streamlit.py]
+    E15[scripts/streamlit_full_chain.py]
   end
 
   subgraph Compat[compat/ (delegation-only adapter layer)]
@@ -61,6 +69,27 @@ flowchart TB
       U4[src/followup_ml/scope_audit.py]
     end
 
+    subgraph ANNCore[ANN Pipeline]
+      A1[src/ann/config.py]
+      A2[src/ann/dataset.py]
+      A3[src/ann/feature_selection.py]
+      A4[src/ann/trainer.py]
+      A5[src/ann/metrics.py]
+    end
+
+    subgraph ReviewOps[Review and Streamlit Operations]
+      R1[src/review/service.py]
+      R2[src/review/repository.py]
+      R3[src/review/exports.py]
+      R4[src/review/consensus.py]
+      R5[src/review/state_map.py]
+      R6[src/ui/review_streamlit.py]
+      R7[src/ui/services/pipeline_runner.py]
+      R8[src/ui/services/run_registry.py]
+      R9[src/ui/services/pipeline_qa.py]
+      R10[src/ui/services/ann_ops.py]
+    end
+
     subgraph UtilsUI[Utilities and UI]
       X1[src/utils/compat.py]
       X2[src/utils/calc_snapshots.py]
@@ -85,8 +114,11 @@ flowchart TB
     D6[out/i_calc/LLM/LLM_VG_tables.sqlite]
     D7[out/i_calc/Markers.sqlite]
     D8[out/i_calc/stores/ann_markers_store.sqlite]
-    D9[graphs/]
-    D10[logs/]
+    D9[out/i_calc/stores/ann_input_features.sqlite]
+    D10[out/i_calc/ann/training and tuning]
+    D11[out/i_calc/review and gui_ops]
+    D12[graphs/]
+    D13[logs/]
   end
 
   E1 --> E2
@@ -94,7 +126,7 @@ flowchart TB
   E2 --> C3
   E2 --> C6
   E2 --> X2
-  E2 --> D9
+  E2 --> D12
 
   E3 --> C1
   E3 --> S2
@@ -117,6 +149,16 @@ flowchart TB
   E8 --> D7
   E9 --> D8
   E10 --> U4
+  E11 --> D9
+  E12 --> A4
+  E12 --> D10
+  E13 --> A4
+  E13 --> D10
+  E14 --> R6
+  E14 --> R1
+  E14 --> R7
+  E15 --> R6
+  E15 --> R7
 
   C1 --> F2
   C2 --> S2
@@ -150,6 +192,10 @@ flowchart TB
   U3 --> D6
   U3 --> D7
   E9 --> D8
+  R6 --> D11
+  R7 --> D11
+  R10 --> D9
+  R10 --> D10
 
   X1 --> F1
   X1 --> F2
@@ -161,6 +207,8 @@ flowchart TB
 - Canonical runtime logic is in `src/`.
 - `compat/` preserves legacy import stability and delegates to canonical modules.
 - Forecast orchestration currently spans both `src/models/facade.py` and `src/models/compat_api.py` due Phase-1 migration compatibility.
+- ANN training/tuning and feature-ingest paths now run through `src/ann/*` plus Streamlit services in `src/ui/services/*`.
+- Review and Streamlit operational workflows are implemented in `src/review/*` and `src/ui/review_streamlit.py`.
 - Worker protocol maturity is mixed:
   - Structured JSON stdout envelope: DynaMix worker.
   - JSON in/out file envelope: PCE worker.

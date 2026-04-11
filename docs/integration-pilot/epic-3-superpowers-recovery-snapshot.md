@@ -18,7 +18,7 @@ A rollback baseline is captured before Superpowers installation starts.
 
 ## Rollback entry points
 
-- Config rollback: restore pre-install `opencode.json` backup in project scope.
+- Config rollback: restore the pre-install project config backup in project scope.
 - Plugin rollback: remove Superpowers plugin entry from `plugin` array.
 - Cache/runtime rollback: restart OpenCode runtime after config restore.
 - Legacy path cleanup rollback (if used): remove stale `plugin/superpowers.js` and stale superpowers clone directory.

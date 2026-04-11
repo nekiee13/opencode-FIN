@@ -129,3 +129,27 @@ Acceptance Criteria:
 - [ ] All diagrams render.
 - [ ] No broken internal links.
 - [ ] Coverage is complete for requested documentation scope.
+
+## 2026-04-11 Refresh Status Snapshot
+
+Use this section as the current-state tracker for the active refresh cycle.
+
+| Epic | Status | Notes |
+|---|---|---|
+| FIN-DOC-00 Scope lock and inventory | In progress | File-level inventory published in `docs/documentation_freshness_ledger.md`. |
+| FIN-DOC-01 Architecture diagram | In progress | Diagram updated for ANN/review/streamlit surfaces. |
+| FIN-DOC-02 Module/class design | In progress | Module map expanded for ANN + review + streamlit services. |
+| FIN-DOC-03 Pydantic model spec | Verify | Existing spec retained; validate against latest dataclasses during next pass. |
+| FIN-DOC-04 End-to-end pipelines | Verify | Existing diagrams retained; run render + behavior checks in validation gate. |
+| FIN-DOC-05 UML class relationships | Verify | Existing diagrams retained; run render check in validation gate. |
+| FIN-DOC-06 UML sequence diagrams | Verify | Existing diagrams retained; run render check in validation gate. |
+| FIN-DOC-07 SQL/JSON schemas | Verify | Existing schema docs retained; confirm against latest store/worker contracts. |
+| FIN-DOC-08 SwS and traceability | In progress | SwS + traceability updated with review/streamlit/ANN requirements. |
+| FIN-DOC-09 Validation/publication gate | Pending | Blocked on docs tooling environment checks in current shell. |
+
+### Current Open Items
+
+- [ ] Run markdown link validation across `docs/**`.
+- [ ] Run Mermaid render validation across `docs/**/*.md` and `docs/**/*.mmd`.
+- [ ] Rebuild OC generated artifacts after OC docs build run.
+- [ ] Reconcile any stale references discovered in validation pass.

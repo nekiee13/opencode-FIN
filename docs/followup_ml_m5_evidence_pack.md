@@ -1,18 +1,21 @@
 # Follow-up ML M5 Evidence Pack
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 Use this document to record objective sign-off evidence.
 
 ## Scope Freeze Audit
 
-- Audit window start:
-- Audit window end:
-- Unapproved expansion merges count:
-- Exception PRs reviewed:
+- Audit window start: 2026-03-01
+- Audit window end: 2026-03-16
+- Unapproved expansion merges count: 0
+- Exception PRs reviewed: 0
 
 Links:
 
-- PR query (`m5-expansion-exception`):
-- PR query (missing both labels):
+- PR query (`m5-expansion-exception`): `https://github.com/nekiee13/opencode-FIN/pulls?q=is%3Apr+is%3Aclosed+label%3Am5-expansion-exception`
+- PR query (missing both labels): `https://github.com/nekiee13/opencode-FIN/pulls?q=is%3Apr+is%3Aclosed+-label%3Am5-scope+-label%3Am5-expansion-exception`
 
 ## Consecutive Cycle Evidence
 
@@ -20,7 +23,7 @@ Links:
 |:--|:--|:--|:--|:--|
 | 2026-03-06 | PASS | PASS | none | PR #14 checks passed (`https://github.com/nekiee13/opencode-FIN/pull/14/checks`); merge commit `82c1ab0`. |
 | 2026-03-06 | PASS | PASS | none | PR #15 checks passed (`https://github.com/nekiee13/opencode-FIN/pull/15/checks`); merge commit `a0b3325`. |
-| YYYY-MM-DD | PASS/FAIL | PASS/FAIL | none/resolved/open | |
+| 2026-03-16 | PASS | PASS | none | Final closure sign-off recorded in issue #6 comment thread. |
 
 ## Benchmark Drift Register
 
@@ -32,11 +35,11 @@ Links:
 
 ## Runbook Validation (Non-author)
 
-- Operator:
-- Date:
-- Commands executed (`draft -> finalize -> parity -> publish`):
-- Outcome:
-- Issues found and fixes:
+- Operator: non-author validation captured in PR #13 evidence
+- Date: 2026-03-05
+- Commands executed (`draft -> finalize -> parity -> publish`): recorded in PR evidence and rollback drill bundle
+- Outcome: PASS
+- Issues found and fixes: none blocking
 
 ## Ownership and Escalation Matrix Approval
 
@@ -56,11 +59,11 @@ Links:
 
 ## Rollback Drill
 
-- Drill date:
-- Trigger simulated:
-- Procedure used:
-- Time to recover:
-- Follow-up actions:
+- Drill date: 2026-03-05
+- Trigger simulated: follow-up artifact/state restore scenario
+- Procedure used: runbook rollback procedure (`snapshot -> restore -> checksum verify -> parity compare`)
+- Time to recover: within operator target window
+- Follow-up actions: no additional actions required for M5 closure
 
 ## Final Approval
 
@@ -118,4 +121,3 @@ Links:
 
 ### Next closure condition
 - Closure criteria satisfied on 2026-03-16. Evidence pack is ready for final closure PR and tracker close-out.
-

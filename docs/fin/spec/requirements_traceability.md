@@ -1,5 +1,8 @@
 # Requirements Traceability Matrix
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 This matrix links software requirements to implementation modules and verification tests.
 
 | Requirement | Description | Primary Implementation | Verification Evidence |
@@ -16,6 +19,9 @@ This matrix links software requirements to implementation modules and verificati
 | FR-010 | Artifact parity verification workflow | `scripts/followup_ml_parity.py`, `scripts/followup_ml_ci_parity_gate.py` | `tests/test_followup_ml_parity_tool.py` |
 | FR-011 | Scope audit governance workflow | `src/followup_ml/scope_audit.py`, `scripts/followup_ml_scope_audit.py` | `tests/test_followup_ml_scope_audit.py` |
 | FR-012 | Entrypoint startup/help operability | `app3G.py`, `scripts/*.py` | `tests/test_entrypoints_smoke.py`, `tests/test_app3g_smoke.py`, `tests/test_app3g_cli_help_smoke.py` |
+| FR-013 | ANN feature store ingestion | `scripts/ann_feature_stores_ingest.py`, `src/ui/services/ann_ops.py` | `tests/test_ann_feature_stores_ingest.py`, `tests/test_streamlit_ann_ops.py` |
+| FR-014 | ANN training and tuning workflows | `src/ann/*`, `scripts/ann_train.py`, `scripts/ann_tune.py` | `tests/test_ann_trainer.py`, `tests/test_ann_tune.py`, `tests/test_ann_training_dataset.py`, `tests/test_ann_training_config.py` |
+| FR-015 | Review and streamlit operations workflow | `src/review/*`, `src/ui/review_streamlit.py`, `src/ui/services/*`, `scripts/review_streamlit.py` | `tests/test_review_repository.py`, `tests/test_review_exports.py`, `tests/test_review_streamlit_alignment.py`, `tests/test_streamlit_pipeline_runner.py`, `tests/test_streamlit_run_registry.py`, `tests/test_streamlit_pipeline_qa.py` |
 | NFR-001 | Deterministic degradation behavior | optional-dep gating in `src/utils/compat.py`, TDA state handling | `tests/test_tda_module_contract.py`, `tests/test_tda_export_partial_degradation.py` |
 | NFR-002 | Contract stability and compatibility | `compat/*` delegation layer, facade contracts | `tests/test_compat_capability_bridge.py`, `tests/test_facade_import_smoke.py` |
 | NFR-003 | Compat thinness/import hygiene | `compat/*` + policy tests | `tests/test_compat_import_hygiene.py`, `tests/test_compat_thinness_shape.py` |

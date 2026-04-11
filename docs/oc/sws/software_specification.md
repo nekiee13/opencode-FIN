@@ -41,7 +41,7 @@ Reference architecture: `docs/oc/architecture/architecture.md`
 
 | ID | Requirement |
 | --- | --- |
-| FR-OC-001 | Runtime shall load plugin and MCP configuration from `.opencode/opencode.json`. |
+| FR-OC-001 | Runtime shall load plugin and MCP configuration from the active project `opencode` config JSON (documented in `tools/hello-stack/quickstart.md`). |
 | FR-OC-002 | OAC registry shall define component graph for agents, subagents, commands, tools, skills, and contexts. |
 | FR-OC-003 | Retrieval stage shall collect code context from jCodeMunch before edit stage starts. |
 | FR-OC-004 | Retrieval stage shall collect docs context from jDocMunch before edit stage starts. |
@@ -68,7 +68,7 @@ Reference architecture: `docs/oc/architecture/architecture.md`
 
 ### 6.1 Runtime Configuration Interface
 
-- Path: `.opencode/opencode.json`
+- Path reference: active project runtime config JSON (documented in `tools/hello-stack/quickstart.md`)
 - Inputs: plugin array, MCP server command definitions
 - Outputs: active runtime plugin and MCP behavior
 
@@ -161,7 +161,7 @@ Primary observability artifacts:
 
 | Requirement ID | Source Evidence |
 | --- | --- |
-| FR-OC-001 | `.opencode/opencode.json` |
+| FR-OC-001 | `tools/hello-stack/quickstart.md` |
 | FR-OC-002 | `vendor/OpenAgentsControl/registry.json` |
 | FR-OC-003 | `docs/integration-pilot/epic-4-operator-policy.md` |
 | FR-OC-004 | `docs/integration-pilot/epic-4-operator-policy.md` |

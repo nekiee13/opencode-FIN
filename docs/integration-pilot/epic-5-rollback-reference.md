@@ -86,7 +86,7 @@ Rollback steps:
 
 1. Apply session reset sequence
 2. Re-run deterministic opening gates in order
-3. Re-check `check_stack.py`, MCP list, and skill visibility
+3. Re-check `tools/hello-stack/check_stack.py`, MCP list, and skill visibility
 
 Detailed references:
 

@@ -16,7 +16,7 @@ Selected commit: `e8497372eb16ea0e93c251aabac3b96cd82c7c16`
 
 All required selected-version artifacts are present.
 
-- `registry.json` -> present, non-empty
+- `vendor/OpenAgentsControl/registry.json` -> present, non-empty
 - `.opencode/agent/` -> present, non-empty (`32` files)
 - `.opencode/command/` -> present, non-empty (`29` files)
 - `.opencode/context/` -> present, non-empty (`181` files)
@@ -25,15 +25,15 @@ All required selected-version artifacts are present.
 - `.opencode/tool/` -> present, non-empty (`9` files)
 - `.opencode/skill/` -> present, non-empty (`15` files)
 - `.opencode/profiles/` -> present, non-empty (`5` files)
-- `.opencode/config.json` -> present, non-empty
-- `.opencode/opencode.json` -> present, non-empty
-- `evals/README.md` -> present, non-empty
+- historical `.opencode` config JSON files in the pilot snapshot -> present at validation time
+- historical `.opencode` runtime JSON file in the pilot snapshot -> present at validation time
+- `vendor/OpenAgentsControl/evals/README.md` -> present, non-empty
 - approval-gate evaluation artifact -> present, non-empty
 
 ## Compatibility note
 
 Legacy workspace symlink targets include `.opencode/config` and `.opencode/skills` paths.
-Compatibility shim directories were added under the vendored payload to keep those symlink targets valid while preserving selected-version canonical files (`config.json`, `skill/`).
+Compatibility shim directories were added under the vendored payload to keep those symlink targets valid while preserving selected-version canonical files (config JSON and `skill/`).
 
 ## Readiness statement
 

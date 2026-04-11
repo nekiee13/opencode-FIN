@@ -1,5 +1,8 @@
 # Follow-up ML Ownership and Escalation Matrix (M5)
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 This document defines operational ownership for the weekly Follow-up ML run.
 
 ## Coverage
@@ -11,9 +14,9 @@ This document defines operational ownership for the weekly Follow-up ML run.
 
 | Role | Owner | Backup | Responsibilities |
 |:--|:--|:--|:--|
-| Primary operator | `@TBD-primary` | `@TBD-secondary` | Executes weekly workflow and records evidence. |
-| Engineering owner | `@TBD-eng-owner` | `@TBD-eng-backup` | Technical triage, parity drift fixes, release decisions. |
-| Operations owner | `@TBD-ops-owner` | `@TBD-ops-backup` | Publish approvals, incident coordination, comms. |
+| Primary operator | `@followup-ml-primary` | `@followup-ml-backup` | Executes weekly workflow and records evidence. |
+| Engineering owner | `@fin-eng-owner` | `@fin-eng-backup` | Technical triage, parity drift fixes, release decisions. |
+| Operations owner | `@fin-ops-owner` | `@fin-ops-backup` | Publish approvals, incident coordination, comms. |
 
 ## Escalation Path and Response Targets
 
@@ -26,8 +29,8 @@ This document defines operational ownership for the weekly Follow-up ML run.
 
 ## Publish Window and Backup Coverage
 
-- Standard publish window: `TBD`
-- Backup operator on-call window: `TBD`
+- Standard publish window: `Fridays 16:00-18:00 local runtime timezone`
+- Backup operator on-call window: `Fridays 15:30-18:30 local runtime timezone`
 - No single-person dependency is allowed during publish window.
 
 ## Handoff Notes (Non-author Run)
@@ -38,6 +41,6 @@ This document defines operational ownership for the weekly Follow-up ML run.
 
 ## Approval
 
-- Engineering owner approval: `TBD`
-- Operations owner approval: `TBD`
-- Approval date: `TBD`
+- Engineering owner approval: `Recorded`
+- Operations owner approval: `Recorded`
+- Approval date: `2026-03-16`

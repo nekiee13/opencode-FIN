@@ -10,7 +10,7 @@ Observed local payload state at task start:
 - `vendor-OpenAgentsControl.tar` contained only `vendor/OpenAgentsControl/` (empty top-level payload).
 - `vendor/OpenAgentsControl/.opencode/` existed as reconstructed scaffold.
 - Subdirectories `agent`, `config`, `context`, `plugin`, `skills`, and `tool` each contained only `.gitkeep`.
-- `vendor/OpenAgentsControl/.opencode/README.md` explicitly stated incomplete vendor payload.
+- `vendor/OpenAgentsControl/README.md` plus pilot logs reflected an incomplete vendor payload at task start.
 
 ## Classification
 
@@ -28,7 +28,7 @@ At task start, OAC capabilities were **not testable** in this environment for pi
 
 ## Missing required artifacts at task start
 
-- `registry.json`
+- `vendor/OpenAgentsControl/registry.json`
 - `.opencode/agent/` content files
 - `.opencode/command/` content files
 - `.opencode/context/` content files
@@ -37,7 +37,6 @@ At task start, OAC capabilities were **not testable** in this environment for pi
 - `.opencode/tool/` content files
 - `.opencode/skill/`
 - `.opencode/profiles/`
-- `.opencode/config.json`
-- `.opencode/opencode.json`
-- `evals/README.md`
+- historical `.opencode` config/runtime JSON files in the pilot snapshot
+- `vendor/OpenAgentsControl/evals/README.md`
 - approval-gate evaluation artifact

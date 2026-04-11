@@ -10,7 +10,7 @@ Code retrieval reference:
 
 - repo: `local/hello-stack-c5cc441d`
 - symbol id: `check_stack.py::run_checks#function`
-- command path evidence: `check_stack.py` function validates stack and MCP wiring
+- command path evidence: `tools/hello-stack/check_stack.py` function validates stack and MCP wiring
 
 Docs retrieval reference:
 
@@ -66,7 +66,7 @@ Edited path:
 
 Edit summary:
 
-- replaced `.opencode/opencode.json` target wording with active runtime config guidance
+- replaced legacy `.opencode` project-config wording with active runtime config guidance
 - added canonical paths:
   - container path `/workspace/.config/opencode/opencode.json`
   - host mirror path `C:\opencode-sandbox\.config\opencode\opencode.json`

@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-27T19:09:11+00:00",
-  "root": "/repo",
+  "generated_at": "2026-04-11T14:52:28+00:00",
+  "root": "/repo/.worktrees/docs-refresh-current-state",
   "scope_paths": [
     ".opencode",
     "tools/hello-stack",
@@ -11,27 +11,25 @@
     "vendor/OpenAgentsControl/registry.json",
     "vendor/OpenAgentsControl/README.md"
   ],
-  "total_files_in_scope": 440,
+  "total_files_in_scope": 130,
   "file_counts_by_scope": {
-    ".opencode": 4,
+    ".opencode": 0,
     "tools/hello-stack": 5,
-    "docs/integration-pilot": 39,
-    "vendor/OpenAgentsControl/.opencode": 307,
+    "docs/integration-pilot": 40,
+    "vendor/OpenAgentsControl/.opencode": 0,
     "vendor/OpenAgentsControl/packages/plugin-abilities/src": 9,
     "vendor/OpenAgentsControl/evals/framework/src": 74,
     "vendor/OpenAgentsControl/registry.json": 1,
     "vendor/OpenAgentsControl/README.md": 1
   },
   "extension_counts": {
-    ".json": 29,
-    ".md": 303,
+    ".json": 3,
+    ".md": 44,
     ".py": 1,
-    ".sh": 8,
-    ".ts": 90,
-    ".yaml": 9
+    ".ts": 82
   },
   "registry_summary": {
-    "path": "/repo/vendor/OpenAgentsControl/registry.json",
+    "path": "/repo/.worktrees/docs-refresh-current-state/vendor/OpenAgentsControl/registry.json",
     "version": "2.0.0",
     "schema_version": "2.0.0",
     "component_counts": {

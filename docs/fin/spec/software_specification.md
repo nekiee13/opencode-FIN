@@ -1,6 +1,9 @@
 # Software Specification (SwS) - FIN
 
-Version: 1.0 (documentation baseline)
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
+Version: 1.1 (current-state refresh)
 
 ## 1. Purpose and Scope
 
@@ -8,7 +11,7 @@ FIN is a forecasting and scenario engine for a fixed ticker set and related mark
 - Multi-model forward forecasts (ARIMAX, PCE-NARX, LSTM, DynaMix, ETS, GARCH, VAR, RW).
 - Structural context exports (SVL and TDA).
 - Follow-up scoring, weighting, parity checks, and VG materialization.
-- Desktop GUI and script-based operational entrypoints.
+- Desktop GUI, streamlit operations console, and script-based entrypoints.
 
 In-scope implementation boundary:
 - Canonical runtime in `src/`.
@@ -32,8 +35,8 @@ flowchart LR
 
 ### 3.1 Layering
 
-- Presentation and entrypoints: `app3G.py`, `scripts/*.py`, `src/ui/gui.py`.
-- Canonical business logic: `src/models`, `src/structural`, `src/followup_ml`, `src/data`, `src/exo`, `src/utils`.
+- Presentation and entrypoints: `app3G.py`, `scripts/*.py`, `src/ui/gui.py`, `src/ui/review_streamlit.py`.
+- Canonical business logic: `src/models`, `src/structural`, `src/followup_ml`, `src/ann`, `src/review`, `src/data`, `src/exo`, `src/utils`.
 - Compatibility layer: `compat/*` delegates to canonical modules.
 - Externalized heavy paths: workers in `scripts/workers/*`.
 
@@ -140,6 +143,34 @@ Primary implementation:
 - `app3G.py`
 - `scripts/*.py`
 
+### FR-013 ANN Feature Store Ingestion
+
+System shall ingest ANN input feature families (TI, PP, SVL, TDA) into canonical sqlite storage with deterministic upsert behavior.
+
+Primary implementation:
+- `scripts/ann_feature_stores_ingest.py`
+- `src/ui/services/ann_ops.py`
+
+### FR-014 ANN Train and Tune Workflow
+
+System shall support ANN training and tuning workflows via CLI and streamlit service wrappers.
+
+Primary implementation:
+- `scripts/ann_train.py`
+- `scripts/ann_tune.py`
+- `src/ann/*`
+- `src/ui/services/ann_ops.py`
+
+### FR-015 Review and Streamlit Operations
+
+System shall provide review-oriented operational workflows (pipeline runner, run registry, QA checks, exports) through streamlit and review services.
+
+Primary implementation:
+- `src/review/*`
+- `src/ui/review_streamlit.py`
+- `src/ui/services/*`
+- `scripts/review_streamlit.py`
+
 ## 5. Non-Functional Requirements
 
 ### NFR-001 Deterministic Degradation
@@ -207,6 +238,8 @@ Detailed requirement mapping is in `docs/fin/spec/requirements_traceability.md`.
 - Forecast GUI path: `python app3G.py`.
 - Structural exports: `python scripts/svl_export.py ...`, `python scripts/tda_export.py ...`.
 - Follow-up cycle: `python scripts/followup_ml.py ...` then optional VG/parity tools.
+- Review streamlit path: `python scripts/review_streamlit.py`.
+- ANN paths: `python scripts/ann_feature_stores_ingest.py`, `python scripts/ann_train.py`, `python scripts/ann_tune.py`.
 - Scope audit: `python scripts/followup_ml_scope_audit.py --since YYYY-MM-DD`.
 
 ## 11. Risks and Open Items

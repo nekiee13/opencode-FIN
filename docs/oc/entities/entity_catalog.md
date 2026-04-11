@@ -1,6 +1,6 @@
 # OC Entity Catalog
 
-Generated at: 2026-03-27T19:09:11+00:00
+Generated at: 2026-04-11T14:52:28+00:00
 
 ## Python Dataclasses
 
@@ -17,14 +17,6 @@ Source: `tools/hello-stack/check_stack.py:13`
 
 | Interface | Fields | Source |
 | --- | ---: | --- |
-| `ValidationCheck` | 0 | `vendor/OpenAgentsControl/.opencode/plugin/agent-validator.ts` |
-| `ValidationResult` | 0 | `vendor/OpenAgentsControl/.opencode/plugin/agent-validator.ts` |
-| `Subtask` | 13 | `vendor/OpenAgentsControl/.opencode/scripts/task-cli.ts` |
-| `Task` | 10 | `vendor/OpenAgentsControl/.opencode/scripts/task-cli.ts` |
-| `Subtask` | 15 | `vendor/OpenAgentsControl/.opencode/skill/task-management/scripts/task-cli.ts` |
-| `Task` | 11 | `vendor/OpenAgentsControl/.opencode/skill/task-management/scripts/task-cli.ts` |
-| `EnvLoaderConfig` | 0 | `vendor/OpenAgentsControl/.opencode/tool/env/index.ts` |
-| `ImageConfig` | 4 | `vendor/OpenAgentsControl/.opencode/tool/gemini/index.ts` |
 | `UserData` | 2 | `vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts` |
 | `ValidationResult` | 2 | `vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts` |
 | `Violation` | 3 | `vendor/OpenAgentsControl/evals/framework/src/__tests__/error-handling.test.ts` |

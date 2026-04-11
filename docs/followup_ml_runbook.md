@@ -1,5 +1,8 @@
 # Follow-up ML Runbook
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 This runbook describes the weekly no-Excel operating flow for Follow-up ML artifacts.
 
 ## Scope

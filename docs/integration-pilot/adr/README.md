@@ -4,7 +4,7 @@ Location: `docs/integration-pilot/adr/`
 
 Naming convention:
 
-- `NNNN-short-kebab-title.md`
+- `NNNN-short-kebab-title` (filename pattern; append `.md` when creating the file)
 - Example: `0001-oac-version-selection.md`
 
 Sequence rule:

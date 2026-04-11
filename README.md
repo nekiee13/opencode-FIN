@@ -199,4 +199,5 @@ Environment guardrail: use the intended interpreter and virtual environment (ven
 
 
 Governance transition note: docs/governance-transition.md
+Documentation index: docs/README.md
 

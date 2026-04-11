@@ -6,7 +6,7 @@ Date: 2026-03-22
 
 - Repo branch: `main`
 - Repo commit: `3306476c4ec5a98dd9f6c8d2413fe2dc3e2dccf5`
-- Procedure document snapshot: `docs/oac_superpowers_hello_stack.md` at the same commit
+- Procedure document snapshot: `tools/hello-stack/quickstart.md` at the same commit
 - Runtime objects observed in transcript: OpenCode `1.1.52`, Docker `29.1.3`, llama.cpp model `Devstral-Small-2-24B-Instruct-2512-UD-IQ3_XXS.gguf`
 
 ## Benchmark set (outcome-oriented)

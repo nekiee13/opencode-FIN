@@ -4,7 +4,7 @@
 
 | Folder | Responsibility | Evidence |
 | --- | --- | --- |
-| `.opencode/` | Active OC runtime entrypoint, plugin list, MCP wiring, and symlink bridge to vendored OAC payload | `.opencode/opencode.json`, `docs/integration-pilot/epic-2-oac-path-integrity-check.md` |
+| `.opencode/` | Active OC runtime entrypoint, plugin list, MCP wiring, and symlink bridge to vendored OAC payload | `tools/hello-stack/quickstart.md`, `docs/integration-pilot/epic-2-oac-path-integrity-check.md` |
 | `tools/hello-stack/` | Minimal stack bootstrap templates and executable stack health checks | `tools/hello-stack/check_stack.py`, `tools/hello-stack/quickstart.md` |
 | `docs/integration-pilot/` | Pilot run evidence, ADRs, validation logs, and decision notes | `docs/integration-pilot/epic-4-hello-stack-run.md` |
 | `vendor/OpenAgentsControl/.opencode/` | Vendored OAC payload: agents, commands, context, tools, skills, and prompts | `vendor/OpenAgentsControl/.opencode/` |
@@ -23,7 +23,7 @@ Source: `docs/oc/generated/oc_inventory.json`
 
 ### 1) Runtime Configuration Module
 
-- Primary object: OpenCode runtime config in `.opencode/opencode.json`
+- Primary object: OpenCode runtime config (active project opencode config JSON; see `tools/hello-stack/quickstart.md`)
 - Input responsibility: plugin and MCP endpoint declarations
 - Output responsibility: active runtime behavior for retrieval, skills, and editing tools
 

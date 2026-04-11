@@ -1,5 +1,8 @@
 # ANN Tab Operator Guide
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 This guide explains ANN tab controls, what each button does, which artifacts are read/written, and how to tune parameters safely.
 
 ## Info Button

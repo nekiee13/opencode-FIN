@@ -75,12 +75,12 @@ Threshold judgment:
 
 Baseline:
 
-- `check_stack.py`: `0.243s`, pass, failed-result count `0`
+- `tools/hello-stack/check_stack.py`: `0.243s`, pass, failed-result count `0`
 - targeted pytest: `0.025s`, fail (`No module named pytest`), failed-result count `1`
 
 Integrated:
 
-- `check_stack.py`: `0.245s`, pass, failed-result count `0`
+- `tools/hello-stack/check_stack.py`: `0.245s`, pass, failed-result count `0`
 - targeted pytest: `0.024s`, fail (`No module named pytest`), failed-result count `1`
 
 Delta:

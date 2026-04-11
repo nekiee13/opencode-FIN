@@ -26,8 +26,8 @@ Candidate versions considered:
 
 Feature checks across candidates:
 
-- `registry.json` present
-- `evals/README.md` present
+- `vendor/OpenAgentsControl/registry.json` present
+- `vendor/OpenAgentsControl/evals/README.md` present
 - approval-gate test artifact present
   - `evals/agents/.../approval-gate/05-approval-before-execution-positive.yaml`
 
@@ -50,7 +50,7 @@ Minimum observed version with required feature class evidence appears to be `v0.
 
 Definition of complete payload for this selected version (pilot):
 
-- `registry.json`
+- `vendor/OpenAgentsControl/registry.json`
 - `.opencode/agent/`
 - `.opencode/command/`
 - `.opencode/context/`
@@ -59,9 +59,8 @@ Definition of complete payload for this selected version (pilot):
 - `.opencode/tool/`
 - `.opencode/skill/`
 - `.opencode/profiles/`
-- `.opencode/config.json`
-- `.opencode/opencode.json`
-- `evals/README.md`
+- historical `.opencode` config/runtime JSON files in pilot payload
+- `vendor/OpenAgentsControl/evals/README.md`
 - approval-gate evaluation artifact
 
 ## Consequences

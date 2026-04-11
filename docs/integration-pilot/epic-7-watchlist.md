@@ -6,7 +6,7 @@ Scope: non-blocking future concerns only
 ## Token/latency watch targets
 
 - keep `opencode mcp list` near current pilot range (`3s-5s`)
-- keep `check_stack.py` execution near sub-second behavior
+- keep `tools/hello-stack/check_stack.py` execution near sub-second behavior
 - continue recording jCodeMunch token-savings stats where exposed
 
 ## Upstream dependency watch

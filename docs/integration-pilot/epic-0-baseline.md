@@ -38,7 +38,7 @@ Classification: **scaffold-only**
 Observed checks:
 
 - `.opencode` symlinks target `vendor/OpenAgentsControl/.opencode/*`.
-- `vendor/OpenAgentsControl/.opencode/README.md` states scaffold reconstruction and incomplete vendor payload.
+- `vendor/OpenAgentsControl/README.md` captures the current vendored payload context; pilot logs note the earlier scaffold-only state.
 - `tools/hello-stack/oac.registry.example.json` contains `TODO` execution placeholders.
 
 Current implication:

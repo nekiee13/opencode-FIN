@@ -1,5 +1,8 @@
 # Python Module and Class Design
 
+Last reviewed: 2026-04-11
+Source commit: `055c7bc`
+
 This document captures folder responsibilities, module ownership, and major class/entity contracts for FIN.
 
 ## Folder Structure and Responsibilities
@@ -13,7 +16,9 @@ opencode-FIN/
     models/        # forecast model implementations and orchestration contracts
     structural/    # SVL and TDA context computation and exports
     followup_ml/   # draft/finalize flow, VG stores, scope audit
-    ui/            # Tkinter GUI app
+    ann/           # ANN dataset, feature selection, training, metrics
+    review/        # review state, exports, consensus, repository services
+    ui/            # desktop + streamlit UI surfaces and operational services
     utils/         # compatibility gates, pivots, artifact snapshots
   compat/          # legacy import stability layer delegating to src/
   scripts/         # operational CLI entrypoints
@@ -49,7 +54,22 @@ opencode-FIN/
 | `src/followup_ml/vg_store.py` | SQLite ingestion/materialization for ML VG | `initialize_vg_db`, `materialize_vbg_for_date` |
 | `src/followup_ml/llm_vg_store.py` | SQLite ingestion/materialization for LLM VG + markers | `initialize_llm_vg_db`, `materialize_llm_vbg_for_date` |
 | `src/followup_ml/scope_audit.py` | Governance scope-label audit logic | `PullRequestRef`, `ScopeAuditResult`, `run_scope_audit` |
+| `src/ann/config.py` | ANN run/tuning configuration model | ANN config loaders and defaults |
+| `src/ann/dataset.py` | ANN dataset assembly and window/lag transforms | dataset build helpers |
+| `src/ann/feature_selection.py` | ANN feature pruning strategies | correlation/importance/RFE selectors |
+| `src/ann/trainer.py` | ANN model training and evaluation execution | train/evaluate orchestration |
+| `src/ann/metrics.py` | ANN metrics and reporting helpers | regression/classification metrics |
+| `src/review/service.py` | Review orchestration and chain execution | review pipeline services |
+| `src/review/repository.py` | Review data access and persistence bridges | repository read/write helpers |
+| `src/review/exports.py` | Review artifact export logic | export helpers |
+| `src/review/consensus.py` | Consensus and aggregation logic for review | consensus helpers |
+| `src/review/state_map.py` | Runtime state mapping for review/streamlit | state mapping helpers |
 | `src/ui/gui.py` | Desktop UI orchestration and rendering | `StockAnalysisApp`, `main` |
+| `src/ui/review_streamlit.py` | Streamlit operations console | streamlit app entrypoint |
+| `src/ui/services/pipeline_runner.py` | Streamlit pipeline execution service | pipeline runner helpers |
+| `src/ui/services/run_registry.py` | Streamlit run registry management | registry loaders/writers |
+| `src/ui/services/pipeline_qa.py` | Streamlit QA checks for pipeline runs | QA checks and summaries |
+| `src/ui/services/ann_ops.py` | ANN operation wrappers for streamlit UI | ingest/train/tune/reset wrappers |
 | `src/utils/compat.py` | Optional dependency feature flags | `HAS_*` gates |
 | `src/utils/calc_snapshots.py` | Snapshot writing for run artifacts | snapshot helpers |
 | `src/utils/pivots.py` | Pivot-level computations and formatting | `PivotCalcResult`, pivot functions |
@@ -82,6 +102,11 @@ Representative adapters:
 | `scripts/followup_llm_vg.py` | LLM VG and marker ingest/materialize CLI |
 | `scripts/followup_ml_parity.py` | fixture snapshot/compare parity harness |
 | `scripts/followup_ml_scope_audit.py` | governance scope audit CLI |
+| `scripts/review_streamlit.py` | streamlit launcher for review operations |
+| `scripts/streamlit_full_chain.py` | batch chain streamlit utility entrypoint |
+| `scripts/ann_feature_stores_ingest.py` | ANN input feature store ingestion |
+| `scripts/ann_train.py` | ANN training CLI |
+| `scripts/ann_tune.py` | ANN tuning CLI |
 | `scripts/ann_markers_ingest.py` | ingest ANN marker markdown tables into sqlite |
 
 ## Entity Catalog (Dataclasses and Enums)
@@ -122,3 +147,4 @@ Representative adapters:
 - Optional heavy dependencies are gated via `src/utils/compat.py` and module-local lazy imports.
 - Many model paths are best-effort: return `None` on dependency absence/data insufficiency, then fallback selection is applied.
 - Follow-up pipelines are artifact-driven and stateful, persisted under `out/i_calc/followup_ml/*` and sqlite stores.
+- Streamlit operations are service-oriented (`src/ui/services/*`) and backed by `src/review/*` domain modules.

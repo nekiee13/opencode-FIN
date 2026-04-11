@@ -6,7 +6,7 @@ Install scope: canonical pilot runtime path only
 ## Installation source
 
 - Upstream repo: `https://github.com/obra/superpowers`
-- Install reference: `.opencode/INSTALL.md` from upstream main branch
+- Install reference: upstream Superpowers installation guidance from `https://github.com/obra/superpowers`
 - Selected pin for pilot: `v5.0.5`
 - Plugin entry used:
   - `superpowers@git+https://github.com/obra/superpowers.git#v5.0.5`

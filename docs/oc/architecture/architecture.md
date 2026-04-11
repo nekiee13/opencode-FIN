@@ -16,7 +16,7 @@ The OC project is organized as five operational layers.
 flowchart LR
     subgraph Runtime[OpenCode Runtime Layer]
         OC[OpenCode Runtime]
-        CFG[.opencode/opencode.json]
+        CFG[Active runtime opencode config]
         SP[Superpowers Plugin]
     end
 
@@ -62,8 +62,8 @@ flowchart LR
 
 | Architecture Object | Source Path |
 | --- | --- |
-| Runtime config | `.opencode/opencode.json` |
-| Superpowers plugin activation | `.opencode/opencode.json` |
+| Runtime config | `tools/hello-stack/quickstart.md` |
+| Superpowers plugin activation | `tools/hello-stack/quickstart.md` |
 | OAC registry root | `vendor/OpenAgentsControl/registry.json` |
 | OAC agent definitions | `vendor/OpenAgentsControl/.opencode/agent/` |
 | OAC context and skills | `vendor/OpenAgentsControl/.opencode/context/`, `vendor/OpenAgentsControl/.opencode/skill/` |
