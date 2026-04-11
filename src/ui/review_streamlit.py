@@ -421,6 +421,17 @@ def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
+def _sgn_class_explanation_markdown() -> str:
+    return "\n".join(
+        [
+            "- `pp = real:+, computed:+`",
+            "- `pn = real:+, computed:-`",
+            "- `np = real:-, computed:+`",
+            "- `nn = real:-, computed:-`",
+        ]
+    )
+
+
 def _sgn_map_status_note(payload: dict[str, Any]) -> tuple[str, str]:
     metrics_raw = payload.get("metrics")
     metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
@@ -443,6 +454,42 @@ def _sgn_map_status_note(payload: dict[str, Any]) -> tuple[str, str]:
     return (
         "success",
         f"SGN map ready (agreement={agreement:.2%}, edge_count={edge_count}, edge_accuracy={edge_accuracy:.2%}).",
+    )
+
+
+def _sgn_suggested_real_sgn_markdown(payload: dict[str, Any]) -> str:
+    selected_raw = payload.get("selected_point")
+    selected = selected_raw if isinstance(selected_raw, dict) else {}
+    if not bool(selected.get("available")):
+        reason = str(selected.get("reason") or "unavailable")
+        return f"Selected ticker/date point unavailable (`{reason}`)."
+
+    conditional_raw = payload.get("conditional_real_prob")
+    conditional = conditional_raw if isinstance(conditional_raw, dict) else {}
+    suggestion_raw = payload.get("suggested_real_sgn")
+    suggestion = suggestion_raw if isinstance(suggestion_raw, dict) else {}
+
+    if not bool(conditional.get("available")):
+        reason = str(conditional.get("reason") or "computed_sgn_unavailable")
+        return (
+            "Selected point is projected, but conditional real-SGN probabilities are unavailable "
+            f"(`{reason}`)."
+        )
+
+    p_real_pos = float(conditional.get("p_real_pos") or 0.0)
+    p_real_neg = float(conditional.get("p_real_neg") or 0.0)
+    computed_sgn = str(conditional.get("computed_sgn") or "N/A")
+    suggested = str(suggestion.get("value") or "N/A")
+    confidence = float(suggestion.get("confidence") or 0.0)
+    low_conf = bool(suggestion.get("low_confidence"))
+    qualifier = " (low confidence)" if low_conf else ""
+
+    return "\n".join(
+        [
+            f"- `P(real=+1 | computed sign={computed_sgn}, U,V) = {p_real_pos:.3f}`",
+            f"- `P(real=-1 | computed sign={computed_sgn}, U,V) = {p_real_neg:.3f}`",
+            f"- **Suggested real SGN: {suggested} (confidence {confidence:.1%}){qualifier}**",
+        ]
     )
 
 
@@ -495,7 +542,13 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
 
     observed = (
         alt.Chart(alt.Data(values=points))
-        .mark_circle(size=70, color="#111111", opacity=0.75)
+        .mark_circle(
+            size=70,
+            color="#FFFFFF",
+            opacity=0.95,
+            stroke="#111111",
+            strokeWidth=1.0,
+        )
         .encode(
             x=alt.X("U:Q"),
             y=alt.Y("V:Q"),
@@ -507,8 +560,35 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
             ],
         )
     )
+    chart = base + observed
 
-    st.altair_chart((base + observed).properties(height=420), use_container_width=True)
+    selected_raw = payload.get("selected_point")
+    selected = selected_raw if isinstance(selected_raw, dict) else {}
+    if bool(selected.get("available")):
+        selected_layer = (
+            alt.Chart(alt.Data(values=[selected]))
+            .mark_point(
+                shape="diamond",
+                size=320,
+                color="#ffd166",
+                stroke="#111111",
+                strokeWidth=1.8,
+                filled=True,
+            )
+            .encode(
+                x=alt.X("U:Q"),
+                y=alt.Y("V:Q"),
+                tooltip=[
+                    alt.Tooltip("as_of_date:N", title="Selected As-Of"),
+                    alt.Tooltip("computed_sgn:N", title="Computed SGN"),
+                    alt.Tooltip("pred_class:N", title="Map Class"),
+                    alt.Tooltip("max_prob:Q", format=".3f", title="Max Prob"),
+                ],
+            )
+        )
+        chart = chart + selected_layer
+
+    st.altair_chart(chart.properties(height=420), use_container_width=True)
 
 
 def _render_sgn_map_diagnostics(st: Any, payload: dict[str, Any]) -> None:
@@ -1120,6 +1200,12 @@ def run_review_console(db_path: Path | None = None) -> None:
             )
         )
 
+        signal_by_ticker = {
+            str(row.get("Ticker") or "").strip().upper(): row for row in ann_signal_rows
+        }
+        map_signal_row = signal_by_ticker.get(str(map_ticker).strip().upper(), {})
+        map_computed_sgn = str(map_signal_row.get("SGN") or "").strip()
+
         if st.button("Build SGN Map", key="run_ann_sgn_map"):
             try:
                 payload, elapsed_seconds = _run_with_elapsed_progress(
@@ -1132,6 +1218,8 @@ def run_review_console(db_path: Path | None = None) -> None:
                         k_neighbors=int(map_neighbors),
                         edge_threshold=float(map_edge_threshold),
                         rolling_window=int(map_rolling_window),
+                        selected_date=str(selected_date or "").strip(),
+                        computed_sgn=map_computed_sgn,
                     ),
                 )
                 payload["elapsed_seconds"] = float(round(elapsed_seconds, 3))
@@ -1156,6 +1244,8 @@ def run_review_console(db_path: Path | None = None) -> None:
                 f"Build time: {float(sgn_payload.get('elapsed_seconds') or 0.0):.2f}s"
             )
             _render_sgn_map_chart(st, sgn_payload)
+            st.markdown(_sgn_suggested_real_sgn_markdown(sgn_payload))
+            st.markdown(_sgn_class_explanation_markdown())
             _render_sgn_map_diagnostics(st, sgn_payload)
 
             if st.button("Export SGN Map Artifacts", key="export_ann_sgn_map"):

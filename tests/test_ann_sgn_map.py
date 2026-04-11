@@ -3,6 +3,8 @@ from __future__ import annotations
 from src.ui.services.ann_sgn_map import (
     build_sgn_probability_map_from_samples,
     classify_sgn_case,
+    conditional_real_probabilities,
+    suggested_real_sgn,
 )
 
 
@@ -98,3 +100,32 @@ def test_build_sgn_probability_map_from_samples_returns_regions_confidence_and_m
     assert int(metrics["sample_count"]) == 8
     assert "edge_accuracy" in metrics
     assert "macro_f1" in metrics
+
+
+def test_conditional_real_probabilities_for_computed_negative() -> None:
+    out = conditional_real_probabilities(
+        computed_sgn="-1",
+        class_probabilities={"pp": 0.10, "pn": 0.30, "np": 0.20, "nn": 0.40},
+    )
+    assert out["available"] is True
+    assert out["computed_sgn"] == "-1"
+    assert round(float(out["p_real_pos"]), 3) == 0.429
+    assert round(float(out["p_real_neg"]), 3) == 0.571
+
+
+def test_suggested_real_sgn_marks_low_confidence() -> None:
+    conditional = {
+        "available": True,
+        "computed_sgn": "+1",
+        "p_real_pos": 0.53,
+        "p_real_neg": 0.47,
+        "fallback_used": False,
+        "reason": "",
+    }
+    out = suggested_real_sgn(
+        conditional_payload=conditional,
+        low_confidence_threshold=0.60,
+    )
+    assert out["available"] is True
+    assert out["value"] == "+1"
+    assert out["low_confidence"] is True

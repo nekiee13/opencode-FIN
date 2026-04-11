@@ -23,6 +23,84 @@ SGN_CLASS_LABELS: dict[str, str] = {
 }
 
 
+def _normalize_computed_sgn(value: str) -> str | None:
+    raw = str(value or "").strip()
+    if raw in {"+", "+1", "1", "pos", "positive"}:
+        return "+1"
+    if raw in {"-", "-1", "neg", "negative"}:
+        return "-1"
+    return None
+
+
+def conditional_real_probabilities(
+    *, computed_sgn: str, class_probabilities: dict[str, float]
+) -> dict[str, Any]:
+    normalized = _normalize_computed_sgn(computed_sgn)
+    if normalized is None:
+        return {
+            "available": False,
+            "computed_sgn": "",
+            "p_real_pos": 0.0,
+            "p_real_neg": 0.0,
+            "fallback_used": False,
+            "reason": "computed_sgn_unavailable",
+        }
+
+    if normalized == "+1":
+        p_real_pos_raw = float(class_probabilities.get("pp", 0.0))
+        p_real_neg_raw = float(class_probabilities.get("np", 0.0))
+    else:
+        p_real_pos_raw = float(class_probabilities.get("pn", 0.0))
+        p_real_neg_raw = float(class_probabilities.get("nn", 0.0))
+
+    denom = p_real_pos_raw + p_real_neg_raw
+    if denom <= 1e-12:
+        return {
+            "available": True,
+            "computed_sgn": normalized,
+            "p_real_pos": 0.5,
+            "p_real_neg": 0.5,
+            "fallback_used": True,
+            "reason": "zero_denominator",
+        }
+
+    return {
+        "available": True,
+        "computed_sgn": normalized,
+        "p_real_pos": float(p_real_pos_raw / denom),
+        "p_real_neg": float(p_real_neg_raw / denom),
+        "fallback_used": False,
+        "reason": "",
+    }
+
+
+def suggested_real_sgn(
+    *, conditional_payload: dict[str, Any], low_confidence_threshold: float = 0.60
+) -> dict[str, Any]:
+    if not bool(conditional_payload.get("available")):
+        return {
+            "available": False,
+            "value": "N/A",
+            "confidence": 0.0,
+            "low_confidence": True,
+            "reason": str(
+                conditional_payload.get("reason") or "computed_sgn_unavailable"
+            ),
+        }
+
+    p_real_pos = float(conditional_payload.get("p_real_pos") or 0.0)
+    p_real_neg = float(conditional_payload.get("p_real_neg") or 0.0)
+    value = "+1" if p_real_pos >= p_real_neg else "-1"
+    confidence = max(p_real_pos, p_real_neg)
+    return {
+        "available": True,
+        "value": value,
+        "confidence": float(confidence),
+        "low_confidence": bool(confidence < float(low_confidence_threshold)),
+        "reason": "",
+    }
+
+
 def classify_sgn_case(*, real_sgn: str, computed_sgn: str) -> str | None:
     real = str(real_sgn or "").strip()
     computed = str(computed_sgn or "").strip()
@@ -340,6 +418,24 @@ def _axis_value(norm: dict[str, float], weights: list[dict[str, float]]) -> floa
             continue
         total += weight * value
     return total
+
+
+def _normalize_feature_payload(
+    feature_payload: dict[str, float],
+    stats: dict[str, tuple[float, float]],
+) -> dict[str, float]:
+    norm: dict[str, float] = {}
+    for name, (med, scale) in stats.items():
+        raw = _safe_float(feature_payload.get(name))
+        if raw is None:
+            continue
+        z = (raw - med) / (scale if abs(scale) > 1e-12 else 1.0)
+        if z > 8.0:
+            z = 8.0
+        elif z < -8.0:
+            z = -8.0
+        norm[name] = z
+    return norm
 
 
 def _knn_probabilities(
@@ -697,6 +793,8 @@ def build_sgn_probability_map(
     k_neighbors: int = 9,
     edge_threshold: float = 0.60,
     rolling_window: int = 20,
+    selected_date: str | None = None,
+    computed_sgn: str | None = None,
 ) -> dict[str, Any]:
     samples = load_sgn_samples_for_ticker(
         ticker=ticker,
@@ -715,6 +813,100 @@ def build_sgn_probability_map(
         rolling_window=rolling_window,
     )
     payload["source_sample_count"] = len(samples)
+
+    selected_payload: dict[str, Any] = {
+        "available": False,
+        "ticker": str(ticker or "").strip().upper(),
+        "as_of_date": str(selected_date or "").strip(),
+        "reason": "selected_date_unset",
+    }
+    conditional_payload: dict[str, Any] = {
+        "available": False,
+        "computed_sgn": "",
+        "p_real_pos": 0.0,
+        "p_real_neg": 0.0,
+        "fallback_used": False,
+        "reason": "selected_point_unavailable",
+    }
+    suggestion_payload: dict[str, Any] = {
+        "available": False,
+        "value": "N/A",
+        "confidence": 0.0,
+        "low_confidence": True,
+        "reason": "selected_point_unavailable",
+    }
+
+    date_text = str(selected_date or "").strip()
+    if date_text and samples and list(payload.get("points") or []):
+        selected_features = _load_selected_feature_names(
+            (
+                profile_path
+                or paths.OUT_I_CALC_DIR
+                / "ann"
+                / "feature_profiles"
+                / "pruned_inputs.json"
+            ).resolve()
+        )
+        feature_matrix = _load_feature_matrix_for_ticker(
+            store_path=(
+                store_path
+                or paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
+            ).resolve(),
+            ticker=ticker,
+        )
+        feature_payload = dict(feature_matrix.get(date_text) or {})
+        if selected_features:
+            feature_payload = {
+                name: value
+                for name, value in feature_payload.items()
+                if name in selected_features
+            }
+        if feature_payload:
+            stats = _build_feature_stats(samples)
+            norm_selected = _normalize_feature_payload(feature_payload, stats)
+            u_value = _axis_value(
+                norm_selected, list(payload.get("weights", {}).get("U") or [])
+            )
+            v_value = _axis_value(
+                norm_selected, list(payload.get("weights", {}).get("V") or [])
+            )
+            class_prob = _knn_probabilities(
+                u=float(u_value),
+                v=float(v_value),
+                points=list(payload.get("points") or []),
+                k_neighbors=k_neighbors,
+            )
+            selected_payload = {
+                "available": True,
+                "ticker": str(ticker or "").strip().upper(),
+                "as_of_date": date_text,
+                "U": float(u_value),
+                "V": float(v_value),
+                "computed_sgn": str(computed_sgn or "").strip(),
+                "pred_class": _argmax_class(class_prob),
+                "max_prob": float(
+                    max(float(class_prob.get(cls, 0.0)) for cls in SGN_CLASS_ORDER)
+                ),
+                "reason": "",
+            }
+            for cls in SGN_CLASS_ORDER:
+                selected_payload[f"prob_{cls}"] = float(class_prob.get(cls, 0.0))
+            conditional_payload = conditional_real_probabilities(
+                computed_sgn=str(computed_sgn or ""),
+                class_probabilities=class_prob,
+            )
+            suggestion_payload = suggested_real_sgn(
+                conditional_payload=conditional_payload,
+                low_confidence_threshold=float(edge_threshold),
+            )
+        else:
+            selected_payload["reason"] = "selected_date_missing_features"
+    elif date_text:
+        selected_payload["reason"] = "insufficient_training_points"
+
+    payload["selected_point"] = selected_payload
+    payload["conditional_real_prob"] = conditional_payload
+    payload["suggested_real_sgn"] = suggestion_payload
     return payload
 
 
@@ -779,6 +971,8 @@ __all__ = [
     "build_sgn_probability_map",
     "build_sgn_probability_map_from_samples",
     "classify_sgn_case",
+    "conditional_real_probabilities",
     "load_sgn_samples_for_ticker",
+    "suggested_real_sgn",
     "write_sgn_map_artifacts",
 ]

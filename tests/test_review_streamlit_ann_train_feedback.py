@@ -3,6 +3,8 @@ from __future__ import annotations
 from src.ui.review_streamlit import (
     _normalize_ann_signal_rows,
     _parse_ann_train_stdout_tables,
+    _sgn_class_explanation_markdown,
+    _sgn_suggested_real_sgn_markdown,
     _sgn_map_status_note,
     _summarize_ann_training_health,
     _target_modes_from_selection,
@@ -134,3 +136,33 @@ def test_sgn_map_status_note_success_for_healthy_payload() -> None:
     )
     assert level == "success"
     assert "SGN map ready" in text
+
+
+def test_sgn_class_explanation_markdown_contains_all_class_meanings() -> None:
+    text = _sgn_class_explanation_markdown()
+    assert "pp = real:+, computed:+" in text
+    assert "pn = real:+, computed:-" in text
+    assert "np = real:-, computed:+" in text
+    assert "nn = real:-, computed:-" in text
+
+
+def test_sgn_suggested_real_sgn_markdown_renders_probabilities_and_suggestion() -> None:
+    text = _sgn_suggested_real_sgn_markdown(
+        {
+            "selected_point": {"available": True, "as_of_date": "2025-08-19"},
+            "conditional_real_prob": {
+                "available": True,
+                "computed_sgn": "-1",
+                "p_real_pos": 0.36,
+                "p_real_neg": 0.64,
+            },
+            "suggested_real_sgn": {
+                "value": "-1",
+                "confidence": 0.64,
+                "low_confidence": False,
+            },
+        }
+    )
+    assert "P(real=+1 | computed sign=-1, U,V) = 0.360" in text
+    assert "P(real=-1 | computed sign=-1, U,V) = 0.640" in text
+    assert "Suggested real SGN: -1" in text
