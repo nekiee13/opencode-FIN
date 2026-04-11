@@ -27,6 +27,10 @@ from src.ui.services.ann_report import (
     export_ann_report_markdown,
     load_ann_report_sections,
 )
+from src.ui.services.ann_sgn_map import (
+    build_sgn_probability_map,
+    write_sgn_map_artifacts,
+)
 from src.ui.services.anchored_backfill import run_anchored_backfill
 from src.ui.services.dashboard_loader import (
     build_marker_comparison_rows,
@@ -415,6 +419,131 @@ def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
             item["SGN"] = "N/A"
         out.append(item)
     return out
+
+
+def _sgn_map_status_note(payload: dict[str, Any]) -> tuple[str, str]:
+    metrics_raw = payload.get("metrics")
+    metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
+    sample_count = int(metrics.get("sample_count") or 0)
+    agreement = float(metrics.get("agreement_rate") or 0.0)
+    edge_count = int(metrics.get("edge_count") or 0)
+    edge_accuracy = float(metrics.get("edge_accuracy") or 0.0)
+    diagnostic_only = bool(metrics.get("diagnostic_only"))
+
+    if sample_count <= 0:
+        return (
+            "warning",
+            "No SGN samples were available for the selected ticker/window.",
+        )
+    if diagnostic_only:
+        return (
+            "warning",
+            f"Diagnostic-only map (agreement={agreement:.2%}, edge_count={edge_count}, edge_accuracy={edge_accuracy:.2%}).",
+        )
+    return (
+        "success",
+        f"SGN map ready (agreement={agreement:.2%}, edge_count={edge_count}, edge_accuracy={edge_accuracy:.2%}).",
+    )
+
+
+def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
+    points = list(payload.get("points") or [])
+    grid = list(payload.get("grid") or [])
+    if not points or not grid:
+        st.info("No SGN map points/grid available.")
+        return
+
+    try:
+        import altair as alt  # type: ignore
+    except Exception:
+        st.info("Altair is unavailable in this runtime; rendering SGN map as tables.")
+        _render_aligned_table(st, points[:50])
+        return
+
+    class_colors = {
+        "pp": "#2ca25f",
+        "pn": "#f03b20",
+        "np": "#2b8cbe",
+        "nn": "#756bb1",
+    }
+    domain = ["pp", "pn", "np", "nn"]
+    color_scale = alt.Scale(
+        domain=domain,
+        range=[class_colors[x] for x in domain],
+    )
+
+    base = (
+        alt.Chart(alt.Data(values=grid))
+        .mark_square(size=60)
+        .encode(
+            x=alt.X("U:Q", title="Composite U"),
+            y=alt.Y("V:Q", title="Composite V"),
+            color=alt.Color("pred_class:N", scale=color_scale, title="Class region"),
+            opacity=alt.Opacity(
+                "max_prob:Q",
+                title="Max probability",
+                scale=alt.Scale(domain=[0.0, 1.0], range=[0.20, 0.95]),
+            ),
+            tooltip=[
+                alt.Tooltip("U:Q", format=".3f"),
+                alt.Tooltip("V:Q", format=".3f"),
+                alt.Tooltip("pred_class:N", title="Class"),
+                alt.Tooltip("max_prob:Q", format=".3f"),
+            ],
+        )
+    )
+
+    observed = (
+        alt.Chart(alt.Data(values=points))
+        .mark_circle(size=70, color="#111111", opacity=0.75)
+        .encode(
+            x=alt.X("U:Q"),
+            y=alt.Y("V:Q"),
+            tooltip=[
+                alt.Tooltip("as_of_date:N", title="As-Of"),
+                alt.Tooltip("class_id:N", title="Teacher Class"),
+                alt.Tooltip("pred_class:N", title="Surrogate Class"),
+                alt.Tooltip("max_prob:Q", format=".3f", title="Max Prob"),
+            ],
+        )
+    )
+
+    st.altair_chart((base + observed).properties(height=420), use_container_width=True)
+
+
+def _render_sgn_map_diagnostics(st: Any, payload: dict[str, Any]) -> None:
+    metrics_raw = payload.get("metrics")
+    metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Samples", int(metrics.get("sample_count") or 0))
+    c2.metric("Agreement", f"{float(metrics.get('agreement_rate') or 0.0):.2%}")
+    c3.metric("Macro F1", f"{float(metrics.get('macro_f1') or 0.0):.3f}")
+    c4.metric("Edge Accuracy", f"{float(metrics.get('edge_accuracy') or 0.0):.2%}")
+
+    weights = payload.get("weights")
+    if isinstance(weights, dict):
+        st.markdown("**Composite Weights (U/V)**")
+        rows: list[dict[str, Any]] = []
+        for axis in ("U", "V"):
+            entries = weights.get(axis)
+            if not isinstance(entries, list):
+                continue
+            for item in entries:
+                if not isinstance(item, dict):
+                    continue
+                rows.append(
+                    {
+                        "Axis": axis,
+                        "Feature": str(item.get("feature") or ""),
+                        "Weight": float(item.get("weight") or 0.0),
+                        "Score": float(item.get("score") or 0.0),
+                        "Utility": float(item.get("utility") or 0.0),
+                        "Stability": float(item.get("stability") or 0.0),
+                    }
+                )
+        if rows:
+            _render_aligned_table(st, rows)
 
 
 def _render_round_status(st: Any, status_payload: dict[str, Any]) -> None:
@@ -929,6 +1058,133 @@ def run_review_console(db_path: Path | None = None) -> None:
                 "Real values are derived from realized +3-day actual close against T0."
             )
             _render_aligned_table(st, compare_rows)
+
+        st.markdown("**SGN Confidence Map (2D)**")
+        sgn_col1, sgn_col2, sgn_col3, sgn_col4 = st.columns(4)
+        map_ticker = sgn_col1.selectbox(
+            "Map Ticker",
+            options=list(TICKER_ORDER),
+            index=0,
+            key="ann_sgn_map_ticker",
+        )
+        map_grid_size = int(
+            sgn_col2.number_input(
+                "Grid Size",
+                min_value=10,
+                max_value=80,
+                value=35,
+                step=5,
+                key="ann_sgn_map_grid_size",
+            )
+        )
+        map_neighbors = int(
+            sgn_col3.number_input(
+                "K Neighbors",
+                min_value=3,
+                max_value=31,
+                value=9,
+                step=2,
+                key="ann_sgn_map_neighbors",
+            )
+        )
+        map_edge_threshold = float(
+            sgn_col4.number_input(
+                "Edge Threshold",
+                min_value=0.40,
+                max_value=0.95,
+                value=0.60,
+                step=0.05,
+                key="ann_sgn_map_edge_threshold",
+            )
+        )
+
+        sgn_col5, sgn_col6 = st.columns(2)
+        map_max_features = int(
+            sgn_col5.number_input(
+                "Max Features",
+                min_value=2,
+                max_value=20,
+                value=10,
+                step=1,
+                key="ann_sgn_map_max_features",
+            )
+        )
+        map_rolling_window = int(
+            sgn_col6.number_input(
+                "Rolling Window",
+                min_value=4,
+                max_value=120,
+                value=20,
+                step=1,
+                key="ann_sgn_map_rolling_window",
+            )
+        )
+
+        if st.button("Build SGN Map", key="run_ann_sgn_map"):
+            try:
+                payload, elapsed_seconds = _run_with_elapsed_progress(
+                    st,
+                    label="Building SGN map",
+                    fn=lambda: build_sgn_probability_map(
+                        ticker=str(map_ticker),
+                        grid_size=int(map_grid_size),
+                        max_features=int(map_max_features),
+                        k_neighbors=int(map_neighbors),
+                        edge_threshold=float(map_edge_threshold),
+                        rolling_window=int(map_rolling_window),
+                    ),
+                )
+                payload["elapsed_seconds"] = float(round(elapsed_seconds, 3))
+                st.session_state["ann_sgn_map_payload"] = payload
+                st.session_state["ann_sgn_map_error"] = ""
+            except Exception as exc:
+                st.session_state["ann_sgn_map_error"] = str(exc)
+
+        sgn_err = str(st.session_state.get("ann_sgn_map_error", "") or "")
+        if sgn_err:
+            st.error("SGN map build failed: " + sgn_err)
+
+        sgn_payload_raw = st.session_state.get("ann_sgn_map_payload")
+        sgn_payload = sgn_payload_raw if isinstance(sgn_payload_raw, dict) else None
+        if sgn_payload:
+            status_level, status_text = _sgn_map_status_note(sgn_payload)
+            if status_level == "success":
+                st.success(status_text)
+            else:
+                st.warning(status_text)
+            st.caption(
+                f"Build time: {float(sgn_payload.get('elapsed_seconds') or 0.0):.2f}s"
+            )
+            _render_sgn_map_chart(st, sgn_payload)
+            _render_sgn_map_diagnostics(st, sgn_payload)
+
+            if st.button("Export SGN Map Artifacts", key="export_ann_sgn_map"):
+                now_tag = str(int(time.time()))
+                out_dir = (
+                    paths.OUT_I_CALC_DIR
+                    / "ANN"
+                    / "sgn_map"
+                    / str(sgn_payload.get("ticker") or map_ticker)
+                    / now_tag
+                )
+                export_paths = write_sgn_map_artifacts(
+                    payload=sgn_payload, output_dir=out_dir
+                )
+                st.session_state["ann_sgn_map_export"] = export_paths
+
+            export_paths_raw = st.session_state.get("ann_sgn_map_export")
+            export_paths = (
+                export_paths_raw if isinstance(export_paths_raw, dict) else None
+            )
+            if export_paths:
+                st.caption("SGN map artifacts exported.")
+                _render_aligned_table(
+                    st,
+                    [
+                        {"artifact": key, "path": value}
+                        for key, value in export_paths.items()
+                    ],
+                )
 
         if st.button("Run ANN Feature Ingest", key="run_ann_feature_ingest"):
             result = run_ann_feature_stores_ingest(store_path=store_path)

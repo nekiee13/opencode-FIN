@@ -3,6 +3,7 @@ from __future__ import annotations
 from src.ui.review_streamlit import (
     _normalize_ann_signal_rows,
     _parse_ann_train_stdout_tables,
+    _sgn_map_status_note,
     _summarize_ann_training_health,
     _target_modes_from_selection,
 )
@@ -101,3 +102,35 @@ def test_normalize_ann_signal_rows_maps_sgn_symbols_for_display() -> None:
     assert out[0]["SGN"] == "+1"
     assert out[1]["SGN"] == "-1"
     assert out[2]["SGN"] == "N/A"
+
+
+def test_sgn_map_status_note_warns_for_diagnostic_only_payload() -> None:
+    level, text = _sgn_map_status_note(
+        {
+            "metrics": {
+                "sample_count": 24,
+                "agreement_rate": 0.62,
+                "edge_count": 10,
+                "edge_accuracy": 0.41,
+                "diagnostic_only": True,
+            }
+        }
+    )
+    assert level == "warning"
+    assert "Diagnostic-only map" in text
+
+
+def test_sgn_map_status_note_success_for_healthy_payload() -> None:
+    level, text = _sgn_map_status_note(
+        {
+            "metrics": {
+                "sample_count": 42,
+                "agreement_rate": 0.83,
+                "edge_count": 8,
+                "edge_accuracy": 0.75,
+                "diagnostic_only": False,
+            }
+        }
+    )
+    assert level == "success"
+    assert "SGN map ready" in text
