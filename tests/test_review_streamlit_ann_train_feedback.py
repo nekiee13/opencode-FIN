@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.ui.review_streamlit import (
     _ann_delta_formula_latex,
+    _ann_final_forecast_formula_latex,
     _ann_magnitude_formula_latex,
     _normalize_ann_signal_rows,
     _observed_point_tooltip_columns,
@@ -103,19 +104,19 @@ def test_normalize_ann_signal_rows_maps_sgn_symbols_for_display() -> None:
         {
             "Ticker": "TNX",
             "Computed SGN": "+",
-            "Agreement SGN": "-",
+            "Realized SGN": "-",
             "Magnitude": "0.1000",
         },
         {
             "Ticker": "DJI",
             "Computed SGN": "-",
-            "Agreement SGN": "+",
+            "Realized SGN": "+",
             "Magnitude": "0.2000",
         },
         {
             "Ticker": "SPX",
             "Computed SGN": "",
-            "Agreement SGN": "",
+            "Realized SGN": "",
             "Magnitude": "",
         },
     ]
@@ -123,11 +124,11 @@ def test_normalize_ann_signal_rows_maps_sgn_symbols_for_display() -> None:
     out = _normalize_ann_signal_rows(rows)
 
     assert out[0]["Computed SGN"] == "+1"
-    assert out[0]["Agreement SGN"] == "-1"
+    assert out[0]["Realized SGN"] == "-1"
     assert out[1]["Computed SGN"] == "-1"
-    assert out[1]["Agreement SGN"] == "+1"
+    assert out[1]["Realized SGN"] == "+1"
     assert out[2]["Computed SGN"] == "N/A"
-    assert out[2]["Agreement SGN"] == "N/A"
+    assert out[2]["Realized SGN"] == "N/A"
 
 
 def test_resolve_map_computed_sgn_prefers_real_vs_computed_payload() -> None:
@@ -222,6 +223,7 @@ def test_format_selected_magnitude_normalizes_and_fallbacks() -> None:
 def test_ann_formula_latex_strings_include_expected_terms() -> None:
     magnitude = _ann_magnitude_formula_latex()
     delta = _ann_delta_formula_latex()
+    forecast = _ann_final_forecast_formula_latex()
 
     assert "Magnitude" in magnitude
     assert "T_0" in magnitude
@@ -229,5 +231,9 @@ def test_ann_formula_latex_strings_include_expected_terms() -> None:
 
     assert "Delta" in delta
     assert "T_0" in delta
-    assert "Magnitude" in delta
     assert "C_{+3}" in delta
+
+    assert "FF" in forecast
+    assert "T_0" in forecast
+    assert "SGN" in forecast
+    assert "Magnitude" in forecast

@@ -421,8 +421,8 @@ def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
         item = dict(row)
         if "Computed SGN" in item:
             item["Computed SGN"] = _norm_sgn(item.get("Computed SGN"))
-        if "Agreement SGN" in item:
-            item["Agreement SGN"] = _norm_sgn(item.get("Agreement SGN"))
+        if "Realized SGN" in item:
+            item["Realized SGN"] = _norm_sgn(item.get("Realized SGN"))
         if "SGN" in item:
             item["SGN"] = _norm_sgn(item.get("SGN"))
         out.append(item)
@@ -459,7 +459,11 @@ def _ann_magnitude_formula_latex() -> str:
 
 
 def _ann_delta_formula_latex() -> str:
-    return r"\mathrm{Delta} = \left|T_0 + \mathrm{Magnitude} - C_{+3}\right|"
+    return r"\mathrm{Delta} = \left|T_0 - C_{+3}\right|"
+
+
+def _ann_final_forecast_formula_latex() -> str:
+    return r"\mathrm{FF} = T_0 + \mathrm{SGN}_{computed} \cdot \mathrm{Magnitude}"
 
 
 def _format_selected_magnitude(raw: Any) -> str:
@@ -1153,11 +1157,12 @@ def run_review_console(db_path: Path | None = None) -> None:
             tickers=list(TICKER_ORDER),
         )
         st.markdown(
-            "**T0 / P / Final Forecast / +3-day / Delta / Computed SGN / Agreement SGN / Magnitude**"
+            "**T0 / P / Final Forecast / +3-day / Computed SGN / Realized SGN / Magnitude / Delta**"
         )
         _render_aligned_table(st, _normalize_ann_signal_rows(ann_signal_rows))
         st.latex(_ann_magnitude_formula_latex())
         st.latex(_ann_delta_formula_latex())
+        st.latex(_ann_final_forecast_formula_latex())
         st.caption(
             "T0 = close on selected date, P = weighted day+1 ensemble prediction."
         )

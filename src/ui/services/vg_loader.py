@@ -198,10 +198,10 @@ def build_ann_t0_p_sgn_rows(
                 "P": "",
                 "Final Forecast": "",
                 "+3-day": "N/A",
-                "Delta": "N/A",
                 "Computed SGN": "",
-                "Agreement SGN": "",
+                "Realized SGN": "",
                 "Magnitude": "",
+                "Delta": "N/A",
             }
             for t in canonical
         ]
@@ -238,21 +238,14 @@ def build_ann_t0_p_sgn_rows(
         if t0 is not None and magnitude_value is not None:
             final_forecast = float(t0) + float(trend) * float(magnitude_value)
 
-        delta_value: float | None = None
-        if t0 is not None and magnitude_value is not None and future is not None:
-            delta_value = abs(float(t0) + float(magnitude_value) - float(future))
-
         computed_sgn = ""
         if t0 is not None and p is not None:
             computed_sgn = "+" if trend > 0 else "-" if trend < 0 else "0"
 
-        agreement_sgn = ""
-        if t0 is not None and p is not None and future is not None:
+        realized_sgn = ""
+        if t0 is not None and future is not None:
             realized = 1 if future > t0 else -1 if future < t0 else 0
-            if trend == 0 or realized == 0:
-                agreement_sgn = "0" if trend == realized else "-"
-            else:
-                agreement_sgn = "+" if trend == realized else "-"
+            realized_sgn = "+" if realized > 0 else "-" if realized < 0 else "0"
 
         rows.append(
             {
@@ -261,12 +254,16 @@ def build_ann_t0_p_sgn_rows(
                 "P": _format_metric_value(p),
                 "Final Forecast": _format_metric_value(final_forecast),
                 "+3-day": _format_metric_value(future) if future is not None else "N/A",
-                "Delta": _format_metric_value(delta_value)
-                if delta_value is not None
-                else "N/A",
                 "Computed SGN": computed_sgn,
-                "Agreement SGN": agreement_sgn,
+                "Realized SGN": realized_sgn,
                 "Magnitude": _format_metric_value(magnitude_value),
+                "Delta": _format_metric_value(
+                    abs(float(t0) - float(future))
+                    if t0 is not None and future is not None
+                    else None
+                )
+                if t0 is not None and future is not None
+                else "N/A",
             }
         )
 
