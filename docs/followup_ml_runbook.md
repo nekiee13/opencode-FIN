@@ -212,6 +212,11 @@ ANN input families (used for ANN feature ingestion):
 - SVL Hurst current values (`H20/H60/H120`) from `out/i_calc/svl/SVL_METRICS_*.csv`
 - TDA CPI metrics (`H1_MaxPersistence`, `H1_CountAbove_Thr`, `H1_Entropy`) from `out/i_calc/tda/TDA_METRICS_*.csv`
 
+TI/PP producers (important):
+
+- `scripts/app3G.py` persists TI/PP snapshots during interactive GUI analysis runs.
+- `scripts/ti_pp_backfill.py` is the dedicated replay-date CLI for deterministic TI/PP backfill (no GUI).
+
 Policy note:
 
 - `RD`, `85220`, and `MICHO` are not ANN input features.
@@ -234,6 +239,19 @@ Windows CMD example (from active conda env):
 conda activate F:\vEnv\opencode-FIN
 python scripts\ann_feature_stores_ingest.py --force
 ```
+
+Fully automated replay backfill for ANN ingredients (Windows CMD, one command):
+
+```bat
+scripts\ann_ingredients_full_backfill.cmd --start-date 2025-07-29 --end-date 2026-04-07
+```
+
+Notes:
+
+- Default mode runs ANN ingest after each date (`--ingest-mode per-date`).
+- Use `--ingest-mode end` to ingest only once after all dates complete.
+- Pipeline is fail-fast by default; add `--continue-on-error` to keep processing later dates.
+- SVL JSON mapping in raw CMD shells must be escaped as `--map-json "{""SPX"":""GSPC""}"` when calling `svl_export.py` directly.
 
 Legacy marker ingest remains available for marker store maintenance only and is not part of ANN input feature ingestion.
 

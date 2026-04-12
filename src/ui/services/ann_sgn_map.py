@@ -500,6 +500,7 @@ def build_sgn_probability_map_from_samples(
                 "as_of_date": str(sample.get("as_of_date") or ""),
                 "ticker": str(sample.get("ticker") or ticker).strip().upper(),
                 "class_id": cls,
+                "magnitude_label": str(sample.get("magnitude_label") or ""),
                 "features": dict(features),
             }
         )
@@ -523,6 +524,7 @@ def build_sgn_probability_map_from_samples(
                 "as_of_date": str(sample.get("as_of_date") or ""),
                 "ticker": str(sample.get("ticker") or ticker).strip().upper(),
                 "class_id": str(sample.get("class_id") or ""),
+                "magnitude_label": str(sample.get("magnitude_label") or ""),
                 "U": u,
                 "V": v,
             }
@@ -775,6 +777,7 @@ def load_sgn_samples_for_ticker(
                 "as_of_date": date_text,
                 "ticker": str(ticker or "").strip().upper(),
                 "class_id": cls,
+                "magnitude_label": str(row.get("Computed Magnitude") or ""),
                 "features": feature_payload,
             }
         )

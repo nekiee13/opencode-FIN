@@ -421,6 +421,74 @@ def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
+def _format_selected_magnitude(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return "N/A"
+    if text.upper() == "N/A":
+        return "N/A"
+    normalized = text.replace(",", "")
+    try:
+        value = float(normalized)
+    except Exception:
+        return text
+    if value != value or value == float("inf") or value == float("-inf"):
+        return "N/A"
+    return f"{value:.4f}"
+
+
+def _selected_point_tooltip_columns() -> list[dict[str, str]]:
+    return [
+        {"field": "as_of_date", "type": "N", "title": "Selected As-Of"},
+        {"field": "computed_sgn", "type": "N", "title": "Computed SGN"},
+        {"field": "pred_class", "type": "N", "title": "Map Class"},
+        {"field": "max_prob", "type": "Q", "title": "Max Prob", "format": ".3f"},
+        {"field": "magnitude_label", "type": "N", "title": "M"},
+    ]
+
+
+def _selected_point_tooltips(alt: Any) -> list[Any]:
+    out: list[Any] = []
+    for item in _selected_point_tooltip_columns():
+        field = str(item.get("field") or "")
+        if not field:
+            continue
+        data_type = str(item.get("type") or "N")
+        title = str(item.get("title") or field)
+        fmt = str(item.get("format") or "").strip()
+        if fmt:
+            out.append(alt.Tooltip(f"{field}:{data_type}", title=title, format=fmt))
+        else:
+            out.append(alt.Tooltip(f"{field}:{data_type}", title=title))
+    return out
+
+
+def _observed_point_tooltip_columns() -> list[dict[str, str]]:
+    return [
+        {"field": "as_of_date", "type": "N", "title": "As-Of"},
+        {"field": "class_id", "type": "N", "title": "Teacher Class"},
+        {"field": "pred_class", "type": "N", "title": "Surrogate Class"},
+        {"field": "max_prob", "type": "Q", "title": "Max Prob", "format": ".3f"},
+        {"field": "magnitude_label", "type": "N", "title": "M"},
+    ]
+
+
+def _observed_point_tooltips(alt: Any) -> list[Any]:
+    out: list[Any] = []
+    for item in _observed_point_tooltip_columns():
+        field = str(item.get("field") or "")
+        if not field:
+            continue
+        data_type = str(item.get("type") or "N")
+        title = str(item.get("title") or field)
+        fmt = str(item.get("format") or "").strip()
+        if fmt:
+            out.append(alt.Tooltip(f"{field}:{data_type}", title=title, format=fmt))
+        else:
+            out.append(alt.Tooltip(f"{field}:{data_type}", title=title))
+    return out
+
+
 def _sgn_class_explanation_markdown() -> str:
     return "\n".join(
         [
@@ -507,6 +575,16 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
         _render_aligned_table(st, points[:50])
         return
 
+    observed_points: list[dict[str, Any]] = []
+    for row in points:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        item["magnitude_label"] = _format_selected_magnitude(
+            item.get("magnitude_label")
+        )
+        observed_points.append(item)
+
     class_colors = {
         "pp": "#2ca25f",
         "pn": "#f03b20",
@@ -541,7 +619,7 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
     )
 
     observed = (
-        alt.Chart(alt.Data(values=points))
+        alt.Chart(alt.Data(values=observed_points))
         .mark_circle(
             size=70,
             color="#FFFFFF",
@@ -552,12 +630,7 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
         .encode(
             x=alt.X("U:Q"),
             y=alt.Y("V:Q"),
-            tooltip=[
-                alt.Tooltip("as_of_date:N", title="As-Of"),
-                alt.Tooltip("class_id:N", title="Teacher Class"),
-                alt.Tooltip("pred_class:N", title="Surrogate Class"),
-                alt.Tooltip("max_prob:Q", format=".3f", title="Max Prob"),
-            ],
+            tooltip=_observed_point_tooltips(alt),
         )
     )
     chart = base + observed
@@ -565,6 +638,10 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
     selected_raw = payload.get("selected_point")
     selected = selected_raw if isinstance(selected_raw, dict) else {}
     if bool(selected.get("available")):
+        selected = dict(selected)
+        selected["magnitude_label"] = _format_selected_magnitude(
+            selected.get("magnitude_label")
+        )
         selected_layer = (
             alt.Chart(alt.Data(values=[selected]))
             .mark_point(
@@ -578,12 +655,7 @@ def _render_sgn_map_chart(st: Any, payload: dict[str, Any]) -> None:
             .encode(
                 x=alt.X("U:Q"),
                 y=alt.Y("V:Q"),
-                tooltip=[
-                    alt.Tooltip("as_of_date:N", title="Selected As-Of"),
-                    alt.Tooltip("computed_sgn:N", title="Computed SGN"),
-                    alt.Tooltip("pred_class:N", title="Map Class"),
-                    alt.Tooltip("max_prob:Q", format=".3f", title="Max Prob"),
-                ],
+                tooltip=_selected_point_tooltips(alt),
             )
         )
         chart = chart + selected_layer
@@ -693,11 +765,11 @@ def _render_command_results(st: Any, run_payload: dict[str, Any] | None) -> None
                 st.caption(f"log_id={log_id}")
             st.caption(f"log_path={item.get('log_path')}")
             st.text("Command")
-            st.code(" ".join(item.get("command", [])), language="bash")
+            _render_log_payload(st, " ".join(item.get("command", [])))
             st.text("stdout")
-            st.code(str(item.get("stdout", "")) or "<empty>")
+            _render_log_payload(st, str(item.get("stdout", "") or ""))
             st.text("stderr")
-            st.code(str(item.get("stderr", "")) or "<empty>")
+            _render_log_payload(st, str(item.get("stderr", "") or ""))
 
 
 def run_review_console(db_path: Path | None = None) -> None:
@@ -1205,6 +1277,7 @@ def run_review_console(db_path: Path | None = None) -> None:
         }
         map_signal_row = signal_by_ticker.get(str(map_ticker).strip().upper(), {})
         map_computed_sgn = str(map_signal_row.get("SGN") or "").strip()
+        map_magnitude = _format_selected_magnitude(map_signal_row.get("Magnitude"))
 
         if st.button("Build SGN Map", key="run_ann_sgn_map"):
             try:
@@ -1222,6 +1295,11 @@ def run_review_console(db_path: Path | None = None) -> None:
                         computed_sgn=map_computed_sgn,
                     ),
                 )
+                selected_raw = payload.get("selected_point")
+                if isinstance(selected_raw, dict):
+                    selected_point = dict(selected_raw)
+                    selected_point["magnitude_label"] = map_magnitude
+                    payload["selected_point"] = selected_point
                 payload["elapsed_seconds"] = float(round(elapsed_seconds, 3))
                 st.session_state["ann_sgn_map_payload"] = payload
                 st.session_state["ann_sgn_map_error"] = ""

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from src.ui.review_streamlit import (
     _normalize_ann_signal_rows,
+    _observed_point_tooltip_columns,
     _parse_ann_train_stdout_tables,
+    _format_selected_magnitude,
+    _selected_point_tooltip_columns,
     _sgn_class_explanation_markdown,
     _sgn_suggested_real_sgn_markdown,
     _sgn_map_status_note,
@@ -166,3 +169,24 @@ def test_sgn_suggested_real_sgn_markdown_renders_probabilities_and_suggestion() 
     assert "P(real=+1 | computed sign=-1, U,V) = 0.360" in text
     assert "P(real=-1 | computed sign=-1, U,V) = 0.640" in text
     assert "Suggested real SGN: -1" in text
+
+
+def test_selected_point_tooltip_columns_include_magnitude_label() -> None:
+    columns = _selected_point_tooltip_columns()
+    magnitude = [x for x in columns if x.get("title") == "M"]
+    assert len(magnitude) == 1
+    assert magnitude[0]["field"] == "magnitude_label"
+
+
+def test_observed_point_tooltip_columns_include_magnitude_label() -> None:
+    columns = _observed_point_tooltip_columns()
+    magnitude = [x for x in columns if x.get("title") == "M"]
+    assert len(magnitude) == 1
+    assert magnitude[0]["field"] == "magnitude_label"
+
+
+def test_format_selected_magnitude_normalizes_and_fallbacks() -> None:
+    assert _format_selected_magnitude("0.466") == "0.4660"
+    assert _format_selected_magnitude(1.2) == "1.2000"
+    assert _format_selected_magnitude("") == "N/A"
+    assert _format_selected_magnitude("N/A") == "N/A"

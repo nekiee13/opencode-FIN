@@ -102,6 +102,55 @@ def test_build_sgn_probability_map_from_samples_returns_regions_confidence_and_m
     assert "macro_f1" in metrics
 
 
+def test_build_sgn_probability_map_from_samples_carries_magnitude_labels() -> None:
+    samples = [
+        {
+            "as_of_date": "2026-03-01",
+            "ticker": "TNX",
+            "class_id": "pp",
+            "magnitude_label": "0.1234",
+            "features": {"f1": 1.2, "f2": 1.1, "f3": 0.1, "f4": 0.0},
+        },
+        {
+            "as_of_date": "2026-03-02",
+            "ticker": "TNX",
+            "class_id": "pn",
+            "magnitude_label": "0.2345",
+            "features": {"f1": 1.1, "f2": -1.4, "f3": 0.0, "f4": -0.2},
+        },
+        {
+            "as_of_date": "2026-03-03",
+            "ticker": "TNX",
+            "class_id": "np",
+            "magnitude_label": "0.3456",
+            "features": {"f1": -1.3, "f2": 1.2, "f3": -0.2, "f4": 0.1},
+        },
+        {
+            "as_of_date": "2026-03-04",
+            "ticker": "TNX",
+            "class_id": "nn",
+            "magnitude_label": "0.4567",
+            "features": {"f1": -1.4, "f2": -1.1, "f3": -0.2, "f4": -0.2},
+        },
+    ]
+
+    out = build_sgn_probability_map_from_samples(
+        ticker="TNX",
+        samples=samples,
+        grid_size=8,
+        max_features=4,
+        k_neighbors=3,
+        edge_threshold=0.60,
+        rolling_window=4,
+    )
+
+    labels = {str(row.get("magnitude_label") or "") for row in out["points"]}
+    assert "0.1234" in labels
+    assert "0.2345" in labels
+    assert "0.3456" in labels
+    assert "0.4567" in labels
+
+
 def test_conditional_real_probabilities_for_computed_negative() -> None:
     out = conditional_real_probabilities(
         computed_sgn="-1",
