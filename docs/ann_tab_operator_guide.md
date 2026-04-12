@@ -5,6 +5,15 @@ Source commit: `055c7bc`
 
 This guide explains ANN tab controls, what each button does, which artifacts are read/written, and how to tune parameters safely.
 
+## ANN Table Formulas
+
+In the ANN table section (`T0 / P / +3-day / Delta / SGN / Magnitude`), formulas shown in the UI are:
+
+- `Magnitude = |T0 - P|`
+- `Delta = |T0 + Magnitude - C_{+3}|`
+
+Where `C_{+3}` is the realized +3-day close used by the ANN comparison table.
+
 ## Info Button
 
 - Location: ANN tab, above `Run ANN Feature Ingest`.

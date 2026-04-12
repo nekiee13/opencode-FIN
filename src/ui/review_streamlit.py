@@ -421,6 +421,14 @@ def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
+def _ann_magnitude_formula_latex() -> str:
+    return r"\mathrm{Magnitude} = \left|T_0 - P\right|"
+
+
+def _ann_delta_formula_latex() -> str:
+    return r"\mathrm{Delta} = \left|T_0 + \mathrm{Magnitude} - C_{+3}\right|"
+
+
 def _format_selected_magnitude(raw: Any) -> str:
     text = str(raw or "").strip()
     if not text:
@@ -1113,7 +1121,8 @@ def run_review_console(db_path: Path | None = None) -> None:
         )
         st.markdown("**T0 / P / +3-day / Delta / SGN / Magnitude**")
         _render_aligned_table(st, _normalize_ann_signal_rows(ann_signal_rows))
-        st.latex(r"\mathrm{Magnitude} = \left|T_0 - P\right|")
+        st.latex(_ann_magnitude_formula_latex())
+        st.latex(_ann_delta_formula_latex())
         st.caption(
             "T0 = close on selected date, P = weighted day+1 ensemble prediction."
         )

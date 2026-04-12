@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from src.ui.review_streamlit import (
+    _ann_delta_formula_latex,
+    _ann_magnitude_formula_latex,
     _normalize_ann_signal_rows,
     _observed_point_tooltip_columns,
     _parse_ann_train_stdout_tables,
@@ -190,3 +192,17 @@ def test_format_selected_magnitude_normalizes_and_fallbacks() -> None:
     assert _format_selected_magnitude(1.2) == "1.2000"
     assert _format_selected_magnitude("") == "N/A"
     assert _format_selected_magnitude("N/A") == "N/A"
+
+
+def test_ann_formula_latex_strings_include_expected_terms() -> None:
+    magnitude = _ann_magnitude_formula_latex()
+    delta = _ann_delta_formula_latex()
+
+    assert "Magnitude" in magnitude
+    assert "T_0" in magnitude
+    assert "P" in magnitude
+
+    assert "Delta" in delta
+    assert "T_0" in delta
+    assert "Magnitude" in delta
+    assert "C_{+3}" in delta
