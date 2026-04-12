@@ -125,6 +125,61 @@ def _load_future_close_map(*, round_dir: Path) -> dict[str, float]:
     return out
 
 
+def _load_markers_three_day_map(
+    *,
+    selected_date: str,
+    markers_dir: Path | None = None,
+) -> dict[str, float]:
+    out: dict[str, float] = {}
+    selected = _parse_any_date(selected_date)
+    if selected is None:
+        return out
+
+    use_dir = (markers_dir or (paths.DATA_RAW_DIR / "markers")).resolve()
+    csv_path = use_dir / "3_days.csv"
+    if not csv_path.exists():
+        return out
+
+    try:
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                d = _parse_any_date(str(row.get("Date") or ""))
+                if d != selected:
+                    continue
+                for ticker in ("TNX", "DJI", "SPX", "VIX", "QQQ", "AAPL"):
+                    raw = str(row.get(ticker) or "").strip().replace(",", "")
+                    if not raw:
+                        continue
+                    try:
+                        out[ticker] = float(raw)
+                    except ValueError:
+                        continue
+                break
+    except OSError:
+        return {}
+    return out
+
+
+def _load_future_close_map_with_fallback(
+    *,
+    selected_date: str,
+    round_dir: Path,
+    markers_dir: Path | None = None,
+) -> dict[str, float]:
+    out = _load_future_close_map(round_dir=round_dir)
+    fallback = _load_markers_three_day_map(
+        selected_date=selected_date,
+        markers_dir=markers_dir,
+    )
+    if not fallback:
+        return out
+    for ticker, value in fallback.items():
+        if ticker not in out:
+            out[ticker] = float(value)
+    return out
+
+
 def build_ann_t0_p_sgn_rows(
     *,
     selected_date: str,
@@ -157,7 +212,10 @@ def build_ann_t0_p_sgn_rows(
         selected_date=selected, raw_tickers_dir=use_raw, tickers=canonical
     )
     p_map = _load_weighted_p_map(round_dir=round_dir)
-    future_map = _load_future_close_map(round_dir=round_dir)
+    future_map = _load_future_close_map_with_fallback(
+        selected_date=selected,
+        round_dir=round_dir,
+    )
 
     rows: list[dict[str, str]] = []
     for ticker in canonical:
@@ -239,7 +297,10 @@ def build_ann_real_vs_computed_rows(
         tickers=canonical,
     )
     p_map = _load_weighted_p_map(round_dir=round_dir)
-    future_map = _load_future_close_map(round_dir=round_dir)
+    future_map = _load_future_close_map_with_fallback(
+        selected_date=selected,
+        round_dir=round_dir,
+    )
 
     rows: list[dict[str, str]] = []
     for ticker in canonical:

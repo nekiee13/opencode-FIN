@@ -1,0 +1,14 @@
+Allowable dates with +3 lookup gaps:
+
+- 2026-04-07 TNX: +3(2026-04-10) missing and +2 unavailable.
+- 2026-04-07 DJI: +3(2026-04-10) missing and +2 unavailable.
+- 2026-04-07 SPX: +3(2026-04-10) missing and +2 unavailable.
+- 2026-04-07 VIX: +3(2026-04-10) missing and +2 unavailable.
+- 2026-04-07 QQQ: +3(2026-04-10) missing and +2 unavailable.
+- 2026-04-07 AAPL: +3(2026-04-10) missing and +2 unavailable.
+- 2026-03-31 TNX: +3(2026-04-03) missing; used +2(2026-04-02).
+- 2026-03-31 DJI: +3(2026-04-03) missing; used +2(2026-04-02).
+- 2026-03-31 SPX: +3(2026-04-03) missing; used +2(2026-04-02).
+- 2026-03-31 VIX: +3(2026-04-03) missing; used +2(2026-04-02).
+- 2026-03-31 QQQ: +3(2026-04-03) missing; used +2(2026-04-02).
+- 2026-03-31 AAPL: +3(2026-04-03) missing; used +2(2026-04-02).

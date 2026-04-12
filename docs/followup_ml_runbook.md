@@ -255,6 +255,28 @@ Notes:
 
 Legacy marker ingest remains available for marker store maintenance only and is not part of ANN input feature ingestion.
 
+### Marker Calendar and +3-Day Fallback Artifacts
+
+Generate marker allowable dates and +3-day close table:
+
+```bash
+python scripts/build_marker_dates_and_tplus3.py
+```
+
+Outputs (under `data/raw/markers`):
+
+- `Dates.csv` (allowable round dates = intersection of `rd.csv`, `85220.csv`, `oraclum.csv`)
+- `3_days.csv` (`Date,TNX,DJI,SPX,VIX,QQQ,AAPL`)
+- `dates_warnings.txt` (+3 missing cases and +2 fallback notes)
+
+Fallback policy:
+
+- Use +3 calendar day close when available.
+- If +3 is missing (holiday/data gap), use +2 close and record warning.
+- If both +3 and +2 are missing, keep value empty and record warning.
+
+ANN real-value calculations consume `3_days.csv` as fallback when round `actuals_tplus3.csv` does not contain a ticker/date value.
+
 ### ANN training and tuning
 
 ANN tab operator controls guide:

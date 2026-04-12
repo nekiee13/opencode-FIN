@@ -425,3 +425,44 @@ def test_build_ann_real_vs_computed_rows_uses_round_actuals_and_predictions(
         "Real Magnitude": "",
         "Computed Magnitude": "",
     }
+
+
+def test_build_ann_t0_p_sgn_rows_uses_markers_3_days_fallback_when_round_actual_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "TNX_data.csv").write_text(
+        "Date,Open,High,Low,Close,Adj Close,Volume\n"
+        '"Mar 31, 2026",4.3000,4.3300,4.2800,4.3110,4.3110,-\n',
+        encoding="utf-8",
+    )
+
+    rounds_dir = tmp_path / "rounds"
+    round_dir = rounds_dir / "anchor-20260331"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "t0_day1_weighted_ensemble.csv").write_text(
+        "ticker,weighted_ensemble,weights_used_sum\nTNX,4.3200,1.0\n",
+        encoding="utf-8",
+    )
+    # Missing TNX actual_close in round file on purpose.
+    (round_dir / "actuals_tplus3.csv").write_text(
+        "round_id,ticker,runtime_ticker,expected_actual_date,lookup_actual_date,actual_close,status,source_csv\n",
+        encoding="utf-8",
+    )
+
+    markers_dir = tmp_path / "markers"
+    markers_dir.mkdir(parents=True, exist_ok=True)
+    (markers_dir / "3_days.csv").write_text(
+        'Date,TNX,DJI,SPX,VIX,QQQ,AAPL\n"Mar 31, 2026",4.3300,,,,,\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.ui.services.vg_loader.paths.DATA_RAW_DIR", tmp_path)
+
+    rows = build_ann_t0_p_sgn_rows(
+        selected_date="2026-03-31",
+        tickers=["TNX"],
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_dir,
+    )
+    assert rows[0]["+3-day"] == "4.3300"
