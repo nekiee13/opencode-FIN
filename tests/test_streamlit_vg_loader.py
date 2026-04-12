@@ -342,23 +342,29 @@ def test_build_ann_t0_p_sgn_rows_uses_selected_date_and_round_data(
 
     assert by_ticker["TNX"]["T0"] == "4.3110"
     assert by_ticker["TNX"]["P"] == "4.3200"
+    assert by_ticker["TNX"]["Final Forecast"] == "4.3200"
     assert by_ticker["TNX"]["+3-day"] == "4.3300"
     assert by_ticker["TNX"]["Delta"] == "0.0100"
-    assert by_ticker["TNX"]["SGN"] == "+"
+    assert by_ticker["TNX"]["Computed SGN"] == "+"
+    assert by_ticker["TNX"]["Agreement SGN"] == "+"
     assert by_ticker["TNX"]["Magnitude"] == "0.0090"
 
     assert by_ticker["SPX"]["T0"] == "6500.0000"
     assert by_ticker["SPX"]["P"] == "6400.0000"
+    assert by_ticker["SPX"]["Final Forecast"] == "6400.0000"
     assert by_ticker["SPX"]["+3-day"] == "6600.0000"
     assert by_ticker["SPX"]["Delta"] == "0.0000"
-    assert by_ticker["SPX"]["SGN"] == "-"
+    assert by_ticker["SPX"]["Computed SGN"] == "-"
+    assert by_ticker["SPX"]["Agreement SGN"] == "-"
     assert by_ticker["SPX"]["Magnitude"] == "100.0000"
 
     assert by_ticker["QQQ"]["T0"] == ""
     assert by_ticker["QQQ"]["P"] == ""
+    assert by_ticker["QQQ"]["Final Forecast"] == ""
     assert by_ticker["QQQ"]["+3-day"] == "N/A"
     assert by_ticker["QQQ"]["Delta"] == "N/A"
-    assert by_ticker["QQQ"]["SGN"] == ""
+    assert by_ticker["QQQ"]["Computed SGN"] == ""
+    assert by_ticker["QQQ"]["Agreement SGN"] == ""
     assert by_ticker["QQQ"]["Magnitude"] == ""
 
 

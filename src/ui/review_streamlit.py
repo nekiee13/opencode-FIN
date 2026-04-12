@@ -406,19 +406,52 @@ def _parse_ann_train_stdout_tables(
 
 def _normalize_ann_signal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+
+    def _norm_sgn(raw: Any) -> str:
+        sgn_raw = str(raw or "").strip()
+        if sgn_raw == "+":
+            return "+1"
+        if sgn_raw == "-":
+            return "-1"
+        if sgn_raw == "0":
+            return "0"
+        return "N/A"
+
     for row in rows:
         item = dict(row)
-        sgn_raw = str(item.get("SGN") or "").strip()
-        if sgn_raw == "+":
-            item["SGN"] = "+1"
-        elif sgn_raw == "-":
-            item["SGN"] = "-1"
-        elif sgn_raw == "0":
-            item["SGN"] = "0"
-        else:
-            item["SGN"] = "N/A"
+        if "Computed SGN" in item:
+            item["Computed SGN"] = _norm_sgn(item.get("Computed SGN"))
+        if "Agreement SGN" in item:
+            item["Agreement SGN"] = _norm_sgn(item.get("Agreement SGN"))
+        if "SGN" in item:
+            item["SGN"] = _norm_sgn(item.get("SGN"))
         out.append(item)
     return out
+
+
+def _resolve_map_computed_sgn(
+    map_ticker: str,
+    ann_signal_rows: list[dict[str, Any]],
+    compare_rows: list[dict[str, Any]],
+) -> str:
+    ticker_u = str(map_ticker or "").strip().upper()
+    compare_map = {
+        str(row.get("Ticker") or "").strip().upper(): str(
+            row.get("Computed SGN") or ""
+        ).strip()
+        for row in compare_rows
+    }
+    value = str(compare_map.get(ticker_u) or "").strip()
+    if value:
+        return value
+
+    ann_map = {
+        str(row.get("Ticker") or "").strip().upper(): str(
+            row.get("Computed SGN") or row.get("SGN") or ""
+        ).strip()
+        for row in ann_signal_rows
+    }
+    return str(ann_map.get(ticker_u) or "").strip()
 
 
 def _ann_magnitude_formula_latex() -> str:
@@ -1119,7 +1152,9 @@ def run_review_console(db_path: Path | None = None) -> None:
             selected_date=selected_date,
             tickers=list(TICKER_ORDER),
         )
-        st.markdown("**T0 / P / +3-day / Delta / SGN / Magnitude**")
+        st.markdown(
+            "**T0 / P / Final Forecast / +3-day / Delta / Computed SGN / Agreement SGN / Magnitude**"
+        )
         _render_aligned_table(st, _normalize_ann_signal_rows(ann_signal_rows))
         st.latex(_ann_magnitude_formula_latex())
         st.latex(_ann_delta_formula_latex())
@@ -1208,17 +1243,18 @@ def run_review_console(db_path: Path | None = None) -> None:
 
             st.markdown(build_ann_guides_markdown())
 
+        compare_rows_for_map = build_ann_real_vs_computed_rows(
+            selected_date=selected_date,
+            tickers=list(TICKER_ORDER),
+        )
+
         if bool(st.session_state.get("ann_show_compare")):
-            compare_rows = build_ann_real_vs_computed_rows(
-                selected_date=selected_date,
-                tickers=list(TICKER_ORDER),
-            )
             st.markdown("**Real vs Computed (SGN / Magnitude)**")
             st.caption(
                 "Computed values are derived from ANN P prediction against T0; "
                 "Real values are derived from realized +3-day actual close against T0."
             )
-            _render_aligned_table(st, compare_rows)
+            _render_aligned_table(st, compare_rows_for_map)
 
         st.markdown("**SGN Confidence Map (2D)**")
         sgn_col1, sgn_col2, sgn_col3, sgn_col4 = st.columns(4)
@@ -1285,7 +1321,11 @@ def run_review_console(db_path: Path | None = None) -> None:
             str(row.get("Ticker") or "").strip().upper(): row for row in ann_signal_rows
         }
         map_signal_row = signal_by_ticker.get(str(map_ticker).strip().upper(), {})
-        map_computed_sgn = str(map_signal_row.get("SGN") or "").strip()
+        map_computed_sgn = _resolve_map_computed_sgn(
+            str(map_ticker),
+            ann_signal_rows,
+            compare_rows_for_map,
+        )
         map_magnitude = _format_selected_magnitude(map_signal_row.get("Magnitude"))
 
         if st.button("Build SGN Map", key="run_ann_sgn_map"):

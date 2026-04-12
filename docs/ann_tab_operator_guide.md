@@ -11,8 +11,18 @@ In the ANN table section (`T0 / P / +3-day / Delta / SGN / Magnitude`), formulas
 
 - `Magnitude = |T0 - P|`
 - `Delta = |T0 + Magnitude - C_{+3}|`
+- `FinalForecast = T0 + sgn_{computed} * Magnitude`
 
 Where `C_{+3}` is the realized +3-day close used by the ANN comparison table.
+
+Current ANN top table columns are:
+
+- `T0`, `P`, `Final Forecast`, `+3-day`, `Delta`, `Computed SGN`, `Agreement SGN`, `Magnitude`
+
+Semantics:
+
+- `Computed SGN` comes from base ML direction (`P` vs `T0`).
+- `Agreement SGN` indicates whether computed direction matches realized direction from `+3-day` vs `T0`.
 
 ## Info Button
 

@@ -8,6 +8,7 @@ from src.ui.review_streamlit import (
     _parse_ann_train_stdout_tables,
     _format_selected_magnitude,
     _selected_point_tooltip_columns,
+    _resolve_map_computed_sgn,
     _sgn_class_explanation_markdown,
     _sgn_suggested_real_sgn_markdown,
     _sgn_map_status_note,
@@ -99,16 +100,40 @@ def test_parse_ann_train_stdout_tables_parses_summary_and_features() -> None:
 
 def test_normalize_ann_signal_rows_maps_sgn_symbols_for_display() -> None:
     rows = [
-        {"Ticker": "TNX", "SGN": "+", "Magnitude": "0.1000"},
-        {"Ticker": "DJI", "SGN": "-", "Magnitude": "0.2000"},
-        {"Ticker": "SPX", "SGN": "", "Magnitude": ""},
+        {
+            "Ticker": "TNX",
+            "Computed SGN": "+",
+            "Agreement SGN": "-",
+            "Magnitude": "0.1000",
+        },
+        {
+            "Ticker": "DJI",
+            "Computed SGN": "-",
+            "Agreement SGN": "+",
+            "Magnitude": "0.2000",
+        },
+        {
+            "Ticker": "SPX",
+            "Computed SGN": "",
+            "Agreement SGN": "",
+            "Magnitude": "",
+        },
     ]
 
     out = _normalize_ann_signal_rows(rows)
 
-    assert out[0]["SGN"] == "+1"
-    assert out[1]["SGN"] == "-1"
-    assert out[2]["SGN"] == "N/A"
+    assert out[0]["Computed SGN"] == "+1"
+    assert out[0]["Agreement SGN"] == "-1"
+    assert out[1]["Computed SGN"] == "-1"
+    assert out[1]["Agreement SGN"] == "+1"
+    assert out[2]["Computed SGN"] == "N/A"
+    assert out[2]["Agreement SGN"] == "N/A"
+
+
+def test_resolve_map_computed_sgn_prefers_real_vs_computed_payload() -> None:
+    ann_rows = [{"Ticker": "DJI", "Computed SGN": "+"}]
+    compare_rows = [{"Ticker": "DJI", "Computed SGN": "-"}]
+    assert _resolve_map_computed_sgn("DJI", ann_rows, compare_rows) == "-"
 
 
 def test_sgn_map_status_note_warns_for_diagnostic_only_payload() -> None:
