@@ -1631,7 +1631,7 @@ def run_review_console(db_path: Path | None = None) -> None:
             if save_errors:
                 st.error("Failed to save epoch config: " + "; ".join(save_errors[:3]))
             else:
-                st.session_state["ann_epoch_editor"] = list(saved_rows)
+                st.session_state["ann_epoch_saved_rows"] = list(saved_rows)
                 st.success(f"Epoch config saved: {saved_path}")
 
         (
