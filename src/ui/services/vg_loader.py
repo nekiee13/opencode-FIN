@@ -186,6 +186,7 @@ def build_ann_t0_p_sgn_rows(
     tickers: list[str],
     rounds_dir: Path | None = None,
     raw_tickers_dir: Path | None = None,
+    computed_sgn_overrides: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     selected = str(selected_date or "").strip()
     canonical = [str(x).strip().upper() for x in tickers if str(x).strip()]
@@ -220,6 +221,12 @@ def build_ann_t0_p_sgn_rows(
         round_dir=round_dir,
     )
 
+    overrides = {
+        str(k or "").strip().upper(): str(v or "").strip()
+        for k, v in dict(computed_sgn_overrides or {}).items()
+        if str(k or "").strip()
+    }
+
     rows: list[dict[str, str]] = []
     for ticker in canonical:
         t0 = t0_map.get(ticker)
@@ -234,18 +241,29 @@ def build_ann_t0_p_sgn_rows(
         if t0 is not None and p is not None:
             magnitude_value = abs(float(t0) - float(p))
 
-        final_forecast: float | None = None
-        if t0 is not None and magnitude_value is not None:
-            final_forecast = float(t0) + float(trend) * float(magnitude_value)
-
         computed_sgn = ""
-        if t0 is not None and p is not None:
-            computed_sgn = "+" if trend > 0 else "-" if trend < 0 else "0"
+        if trend != 0:
+            candidate = str(overrides.get(ticker) or "").strip()
+            if candidate in {"+", "-"}:
+                computed_sgn = candidate
 
-        realized_sgn = ""
-        if t0 is not None and future is not None:
+        final_forecast: float | None = None
+        if (
+            t0 is not None
+            and magnitude_value is not None
+            and trend != 0
+            and computed_sgn
+        ):
+            continuation = 1.0 if computed_sgn == "+" else -1.0
+            final_forecast = float(t0) + float(trend) * float(continuation) * float(
+                magnitude_value
+            )
+
+        realized_sgn = "N/A"
+        if t0 is not None and p is not None and future is not None and trend != 0:
             realized = 1 if future > t0 else -1 if future < t0 else 0
-            realized_sgn = "+" if realized > 0 else "-" if realized < 0 else "0"
+            if realized != 0:
+                realized_sgn = "+" if realized == trend else "-"
 
         rows.append(
             {

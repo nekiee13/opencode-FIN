@@ -22,6 +22,11 @@ APP_ROOT = _bootstrap_sys_path()
 
 from src.ann.config import ANNTrainingConfig, SchedulerConfig  # noqa: E402
 from src.ann.dataset import build_training_dataset  # noqa: E402
+from src.ui.services.ann_epoch_config import (  # noqa: E402
+    epoch_csv_path,
+    epochs_for_ticker_mode,
+    load_epoch_rows,
+)
 from src.ann.feature_selection import (  # noqa: E402
     correlation_filter,
     model_importance_prune,
@@ -55,7 +60,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--scheduler-step-size", type=int, default=10)
     p.add_argument("--scheduler-gamma", type=float, default=0.8)
     p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--epochs", type=int, default=600)
+    p.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Optional epoch override for all runs (otherwise read from epochs CSV)",
+    )
     p.add_argument("--early-stopping-patience", type=int, default=12)
     p.add_argument("--early-stopping-min-delta", type=float, default=1e-5)
     p.add_argument("--depth", type=int, default=2)
@@ -72,9 +82,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--target-mode",
-        choices=["magnitude", "sgn"],
-        default="magnitude",
-        help="Training target mode: return magnitude or sign-only",
+        choices=["magnitude", "sgn", "all"],
+        default="all",
+        help="Training target mode: magnitude, sign-only, or all",
     )
     p.add_argument("--forecast-horizon", type=int, default=1)
 
@@ -104,11 +114,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--output-dir", default=str(paths.OUT_I_CALC_DIR / "ann" / "training")
     )
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--epochs-csv",
+        type=str,
+        default=str(epoch_csv_path()),
+        help="CSV with per-ticker SGN/Magnitude epochs",
+    )
     return p.parse_args(list(argv) if argv is not None else None)
 
 
 def _utc_tag() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
 
 
 def _select_columns(
@@ -196,8 +212,28 @@ def _rank_feature_impacts(
     ]
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
+def _selected_modes(value: str) -> list[str]:
+    mode = str(value or "").strip().lower()
+    if mode == "all":
+        return ["sgn", "magnitude"]
+    if mode == "sgn":
+        return ["sgn"]
+    return ["magnitude"]
+
+
+def _default_epochs_for_mode(mode: str) -> int:
+    return 200 if str(mode).strip().lower() == "sgn" else 600
+
+
+def _run_train_once(
+    *,
+    args: argparse.Namespace,
+    ticker: str,
+    target_mode: str,
+    epochs_value: int,
+) -> int:
+    mode = str(target_mode or "magnitude").strip().lower()
+    ticker_u = str(ticker or "").strip().upper()
 
     scheduler = SchedulerConfig(
         kind=cast(Any, str(args.scheduler_kind)),
@@ -207,7 +243,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     config = ANNTrainingConfig(
         learning_rate=float(args.learning_rate),
         batch_size=int(args.batch_size),
-        epochs=int(args.epochs),
+        epochs=int(epochs_value),
         early_stopping_patience=int(args.early_stopping_patience),
         early_stopping_min_delta=float(args.early_stopping_min_delta),
         depth=int(args.depth),
@@ -223,13 +259,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     dataset = build_training_dataset(
         store_path=Path(args.store_path),
         raw_tickers_dir=Path(args.raw_tickers_dir),
-        tickers=[str(x).strip().upper() for x in args.tickers],
+        tickers=[ticker_u],
         config=config,
         train_end_date=str(args.train_end_date or "").strip() or None,
-        target_mode=str(args.target_mode or "magnitude").strip().lower(),
+        target_mode=mode,
     )
     if dataset.X.shape[0] == 0 or dataset.X.shape[1] == 0:
-        print("[ann_train] no training rows or features available")
+        print(
+            f"[ann_train] ticker={ticker_u} mode={mode} no training rows or features available"
+        )
         return 2
 
     dataset_X = dataset.X
@@ -285,10 +323,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "rfe_drop_count": int(args.rfe_drop_count),
             "allowlist_path": str(allowlist_path) if allowlist_used else None,
         },
-        "tickers": [str(x).strip().upper() for x in args.tickers],
+        "tickers": [ticker_u],
         "seed": int(args.seed),
         "train_end_date": str(args.train_end_date or "").strip() or None,
-        "target_mode": str(args.target_mode or "magnitude").strip().lower(),
+        "target_mode": mode,
     }
     (out_dir / "config.json").write_text(
         json.dumps(config_payload, indent=2), encoding="utf-8"
@@ -338,6 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(summary, indent=2), encoding="utf-8"
     )
 
+    print(f"[ann_train] ticker={ticker_u} mode={mode} epochs={int(epochs_value)}")
     print(f"[ann_train] run_dir={out_dir}")
     print(f"[ann_train] rows={summary['rows']}")
     print(
@@ -373,6 +412,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(f"[ann_train] saved_selected_features={save_selected_path}")
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    tickers = [
+        str(x).strip().upper() for x in list(args.tickers or []) if str(x).strip()
+    ]
+    modes = _selected_modes(str(args.target_mode or "all"))
+
+    epoch_rows, epoch_errors, csv_path = load_epoch_rows(path=Path(args.epochs_csv))
+    if epoch_errors:
+        for err in epoch_errors:
+            print(f"[ann_train] epoch_csv_warning: {err}")
+    print(f"[ann_train] epochs_csv={csv_path}")
+
+    failed = False
+    run_count = 0
+    for ticker in tickers:
+        for mode in modes:
+            run_count += 1
+            epochs_value = (
+                int(args.epochs)
+                if args.epochs is not None
+                else epochs_for_ticker_mode(
+                    epoch_rows,
+                    ticker=ticker,
+                    mode=mode,
+                    fallback=_default_epochs_for_mode(mode),
+                )
+            )
+            rc = _run_train_once(
+                args=args,
+                ticker=ticker,
+                target_mode=mode,
+                epochs_value=int(epochs_value),
+            )
+            if rc != 0:
+                failed = True
+                print(
+                    f"[ann_train] run_failed ticker={ticker} mode={mode} rc={int(rc)}"
+                )
+
+    print(f"[ann_train] total_runs={int(run_count)} failed={1 if failed else 0}")
+    return 2 if failed else 0
 
 
 if __name__ == "__main__":

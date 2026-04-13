@@ -128,6 +128,7 @@ def run_ann_train(
     tickers: list[str] | None = None,
     window_length: int | None = None,
     lag_depth: int | None = None,
+    epochs: int | None = None,
     train_end_date: str | None = None,
     target_mode: str | None = None,
     feature_selection: str | None = None,
@@ -145,6 +146,8 @@ def run_ann_train(
         cmd.extend(["--window-length", str(int(window_length))])
     if lag_depth is not None:
         cmd.extend(["--lag-depth", str(int(lag_depth))])
+    if epochs is not None:
+        cmd.extend(["--epochs", str(int(epochs))])
     if train_end_date is not None and str(train_end_date).strip():
         cmd.extend(["--train-end-date", str(train_end_date).strip()])
     if target_mode is not None and str(target_mode).strip():

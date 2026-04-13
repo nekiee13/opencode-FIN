@@ -11,7 +11,7 @@ In the ANN table section (`T0 / P / Final Forecast / +3-day / Computed SGN / Rea
 
 - `Magnitude = |T0 - P|`
 - `Delta = |T0 - C_{+3}|`
-- `FinalForecast = T0 + sgn_{computed} * Magnitude`
+- `FinalForecast = T0 + TrendDir * sgn_{computed} * Magnitude`
 
 Where `C_{+3}` is the realized +3-day close used by the ANN comparison table.
 
@@ -21,8 +21,42 @@ Current ANN top table columns are:
 
 Semantics:
 
-- `Computed SGN` comes from base ML direction (`P` vs `T0`).
-- `Realized SGN` comes from realized direction (`+3-day` vs `T0`).
+- `Computed SGN` is ANN continuation/break signal (`+` means trend survived, `-` means trend break).
+- `Realized SGN` is computed only when `+3-day` is available (`+` survived, `-` break).
+
+Active round behavior:
+
+- Use `Compute SGN` button to infer ANN continuation/break signal (`Computed SGN`) for the selected date.
+- If `+3-day` is unavailable, `Realized SGN` and `Delta` remain `N/A`.
+
+## Epoch Config (GUI + CLI)
+
+Epoch source-of-truth file:
+
+- `out/i_calc/ANN/epoch.csv`
+
+Schema:
+
+- `Ticker,SGN,Magnitude`
+
+GUI behavior:
+
+- ANN tab shows editable epoch table (`Ticker | SGN | Magnitude`).
+- `Save Epoch Config` writes to `out/i_calc/ANN/epoch.csv`.
+- `Run ANN Train` uses per-ticker/per-mode epochs from that table/CSV.
+
+CLI behavior:
+
+- `python scripts/ann_train.py --tickers TNX DJI SPX VIX QQQ AAPL`
+- With no `--target-mode`, CLI runs **both** modes (`sgn` and `magnitude`) per ticker and applies epochs from `epoch.csv`.
+
+## ANN Overall Stats
+
+ANN tab provides on-demand overall statistics (`Compute ANN Overall Stats`):
+
+- SGN success summary across all dates/tickers with available signs (`X/Y (Z%)`).
+- Magnitude ratio table per ticker: `Magnitude (% of Delta)` where
+  `ratio = mean(abs(Computed Magnitude) / abs(Real Magnitude)) * 100`.
 
 ## Info Button
 

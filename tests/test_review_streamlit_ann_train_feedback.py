@@ -4,6 +4,8 @@ from src.ui.review_streamlit import (
     _ann_delta_formula_latex,
     _ann_final_forecast_formula_latex,
     _ann_magnitude_formula_latex,
+    _continuation_sgn,
+    _predict_ann_computed_sgn_overrides,
     _normalize_ann_signal_rows,
     _observed_point_tooltip_columns,
     _parse_ann_train_stdout_tables,
@@ -137,6 +139,46 @@ def test_resolve_map_computed_sgn_prefers_real_vs_computed_payload() -> None:
     assert _resolve_map_computed_sgn("DJI", ann_rows, compare_rows) == "-"
 
 
+def test_resolve_map_computed_sgn_fallback_derives_trend_from_t0_and_p() -> None:
+    ann_rows = [{"Ticker": "DJI", "T0": "10", "P": "9"}]
+    compare_rows: list[dict[str, str]] = []
+    assert _resolve_map_computed_sgn("DJI", ann_rows, compare_rows) == "-"
+
+
+def test_continuation_sgn_uses_survival_semantics() -> None:
+    assert _continuation_sgn(trend_sign="+", realized_or_predicted_sign="+") == "+"
+    assert _continuation_sgn(trend_sign="-", realized_or_predicted_sign="-") == "+"
+    assert _continuation_sgn(trend_sign="+", realized_or_predicted_sign="-") == "-"
+    assert _continuation_sgn(trend_sign="-", realized_or_predicted_sign="+") == "-"
+    assert _continuation_sgn(trend_sign="", realized_or_predicted_sign="+") == ""
+
+
+def test_predict_ann_computed_sgn_overrides_uses_suggestion_and_trend(
+    monkeypatch,
+) -> None:
+    def _fake_build_sgn_probability_map(**kwargs):
+        ticker = str(kwargs.get("ticker") or "")
+        if ticker == "DJI":
+            return {"suggested_real_sgn": {"value": "+1", "confidence": 0.9}}
+        return {"suggested_real_sgn": {"value": "-1", "confidence": 0.8}}
+
+    monkeypatch.setattr(
+        "src.ui.review_streamlit.build_sgn_probability_map",
+        _fake_build_sgn_probability_map,
+    )
+    out = _predict_ann_computed_sgn_overrides(
+        selected_date="2026-04-07",
+        tickers=["DJI", "TNX"],
+        compare_rows=[
+            {"Ticker": "DJI", "Computed SGN": "-"},
+            {"Ticker": "TNX", "Computed SGN": "+"},
+        ],
+    )
+    overrides = out["computed_sgn_overrides"]
+    assert overrides["DJI"] == "-"
+    assert overrides["TNX"] == "-"
+
+
 def test_sgn_map_status_note_warns_for_diagnostic_only_payload() -> None:
     level, text = _sgn_map_status_note(
         {
@@ -235,5 +277,6 @@ def test_ann_formula_latex_strings_include_expected_terms() -> None:
 
     assert "FF" in forecast
     assert "T_0" in forecast
+    assert "TrendDir" in forecast
     assert "SGN" in forecast
     assert "Magnitude" in forecast

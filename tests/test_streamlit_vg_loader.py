@@ -302,6 +302,7 @@ def test_format_blue_table_rows_formats_two_decimals_and_labels_missing() -> Non
 
 def test_build_ann_t0_p_sgn_rows_uses_selected_date_and_round_data(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -331,31 +332,33 @@ def test_build_ann_t0_p_sgn_rows_uses_selected_date_and_round_data(
         "anchor-20260331,SPX,GSPC,2026-04-01,2026-04-01,6600.0000,ok,GSPC_data.csv\n",
         encoding="utf-8",
     )
+    monkeypatch.setattr("src.ui.services.vg_loader.paths.DATA_RAW_DIR", tmp_path)
 
     rows = build_ann_t0_p_sgn_rows(
         selected_date="2026-03-31",
         tickers=["TNX", "SPX", "QQQ"],
         rounds_dir=rounds_dir,
         raw_tickers_dir=raw_dir,
+        computed_sgn_overrides={"TNX": "-", "SPX": "-"},
     )
     by_ticker = {str(x["Ticker"]): x for x in rows}
 
     assert by_ticker["TNX"]["T0"] == "4.3110"
     assert by_ticker["TNX"]["P"] == "4.3200"
-    assert by_ticker["TNX"]["Final Forecast"] == "4.3200"
+    assert by_ticker["TNX"]["Final Forecast"] == "4.3020"
     assert by_ticker["TNX"]["+3-day"] == "4.3300"
     assert by_ticker["TNX"]["Delta"] == "0.0190"
-    assert by_ticker["TNX"]["Computed SGN"] == "+"
+    assert by_ticker["TNX"]["Computed SGN"] == "-"
     assert by_ticker["TNX"]["Realized SGN"] == "+"
     assert by_ticker["TNX"]["Magnitude"] == "0.0090"
 
     assert by_ticker["SPX"]["T0"] == "6500.0000"
     assert by_ticker["SPX"]["P"] == "6400.0000"
-    assert by_ticker["SPX"]["Final Forecast"] == "6400.0000"
+    assert by_ticker["SPX"]["Final Forecast"] == "6600.0000"
     assert by_ticker["SPX"]["+3-day"] == "6600.0000"
     assert by_ticker["SPX"]["Delta"] == "100.0000"
     assert by_ticker["SPX"]["Computed SGN"] == "-"
-    assert by_ticker["SPX"]["Realized SGN"] == "+"
+    assert by_ticker["SPX"]["Realized SGN"] == "-"
     assert by_ticker["SPX"]["Magnitude"] == "100.0000"
 
     assert by_ticker["QQQ"]["T0"] == ""
@@ -364,7 +367,7 @@ def test_build_ann_t0_p_sgn_rows_uses_selected_date_and_round_data(
     assert by_ticker["QQQ"]["+3-day"] == "N/A"
     assert by_ticker["QQQ"]["Delta"] == "N/A"
     assert by_ticker["QQQ"]["Computed SGN"] == ""
-    assert by_ticker["QQQ"]["Realized SGN"] == ""
+    assert by_ticker["QQQ"]["Realized SGN"] == "N/A"
     assert by_ticker["QQQ"]["Magnitude"] == ""
 
 
@@ -472,3 +475,40 @@ def test_build_ann_t0_p_sgn_rows_uses_markers_3_days_fallback_when_round_actual_
         raw_tickers_dir=raw_dir,
     )
     assert rows[0]["+3-day"] == "4.3300"
+
+
+def test_build_ann_t0_p_sgn_rows_active_round_without_plus3_sets_realized_na(
+    tmp_path: Path, monkeypatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "TNX_data.csv").write_text(
+        "Date,Open,High,Low,Close,Adj Close,Volume\n"
+        '"Apr 07, 2026",4.3300,4.3500,4.3200,4.3430,4.3430,-\n',
+        encoding="utf-8",
+    )
+
+    rounds_dir = tmp_path / "rounds"
+    round_dir = rounds_dir / "anchor-20260407"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "t0_day1_weighted_ensemble.csv").write_text(
+        "ticker,weighted_ensemble,weights_used_sum\nTNX,4.3315,1.0\n",
+        encoding="utf-8",
+    )
+    (round_dir / "actuals_tplus3.csv").write_text(
+        "round_id,ticker,runtime_ticker,expected_actual_date,lookup_actual_date,actual_close,status,source_csv\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("src.ui.services.vg_loader.paths.DATA_RAW_DIR", tmp_path)
+    rows = build_ann_t0_p_sgn_rows(
+        selected_date="2026-04-07",
+        tickers=["TNX"],
+        rounds_dir=rounds_dir,
+        raw_tickers_dir=raw_dir,
+        computed_sgn_overrides={"TNX": "+"},
+    )
+    row = rows[0]
+    assert row["Computed SGN"] == "+"
+    assert row["Realized SGN"] == "N/A"
+    assert row["Delta"] == "N/A"

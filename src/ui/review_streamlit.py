@@ -8,6 +8,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from src.ui.services.ann_epoch_config import (
+    epochs_for_ticker_mode,
+    load_epoch_rows,
+    save_epoch_rows,
+    validate_epoch_rows,
+)
 from src.config import paths
 from src.ui.services.ann_ops import (
     extract_ann_train_run_dir,
@@ -27,6 +33,7 @@ from src.ui.services.ann_report import (
     export_ann_report_markdown,
     load_ann_report_sections,
 )
+from src.ui.services.ann_stats import compute_ann_overall_stats
 from src.ui.services.ann_sgn_map import (
     build_sgn_probability_map,
     write_sgn_map_artifacts,
@@ -294,6 +301,19 @@ def _target_modes_from_selection(target_mode: str) -> list[str]:
     return ["magnitude"]
 
 
+def _coerce_row_records(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [dict(x) for x in value if isinstance(x, dict)]
+    if hasattr(value, "to_dict"):
+        try:
+            payload = value.to_dict("records")
+            if isinstance(payload, list):
+                return [dict(x) for x in payload if isinstance(x, dict)]
+        except Exception:
+            return []
+    return []
+
+
 def _summarize_ann_training_health(
     info_payload: dict[str, Any],
     *,
@@ -446,12 +466,91 @@ def _resolve_map_computed_sgn(
         return value
 
     ann_map = {
-        str(row.get("Ticker") or "").strip().upper(): str(
-            row.get("Computed SGN") or row.get("SGN") or ""
-        ).strip()
-        for row in ann_signal_rows
+        str(row.get("Ticker") or "").strip().upper(): row for row in ann_signal_rows
     }
-    return str(ann_map.get(ticker_u) or "").strip()
+    row = ann_map.get(ticker_u) if isinstance(ann_map.get(ticker_u), dict) else {}
+    t0_text = str((row or {}).get("T0") or "").strip().replace(",", "")
+    p_text = str((row or {}).get("P") or "").strip().replace(",", "")
+    try:
+        t0 = float(t0_text)
+        p = float(p_text)
+    except Exception:
+        return ""
+    if p > t0:
+        return "+"
+    if p < t0:
+        return "-"
+    return ""
+
+
+def _continuation_sgn(*, trend_sign: str, realized_or_predicted_sign: str) -> str:
+    trend = str(trend_sign or "").strip()
+    candidate = str(realized_or_predicted_sign or "").strip()
+    if trend not in {"+", "-"} or candidate not in {"+", "-"}:
+        return ""
+    return "+" if trend == candidate else "-"
+
+
+def _predict_ann_computed_sgn_overrides(
+    *,
+    selected_date: str,
+    tickers: list[str],
+    compare_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    compare_map = {
+        str(row.get("Ticker") or "").strip().upper(): str(
+            row.get("Computed SGN") or ""
+        ).strip()
+        for row in compare_rows
+    }
+    out: dict[str, str] = {}
+    details: list[dict[str, Any]] = []
+
+    for ticker in [str(x).strip().upper() for x in tickers if str(x).strip()]:
+        trend_sign = str(compare_map.get(ticker) or "").strip()
+        if trend_sign not in {"+", "-"}:
+            out[ticker] = ""
+            details.append(
+                {
+                    "Ticker": ticker,
+                    "Trend Sign": trend_sign or "N/A",
+                    "Predicted Real Sign": "N/A",
+                    "Computed SGN": "N/A",
+                    "Confidence": "N/A",
+                    "Reason": "trend_sign_unavailable",
+                }
+            )
+            continue
+
+        payload = build_sgn_probability_map(
+            ticker=ticker,
+            selected_date=str(selected_date or "").strip(),
+            computed_sgn=trend_sign,
+        )
+        suggestion_raw = payload.get("suggested_real_sgn")
+        suggestion = suggestion_raw if isinstance(suggestion_raw, dict) else {}
+        value = str(suggestion.get("value") or "").strip()
+        predicted_real_sign = "+" if value == "+1" else "-" if value == "-1" else ""
+        computed_sgn = _continuation_sgn(
+            trend_sign=trend_sign,
+            realized_or_predicted_sign=predicted_real_sign,
+        )
+        out[ticker] = computed_sgn
+        details.append(
+            {
+                "Ticker": ticker,
+                "Trend Sign": trend_sign,
+                "Predicted Real Sign": predicted_real_sign or "N/A",
+                "Computed SGN": computed_sgn or "N/A",
+                "Confidence": f"{float(suggestion.get('confidence') or 0.0):.3f}",
+                "Reason": str(suggestion.get("reason") or ""),
+            }
+        )
+
+    return {
+        "computed_sgn_overrides": out,
+        "details": details,
+    }
 
 
 def _ann_magnitude_formula_latex() -> str:
@@ -463,7 +562,7 @@ def _ann_delta_formula_latex() -> str:
 
 
 def _ann_final_forecast_formula_latex() -> str:
-    return r"\mathrm{FF} = T_0 + \mathrm{SGN}_{computed} \cdot \mathrm{Magnitude}"
+    return r"\mathrm{FF} = T_0 + \mathrm{TrendDir} \cdot \mathrm{SGN}_{computed} \cdot \mathrm{Magnitude}"
 
 
 def _format_selected_magnitude(raw: Any) -> str:
@@ -1152,9 +1251,27 @@ def run_review_console(db_path: Path | None = None) -> None:
     with tab_ann:
         st.subheader("ANN")
 
+        compare_rows_for_map = build_ann_real_vs_computed_rows(
+            selected_date=selected_date,
+            tickers=list(TICKER_ORDER),
+        )
+
+        computed_sgn_by_date_raw = st.session_state.get("ann_computed_sgn_by_date")
+        computed_sgn_by_date = (
+            dict(computed_sgn_by_date_raw)
+            if isinstance(computed_sgn_by_date_raw, dict)
+            else {}
+        )
+        date_key = str(selected_date or "").strip()
+        date_overrides_raw = computed_sgn_by_date.get(date_key)
+        date_overrides = (
+            dict(date_overrides_raw) if isinstance(date_overrides_raw, dict) else {}
+        )
+
         ann_signal_rows = build_ann_t0_p_sgn_rows(
             selected_date=selected_date,
             tickers=list(TICKER_ORDER),
+            computed_sgn_overrides=date_overrides,
         )
         st.markdown(
             "**T0 / P / Final Forecast / +3-day / Computed SGN / Realized SGN / Magnitude / Delta**"
@@ -1166,6 +1283,47 @@ def run_review_console(db_path: Path | None = None) -> None:
         st.caption(
             "T0 = close on selected date, P = weighted day+1 ensemble prediction."
         )
+
+        if st.button("Compute SGN", key="run_ann_compute_sgn"):
+            try:
+                result, elapsed_seconds = _run_with_elapsed_progress(
+                    st,
+                    label="Computing ANN SGN",
+                    fn=lambda: _predict_ann_computed_sgn_overrides(
+                        selected_date=str(selected_date or "").strip(),
+                        tickers=list(TICKER_ORDER),
+                        compare_rows=compare_rows_for_map,
+                    ),
+                )
+                overrides_raw = result.get("computed_sgn_overrides")
+                overrides = (
+                    dict(overrides_raw) if isinstance(overrides_raw, dict) else {}
+                )
+                computed_sgn_by_date[date_key] = overrides
+                st.session_state["ann_computed_sgn_by_date"] = computed_sgn_by_date
+                st.session_state["ann_compute_sgn_details"] = list(
+                    result.get("details") or []
+                )
+                st.session_state["ann_compute_sgn_elapsed"] = float(
+                    round(elapsed_seconds, 3)
+                )
+                st.session_state["ann_compute_sgn_error"] = ""
+                if hasattr(st, "rerun"):
+                    st.rerun()
+            except Exception as exc:
+                st.session_state["ann_compute_sgn_error"] = str(exc)
+
+        compute_err = str(st.session_state.get("ann_compute_sgn_error", "") or "")
+        if compute_err:
+            st.error("Compute SGN failed: " + compute_err)
+
+        details_raw = st.session_state.get("ann_compute_sgn_details")
+        details = details_raw if isinstance(details_raw, list) else []
+        if details:
+            elapsed = float(st.session_state.get("ann_compute_sgn_elapsed") or 0.0)
+            st.caption(
+                f"Compute SGN completed in {elapsed:.2f}s for {len(details)} tickers."
+            )
 
         store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
         summary = load_ann_store_summary(store_path)
@@ -1248,11 +1406,6 @@ def run_review_console(db_path: Path | None = None) -> None:
 
             st.markdown(build_ann_guides_markdown())
 
-        compare_rows_for_map = build_ann_real_vs_computed_rows(
-            selected_date=selected_date,
-            tickers=list(TICKER_ORDER),
-        )
-
         if bool(st.session_state.get("ann_show_compare")):
             st.markdown("**Real vs Computed (SGN / Magnitude)**")
             st.caption(
@@ -1260,6 +1413,36 @@ def run_review_console(db_path: Path | None = None) -> None:
                 "Real values are derived from realized +3-day actual close against T0."
             )
             _render_aligned_table(st, compare_rows_for_map)
+
+        if st.button("Compute ANN Overall Stats", key="run_ann_overall_stats"):
+            try:
+                stats_payload, elapsed_seconds = _run_with_elapsed_progress(
+                    st,
+                    label="Computing ANN overall stats",
+                    fn=lambda: compute_ann_overall_stats(tickers=list(TICKER_ORDER)),
+                )
+                stats_payload["elapsed_seconds"] = float(round(elapsed_seconds, 3))
+                st.session_state["ann_overall_stats"] = stats_payload
+                st.session_state["ann_overall_stats_error"] = ""
+            except Exception as exc:
+                st.session_state["ann_overall_stats_error"] = str(exc)
+
+        stats_err = str(st.session_state.get("ann_overall_stats_error", "") or "")
+        if stats_err:
+            st.error("ANN overall stats failed: " + stats_err)
+
+        overall_raw = st.session_state.get("ann_overall_stats")
+        overall = overall_raw if isinstance(overall_raw, dict) else None
+        if overall:
+            st.markdown("**ANN SGN Success (All Tickers/Dates)**")
+            st.metric("SGN Success", str(overall.get("success_label") or "0/0 (N/A)"))
+            st.caption(
+                f"computed in {float(overall.get('elapsed_seconds') or 0.0):.2f}s across {int(overall.get('dates_count') or 0)} dates"
+            )
+            st.markdown("**Magnitude (% of Delta)**")
+            ratio_rows = list(overall.get("magnitude_ratio_rows") or [])
+            if ratio_rows:
+                _render_aligned_table(st, ratio_rows)
 
         st.markdown("**SGN Confidence Map (2D)**")
         sgn_col1, sgn_col2, sgn_col3, sgn_col4 = st.columns(4)
@@ -1425,6 +1608,32 @@ def run_review_console(db_path: Path | None = None) -> None:
             + (f"Pruned ({profile_path})" if profile_active else "Full feature set")
         )
 
+        epoch_rows_raw, epoch_load_errors, epoch_path = load_epoch_rows()
+        st.caption(f"Epoch Config: {epoch_path}")
+        if epoch_load_errors:
+            st.warning("Epoch config had issues and was reset to defaults.")
+        epoch_editor_value = st.data_editor(
+            list(epoch_rows_raw),
+            key="ann_epoch_editor",
+            use_container_width=True,
+            hide_index=True,
+            disabled=["Ticker"],
+            num_rows="fixed",
+        )
+        epoch_editor_rows = _coerce_row_records(epoch_editor_value) or list(
+            epoch_rows_raw
+        )
+        epoch_rows_validated, epoch_validation_errors = validate_epoch_rows(
+            epoch_editor_rows
+        )
+        if st.button("Save Epoch Config", key="save_ann_epoch_config"):
+            saved_rows, save_errors, saved_path = save_epoch_rows(epoch_editor_rows)
+            if save_errors:
+                st.error("Failed to save epoch config: " + "; ".join(save_errors[:3]))
+            else:
+                st.session_state["ann_epoch_editor"] = list(saved_rows)
+                st.success(f"Epoch config saved: {saved_path}")
+
         (
             ann_train_col1,
             ann_train_col2,
@@ -1519,50 +1728,80 @@ def run_review_console(db_path: Path | None = None) -> None:
                 else [str(selected_ticker).strip().upper()]
             )
             selected_modes = _target_modes_from_selection(str(ann_target_mode))
+            if epoch_validation_errors:
+                st.error(
+                    "Epoch config invalid: "
+                    + "; ".join([str(x) for x in epoch_validation_errors[:4]])
+                )
+                selected_modes = []
             mode_runs: list[dict[str, Any]] = []
             combined_stdout: list[str] = []
             combined_stderr: list[str] = []
             total_elapsed = 0.0
-            for mode in selected_modes:
-                run_result, elapsed_seconds = _run_with_elapsed_progress(
-                    st,
-                    label=f"ANN training in progress ({mode})",
-                    fn=lambda current_mode=mode: run_ann_train(
-                        tickers=selected_scope,
-                        window_length=int(ann_window_length),
-                        lag_depth=int(ann_lag_depth),
-                        train_end_date=str(ann_train_end_date or "").strip() or None,
-                        target_mode=str(current_mode),
-                        feature_allowlist_file=profile_path
-                        if profile_path.exists()
-                        else None,
-                    ),
-                )
-                run_result["target_mode"] = mode
-                run_result["elapsed_seconds"] = float(round(elapsed_seconds, 3))
-                mode_runs.append(run_result)
-                total_elapsed += float(elapsed_seconds)
-                combined_stdout.append(
-                    f"[mode={mode}]\n{str(run_result.get('stdout', '') or '')}".strip()
-                )
-                combined_stderr.append(
-                    f"[mode={mode}]\n{str(run_result.get('stderr', '') or '')}".strip()
-                )
+            for ticker in selected_scope:
+                for mode in selected_modes:
+                    epochs_value = epochs_for_ticker_mode(
+                        epoch_rows_validated,
+                        ticker=ticker,
+                        mode=mode,
+                        fallback=200 if mode == "sgn" else 600,
+                    )
+                    run_result, elapsed_seconds = _run_with_elapsed_progress(
+                        st,
+                        label=f"ANN training in progress ({ticker}:{mode}:{epochs_value})",
+                        fn=lambda current_mode=mode, current_ticker=ticker, current_epochs=epochs_value: (
+                            run_ann_train(
+                                tickers=[current_ticker],
+                                window_length=int(ann_window_length),
+                                lag_depth=int(ann_lag_depth),
+                                epochs=int(current_epochs),
+                                train_end_date=str(ann_train_end_date or "").strip()
+                                or None,
+                                target_mode=str(current_mode),
+                                feature_allowlist_file=profile_path
+                                if profile_path.exists()
+                                else None,
+                            )
+                        ),
+                    )
+                    run_result["target_mode"] = mode
+                    run_result["ticker"] = ticker
+                    run_result["epochs"] = int(epochs_value)
+                    run_result["elapsed_seconds"] = float(round(elapsed_seconds, 3))
+                    mode_runs.append(run_result)
+                    total_elapsed += float(elapsed_seconds)
+                    combined_stdout.append(
+                        f"[ticker={ticker} mode={mode} epochs={int(epochs_value)}]\n{str(run_result.get('stdout', '') or '')}".strip()
+                    )
+                    combined_stderr.append(
+                        f"[ticker={ticker} mode={mode} epochs={int(epochs_value)}]\n{str(run_result.get('stderr', '') or '')}".strip()
+                    )
 
-            returncode = 0
-            for item in mode_runs:
-                if int(item.get("returncode") or 0) != 0:
-                    returncode = int(item.get("returncode") or 1)
-                    break
-            result = {
-                "returncode": int(returncode),
-                "target_modes": list(selected_modes),
-                "mode_runs": mode_runs,
-                "command": [item.get("command") for item in mode_runs],
-                "stdout": "\n\n".join(combined_stdout).strip(),
-                "stderr": "\n\n".join(combined_stderr).strip(),
-                "elapsed_seconds": float(round(total_elapsed, 3)),
-            }
+            if not mode_runs:
+                result = {
+                    "returncode": 1,
+                    "target_modes": list(selected_modes),
+                    "mode_runs": [],
+                    "command": [],
+                    "stdout": "",
+                    "stderr": "No ANN training runs executed.",
+                    "elapsed_seconds": 0.0,
+                }
+            else:
+                returncode = 0
+                for item in mode_runs:
+                    if int(item.get("returncode") or 0) != 0:
+                        returncode = int(item.get("returncode") or 1)
+                        break
+                result = {
+                    "returncode": int(returncode),
+                    "target_modes": list(selected_modes),
+                    "mode_runs": mode_runs,
+                    "command": [item.get("command") for item in mode_runs],
+                    "stdout": "\n\n".join(combined_stdout).strip(),
+                    "stderr": "\n\n".join(combined_stderr).strip(),
+                    "elapsed_seconds": float(round(total_elapsed, 3)),
+                }
             st.session_state["ann_ingest_result"] = result
 
             if int(result.get("returncode") or 0) != 0:
