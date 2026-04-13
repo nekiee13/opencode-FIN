@@ -1408,12 +1408,6 @@ def run_review_console(db_path: Path | None = None) -> None:
             if failed_rows:
                 _render_aligned_table(st, failed_rows)
 
-            st.markdown("**Magnitude > Delta Log**")
-            st.caption(f"rows: {int(overall.get('magnitude_gt_delta_count') or 0)}")
-            mag_gt_rows = list(overall.get("magnitude_gt_delta_rows") or [])
-            if mag_gt_rows:
-                _render_aligned_table(st, mag_gt_rows)
-
         st.markdown("**SGN Confidence Map (2D)**")
         sgn_col1, sgn_col2, sgn_col3, sgn_col4 = st.columns(4)
         map_ticker = sgn_col1.selectbox(

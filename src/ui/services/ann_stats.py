@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Sequence
 
+from src.config import paths
 from src.ui.services.ann_sgn_compute import predict_ann_computed_sgn_overrides
 from src.ui.services.date_sources import load_sidebar_date_options
 from src.ui.services.vg_loader import (
@@ -36,10 +38,37 @@ def _to_float(raw: Any) -> float | None:
     return float(value)
 
 
+def _write_magnitude_delta_log(
+    *,
+    rows: list[dict[str, Any]],
+    log_dir: Path,
+) -> str:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "Magnitude _Delta.log"
+    lines: list[str] = [
+        "Date\tTicker\tDelta\tMagnitude\tRatio (% of Delta)",
+    ]
+    for row in rows:
+        lines.append(
+            "\t".join(
+                [
+                    str(row.get("Date") or ""),
+                    str(row.get("Ticker") or ""),
+                    str(row.get("Delta") or ""),
+                    str(row.get("Magnitude") or ""),
+                    str(row.get("Ratio (% of Delta)") or ""),
+                ]
+            )
+        )
+    log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(log_path)
+
+
 def compute_ann_overall_stats(
     *,
     dates: Sequence[str] | None = None,
     tickers: Sequence[str] | None = None,
+    log_dir: Path | None = None,
 ) -> dict[str, Any]:
     use_dates = [
         str(x).strip() for x in (dates or load_sidebar_date_options()) if str(x).strip()
@@ -151,6 +180,15 @@ def compute_ann_overall_stats(
         )
 
     success_rate = float(success) / float(total) if total > 0 else 0.0
+    magnitude_delta_log_path = ""
+    try:
+        magnitude_delta_log_path = _write_magnitude_delta_log(
+            rows=magnitude_gt_delta_rows,
+            log_dir=(log_dir or paths.LOGS_DIR),
+        )
+    except OSError:
+        magnitude_delta_log_path = ""
+
     return {
         "dates_count": int(len(use_dates)),
         "success_count": int(success),
@@ -165,6 +203,7 @@ def compute_ann_overall_stats(
         "failed_sgn_rows": failed_sgn_rows,
         "magnitude_gt_delta_count": int(len(magnitude_gt_delta_rows)),
         "magnitude_gt_delta_rows": magnitude_gt_delta_rows,
+        "magnitude_delta_log_path": magnitude_delta_log_path,
     }
 
 
