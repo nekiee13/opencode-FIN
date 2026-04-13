@@ -784,6 +784,176 @@ def load_sgn_samples_for_ticker(
     return out
 
 
+def prepare_sgn_probability_context(
+    *,
+    ticker: str,
+    rounds_dir: Path | None = None,
+    raw_tickers_dir: Path | None = None,
+    store_path: Path | None = None,
+    profile_path: Path | None = None,
+    grid_size: int = 35,
+    max_features: int = 10,
+    k_neighbors: int = 9,
+    edge_threshold: float = 0.60,
+    rolling_window: int = 20,
+) -> dict[str, Any]:
+    use_rounds = (rounds_dir or paths.OUT_I_CALC_FOLLOWUP_ML_ROUNDS_DIR).resolve()
+    use_raw = (raw_tickers_dir or paths.DATA_TICKERS_DIR).resolve()
+    use_store = (
+        store_path or paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
+    ).resolve()
+    use_profile = (
+        profile_path
+        or paths.OUT_I_CALC_DIR / "ann" / "feature_profiles" / "pruned_inputs.json"
+    ).resolve()
+
+    samples = load_sgn_samples_for_ticker(
+        ticker=ticker,
+        rounds_dir=use_rounds,
+        raw_tickers_dir=use_raw,
+        store_path=use_store,
+        profile_path=use_profile,
+    )
+    payload = build_sgn_probability_map_from_samples(
+        ticker=ticker,
+        samples=samples,
+        grid_size=grid_size,
+        max_features=max_features,
+        k_neighbors=k_neighbors,
+        edge_threshold=edge_threshold,
+        rolling_window=rolling_window,
+    )
+    payload["source_sample_count"] = int(len(samples))
+
+    return {
+        "ticker": str(ticker or "").strip().upper(),
+        "payload": payload,
+        "feature_stats": _build_feature_stats(samples),
+        "feature_matrix": _load_feature_matrix_for_ticker(
+            store_path=use_store,
+            ticker=ticker,
+        ),
+        "selected_features": _load_selected_feature_names(use_profile),
+        "k_neighbors": int(k_neighbors),
+        "edge_threshold": float(edge_threshold),
+    }
+
+
+def evaluate_sgn_suggestion_from_context(
+    *,
+    context: dict[str, Any],
+    selected_date: str | None,
+    computed_sgn: str | None,
+) -> dict[str, Any]:
+    payload_raw = context.get("payload")
+    payload = payload_raw if isinstance(payload_raw, dict) else {}
+
+    selected_payload: dict[str, Any] = {
+        "available": False,
+        "ticker": str(context.get("ticker") or "").strip().upper(),
+        "as_of_date": str(selected_date or "").strip(),
+        "reason": "selected_date_unset",
+    }
+    conditional_payload: dict[str, Any] = {
+        "available": False,
+        "computed_sgn": "",
+        "p_real_pos": 0.0,
+        "p_real_neg": 0.0,
+        "fallback_used": False,
+        "reason": "selected_point_unavailable",
+    }
+    suggestion_payload: dict[str, Any] = {
+        "available": False,
+        "value": "N/A",
+        "confidence": 0.0,
+        "low_confidence": True,
+        "reason": "selected_point_unavailable",
+    }
+
+    date_text = str(selected_date or "").strip()
+    points = list(payload.get("points") or [])
+    if not date_text:
+        return {
+            "selected_point": selected_payload,
+            "conditional_real_prob": conditional_payload,
+            "suggested_real_sgn": suggestion_payload,
+        }
+    if not points:
+        selected_payload["reason"] = "insufficient_training_points"
+        return {
+            "selected_point": selected_payload,
+            "conditional_real_prob": conditional_payload,
+            "suggested_real_sgn": suggestion_payload,
+        }
+
+    feature_matrix_raw = context.get("feature_matrix")
+    feature_matrix = feature_matrix_raw if isinstance(feature_matrix_raw, dict) else {}
+    feature_payload = dict(feature_matrix.get(date_text) or {})
+    selected_features_raw = context.get("selected_features")
+    selected_features = (
+        set(selected_features_raw) if isinstance(selected_features_raw, set) else set()
+    )
+    if selected_features:
+        feature_payload = {
+            name: value
+            for name, value in feature_payload.items()
+            if name in selected_features
+        }
+    if not feature_payload:
+        selected_payload["reason"] = "selected_date_missing_features"
+        return {
+            "selected_point": selected_payload,
+            "conditional_real_prob": conditional_payload,
+            "suggested_real_sgn": suggestion_payload,
+        }
+
+    stats_raw = context.get("feature_stats")
+    stats = stats_raw if isinstance(stats_raw, dict) else {}
+    norm_selected = _normalize_feature_payload(feature_payload, stats)
+    u_value = _axis_value(
+        norm_selected, list(payload.get("weights", {}).get("U") or [])
+    )
+    v_value = _axis_value(
+        norm_selected, list(payload.get("weights", {}).get("V") or [])
+    )
+
+    class_prob = _knn_probabilities(
+        u=float(u_value),
+        v=float(v_value),
+        points=points,
+        k_neighbors=int(context.get("k_neighbors") or 9),
+    )
+    selected_payload = {
+        "available": True,
+        "ticker": str(context.get("ticker") or "").strip().upper(),
+        "as_of_date": date_text,
+        "U": float(u_value),
+        "V": float(v_value),
+        "computed_sgn": str(computed_sgn or "").strip(),
+        "pred_class": _argmax_class(class_prob),
+        "max_prob": float(
+            max(float(class_prob.get(cls, 0.0)) for cls in SGN_CLASS_ORDER)
+        ),
+        "reason": "",
+    }
+    for cls in SGN_CLASS_ORDER:
+        selected_payload[f"prob_{cls}"] = float(class_prob.get(cls, 0.0))
+
+    conditional_payload = conditional_real_probabilities(
+        computed_sgn=str(computed_sgn or ""),
+        class_probabilities=class_prob,
+    )
+    suggestion_payload = suggested_real_sgn(
+        conditional_payload=conditional_payload,
+        low_confidence_threshold=float(context.get("edge_threshold") or 0.60),
+    )
+    return {
+        "selected_point": selected_payload,
+        "conditional_real_prob": conditional_payload,
+        "suggested_real_sgn": suggestion_payload,
+    }
+
+
 def build_sgn_probability_map(
     *,
     ticker: str,
@@ -975,7 +1145,9 @@ __all__ = [
     "build_sgn_probability_map_from_samples",
     "classify_sgn_case",
     "conditional_real_probabilities",
+    "evaluate_sgn_suggestion_from_context",
     "load_sgn_samples_for_ticker",
+    "prepare_sgn_probability_context",
     "suggested_real_sgn",
     "write_sgn_map_artifacts",
 ]

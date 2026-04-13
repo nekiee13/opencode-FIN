@@ -156,15 +156,23 @@ def test_continuation_sgn_uses_survival_semantics() -> None:
 def test_predict_ann_computed_sgn_overrides_uses_suggestion_and_trend(
     monkeypatch,
 ) -> None:
-    def _fake_build_sgn_probability_map(**kwargs):
-        ticker = str(kwargs.get("ticker") or "")
+    def _fake_prepare_context(**kwargs):
+        return {"ticker": str(kwargs.get("ticker") or "").upper()}
+
+    def _fake_evaluate_context(**kwargs):
+        context = kwargs.get("context") or {}
+        ticker = str(context.get("ticker") or "")
         if ticker == "DJI":
             return {"suggested_real_sgn": {"value": "+1", "confidence": 0.9}}
         return {"suggested_real_sgn": {"value": "-1", "confidence": 0.8}}
 
     monkeypatch.setattr(
-        "src.ui.review_streamlit.build_sgn_probability_map",
-        _fake_build_sgn_probability_map,
+        "src.ui.services.ann_sgn_compute.prepare_sgn_probability_context",
+        _fake_prepare_context,
+    )
+    monkeypatch.setattr(
+        "src.ui.services.ann_sgn_compute.evaluate_sgn_suggestion_from_context",
+        _fake_evaluate_context,
     )
     out = _predict_ann_computed_sgn_overrides(
         selected_date="2026-04-07",

@@ -33,6 +33,10 @@ from src.ui.services.ann_report import (
     export_ann_report_markdown,
     load_ann_report_sections,
 )
+from src.ui.services.ann_sgn_compute import (
+    continuation_sgn,
+    predict_ann_computed_sgn_overrides,
+)
 from src.ui.services.ann_stats import compute_ann_overall_stats
 from src.ui.services.ann_sgn_map import (
     build_sgn_probability_map,
@@ -484,11 +488,10 @@ def _resolve_map_computed_sgn(
 
 
 def _continuation_sgn(*, trend_sign: str, realized_or_predicted_sign: str) -> str:
-    trend = str(trend_sign or "").strip()
-    candidate = str(realized_or_predicted_sign or "").strip()
-    if trend not in {"+", "-"} or candidate not in {"+", "-"}:
-        return ""
-    return "+" if trend == candidate else "-"
+    return continuation_sgn(
+        trend_sign=trend_sign,
+        realized_or_predicted_sign=realized_or_predicted_sign,
+    )
 
 
 def _predict_ann_computed_sgn_overrides(
@@ -497,60 +500,11 @@ def _predict_ann_computed_sgn_overrides(
     tickers: list[str],
     compare_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    compare_map = {
-        str(row.get("Ticker") or "").strip().upper(): str(
-            row.get("Computed SGN") or ""
-        ).strip()
-        for row in compare_rows
-    }
-    out: dict[str, str] = {}
-    details: list[dict[str, Any]] = []
-
-    for ticker in [str(x).strip().upper() for x in tickers if str(x).strip()]:
-        trend_sign = str(compare_map.get(ticker) or "").strip()
-        if trend_sign not in {"+", "-"}:
-            out[ticker] = ""
-            details.append(
-                {
-                    "Ticker": ticker,
-                    "Trend Sign": trend_sign or "N/A",
-                    "Predicted Real Sign": "N/A",
-                    "Computed SGN": "N/A",
-                    "Confidence": "N/A",
-                    "Reason": "trend_sign_unavailable",
-                }
-            )
-            continue
-
-        payload = build_sgn_probability_map(
-            ticker=ticker,
-            selected_date=str(selected_date or "").strip(),
-            computed_sgn=trend_sign,
-        )
-        suggestion_raw = payload.get("suggested_real_sgn")
-        suggestion = suggestion_raw if isinstance(suggestion_raw, dict) else {}
-        value = str(suggestion.get("value") or "").strip()
-        predicted_real_sign = "+" if value == "+1" else "-" if value == "-1" else ""
-        computed_sgn = _continuation_sgn(
-            trend_sign=trend_sign,
-            realized_or_predicted_sign=predicted_real_sign,
-        )
-        out[ticker] = computed_sgn
-        details.append(
-            {
-                "Ticker": ticker,
-                "Trend Sign": trend_sign,
-                "Predicted Real Sign": predicted_real_sign or "N/A",
-                "Computed SGN": computed_sgn or "N/A",
-                "Confidence": f"{float(suggestion.get('confidence') or 0.0):.3f}",
-                "Reason": str(suggestion.get("reason") or ""),
-            }
-        )
-
-    return {
-        "computed_sgn_overrides": out,
-        "details": details,
-    }
+    return predict_ann_computed_sgn_overrides(
+        selected_date=selected_date,
+        tickers=tickers,
+        compare_rows=compare_rows,
+    )
 
 
 def _ann_magnitude_formula_latex() -> str:
@@ -1439,10 +1393,26 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.caption(
                 f"computed in {float(overall.get('elapsed_seconds') or 0.0):.2f}s across {int(overall.get('dates_count') or 0)} dates"
             )
-            st.markdown("**Magnitude (% of Delta)**")
-            ratio_rows = list(overall.get("magnitude_ratio_rows") or [])
-            if ratio_rows:
-                _render_aligned_table(st, ratio_rows)
+            st.markdown("**Avg |Delta - Magnitude| and % Delta > Magnitude**")
+            gap_rows = list(
+                overall.get("magnitude_gap_rows")
+                or overall.get("magnitude_ratio_rows")
+                or []
+            )
+            if gap_rows:
+                _render_aligned_table(st, gap_rows)
+
+            st.markdown("**Failed SGN Log**")
+            st.caption(f"rows: {int(overall.get('failed_sgn_count') or 0)}")
+            failed_rows = list(overall.get("failed_sgn_rows") or [])
+            if failed_rows:
+                _render_aligned_table(st, failed_rows)
+
+            st.markdown("**Magnitude > Delta Log**")
+            st.caption(f"rows: {int(overall.get('magnitude_gt_delta_count') or 0)}")
+            mag_gt_rows = list(overall.get("magnitude_gt_delta_rows") or [])
+            if mag_gt_rows:
+                _render_aligned_table(st, mag_gt_rows)
 
         st.markdown("**SGN Confidence Map (2D)**")
         sgn_col1, sgn_col2, sgn_col3, sgn_col4 = st.columns(4)
