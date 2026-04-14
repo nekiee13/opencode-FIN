@@ -382,6 +382,7 @@ def resolve_target_forecast_date(
         return selected_text
 
     matched_dates: list[str] = []
+    fallback_fh1_dates: set[str] = set()
     for csv_path in sorted(use_fh3.glob("FH3_TABLE_FULL_*.csv"), reverse=True):
         try:
             with csv_path.open("r", encoding="utf-8", newline="") as handle:
@@ -389,9 +390,11 @@ def resolve_target_forecast_date(
                 file_hits: set[str] = set()
                 for row in reader:
                     asof = str(row.get("AsOf_Cutoff") or "").strip()
+                    fh1 = str(row.get("FH_Date1") or "").strip()
+                    if _parse_iso_date(fh1) is not None:
+                        fallback_fh1_dates.add(fh1)
                     if asof != selected_text:
                         continue
-                    fh1 = str(row.get("FH_Date1") or "").strip()
                     if _parse_iso_date(fh1) is not None:
                         file_hits.add(fh1)
                 if file_hits:
@@ -402,6 +405,19 @@ def resolve_target_forecast_date(
 
     if matched_dates:
         return sorted(matched_dates)[0]
+
+    if fallback_fh1_dates:
+        next_biz = next_business_day(selected_text)
+        if next_biz in fallback_fh1_dates:
+            return next_biz
+        candidates = sorted(
+            x
+            for x in fallback_fh1_dates
+            if _parse_iso_date(x) is not None and x >= selected_text
+        )
+        if candidates:
+            return candidates[0]
+
     return selected_text
 
 

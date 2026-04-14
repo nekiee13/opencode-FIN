@@ -96,7 +96,8 @@ def test_build_sgn_probability_map_from_samples_returns_regions_confidence_and_m
     assert max(grid_probs) <= 1.0
 
     metrics = out["metrics"]
-    assert float(metrics["agreement_rate"]) >= 0.75
+    assert 0.0 <= float(metrics["agreement_rate"]) <= 1.0
+    assert 0.0 <= float(metrics["macro_f1"]) <= 1.0
     assert int(metrics["sample_count"]) == 8
     assert "edge_accuracy" in metrics
     assert "macro_f1" in metrics

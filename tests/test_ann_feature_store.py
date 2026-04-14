@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.ui.services.ann_feature_store import (
     initialize_ann_feature_store,
+    load_ann_feature_date_coverage,
     load_ann_feature_store_summary,
     upsert_ann_feature_records,
 )
@@ -90,3 +91,63 @@ def test_upsert_ann_feature_records_writes_rows_and_summary(tmp_path: Path) -> N
     assert summary["families"]["hurst"]["rows"] == 1
     assert summary["families"]["tda_h1"]["rows"] == 1
     assert summary["families"]["ti"]["latest_as_of_date"] == "2026-03-31"
+
+
+def test_load_ann_feature_date_coverage_reports_missing_tickers(tmp_path: Path) -> None:
+    db_path = tmp_path / "ann_input_features.sqlite"
+    initialize_ann_feature_store(db_path)
+
+    records = [
+        {
+            "as_of_date": "2026-04-14",
+            "ticker": "AAPL",
+            "feature_name": "RSI (14)",
+            "feature_value": 50.1,
+            "source_family": "ti",
+            "source_file": "/tmp/TI/AAPL.csv",
+            "value_status": "present",
+        },
+        {
+            "as_of_date": "2026-04-14",
+            "ticker": "AAPL",
+            "feature_name": "Pivot Points(Classic)",
+            "feature_value": 250.0,
+            "source_family": "pivot",
+            "source_file": "/tmp/PP/AAPL.csv",
+            "value_status": "present",
+        },
+        {
+            "as_of_date": "2026-04-14",
+            "ticker": "AAPL",
+            "feature_name": "H20",
+            "feature_value": 0.51,
+            "source_family": "hurst",
+            "source_file": "/tmp/SVL/SVL_METRICS_20260414.csv",
+            "value_status": "present",
+        },
+        {
+            "as_of_date": "2026-04-14",
+            "ticker": "AAPL",
+            "feature_name": "H1_Entropy",
+            "feature_value": 1.95,
+            "source_family": "tda_h1",
+            "source_file": "/tmp/TDA/TDA_METRICS_20260414.csv",
+            "value_status": "present",
+        },
+    ]
+    upsert_ann_feature_records(
+        store_path=db_path,
+        records=records,
+        source_batch="20260414",
+    )
+
+    out = load_ann_feature_date_coverage(
+        db_path,
+        as_of_date="2026-04-14",
+        tickers=["AAPL", "TNX"],
+    )
+
+    assert out["complete"] is False
+    assert out["families"]["ti"]["present_tickers"] == ["AAPL"]
+    assert out["families"]["ti"]["missing_tickers"] == ["TNX"]
+    assert out["families"]["hurst"]["present_tickers"] == ["AAPL"]

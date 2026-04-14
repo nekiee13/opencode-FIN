@@ -61,6 +61,29 @@ def test_resolve_target_forecast_date_falls_back_to_selected_date(
     assert out == "2026-03-24"
 
 
+def test_resolve_target_forecast_date_uses_fh3_file_date_when_asof_missing(
+    tmp_path: Path,
+) -> None:
+    fh3_dir = tmp_path / "fh3"
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    (fh3_dir / "FH3_TABLE_FULL_20260415.csv").write_text(
+        "\n".join(
+            [
+                "Ticker,FilePrefix,Last_Close_ASOF,Model_Used,Col_Used,FH_Date1,FH_Day1,FH_Date2,FH_Day2,FH_Date3,FH_Day3,Run_Mode,AsOf_Cutoff",
+                "TNX,TNX,1,DYNAMIX,DYNAMIX_Pred,2026-04-15,1,2026-04-16,1,2026-04-17,1,live,",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = resolve_target_forecast_date(
+        selected_date="2026-04-14",
+        fh3_dir=fh3_dir,
+    )
+    assert out == "2026-04-15"
+
+
 def test_matrix_to_rows_maps_models_and_tickers() -> None:
     matrix = {
         "Torch": {"TNX": 99.0, "AAPL": 98.5},
@@ -257,6 +280,30 @@ def test_pick_anchored_violet_date_returns_none_when_unrelated() -> None:
         available_dates=["2026-02-27"],
     )
     assert out is None
+
+
+def test_pick_anchored_violet_date_uses_file_fallback_when_asof_missing(
+    tmp_path: Path,
+) -> None:
+    fh3_dir = tmp_path / "fh3"
+    fh3_dir.mkdir(parents=True, exist_ok=True)
+    (fh3_dir / "FH3_TABLE_FULL_20260415.csv").write_text(
+        "\n".join(
+            [
+                "Ticker,FilePrefix,Last_Close_ASOF,Model_Used,Col_Used,FH_Date1,FH_Day1,FH_Date2,FH_Day2,FH_Date3,FH_Day3,Run_Mode,AsOf_Cutoff",
+                "TNX,TNX,1,DYNAMIX,DYNAMIX_Pred,2026-04-15,1,2026-04-16,1,2026-04-17,1,live,",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = pick_anchored_violet_date(
+        selected_date="2026-04-14",
+        available_dates=["2026-04-15"],
+        fh3_dir=fh3_dir,
+    )
+    assert out == "2026-04-15"
 
 
 def test_format_green_table_rows_uses_three_decimals() -> None:

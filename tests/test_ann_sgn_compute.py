@@ -60,3 +60,39 @@ def test_predict_ann_computed_sgn_overrides_reuses_ticker_context_cache(
     assert out2["computed_sgn_overrides"]["TNX"] == "-"
     assert calls["prepare"] == 2
     assert calls["evaluate"] == 4
+
+
+def test_predict_ann_computed_sgn_overrides_falls_back_to_trend_when_unavailable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        ann_sgn_compute,
+        "prepare_sgn_probability_context",
+        lambda **kwargs: {"ticker": str(kwargs.get("ticker") or "").upper()},
+    )
+    monkeypatch.setattr(
+        ann_sgn_compute,
+        "evaluate_sgn_suggestion_from_context",
+        lambda **kwargs: {
+            "suggested_real_sgn": {
+                "value": "N/A",
+                "confidence": 0.0,
+                "reason": "selected_point_unavailable",
+            }
+        },
+    )
+
+    out = ann_sgn_compute.predict_ann_computed_sgn_overrides(
+        selected_date="2026-04-14",
+        tickers=["TNX", "DJI"],
+        compare_rows=[
+            {"Ticker": "TNX", "Computed SGN": "+"},
+            {"Ticker": "DJI", "Computed SGN": "-"},
+        ],
+    )
+
+    assert out["computed_sgn_overrides"]["TNX"] == "+"
+    assert out["computed_sgn_overrides"]["DJI"] == "-"
+    details = {str(x.get("Ticker") or ""): x for x in out["details"]}
+    assert "fallback_trend_sign" in str(details["TNX"].get("Reason") or "")
+    assert "fallback_trend_sign" in str(details["DJI"].get("Reason") or "")

@@ -17,7 +17,8 @@ def test_ann_train_parse_args_defaults_to_all_modes_and_epochs_csv() -> None:
     mod = _load_ann_train_module()
     args = mod.parse_args([])
     assert args.target_mode == "all"
-    assert str(args.epochs_csv).endswith("out/i_calc/ANN/epoch.csv")
+    normalized = str(args.epochs_csv).replace("\\", "/")
+    assert normalized.endswith("out/i_calc/ANN/epoch.csv")
 
 
 def test_ann_train_selected_modes_expands_all() -> None:

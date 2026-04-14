@@ -310,6 +310,63 @@ def load_ann_feature_store_summary(store_path: Path) -> dict[str, Any]:
     }
 
 
+def load_ann_feature_date_coverage(
+    store_path: Path,
+    *,
+    as_of_date: str,
+    tickers: list[str] | None = None,
+) -> dict[str, Any]:
+    target_date = str(as_of_date or "").strip()
+    expected = [str(x).strip().upper() for x in list(tickers or []) if str(x).strip()]
+    expected_set = set(expected)
+
+    out: dict[str, Any] = {
+        "exists": bool(store_path.exists()),
+        "store_path": str(store_path),
+        "as_of_date": target_date,
+        "expected_tickers": expected,
+        "families": {},
+        "complete": False,
+    }
+    if not store_path.exists() or not target_date or not expected:
+        return out
+
+    conn = _connect(store_path)
+    try:
+        families: dict[str, dict[str, Any]] = {}
+        for family, table_name in FAMILY_TABLES.items():
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT ticker
+                FROM {table_name}
+                WHERE as_of_date = ? AND value_status = 'present'
+                """,
+                (target_date,),
+            ).fetchall()
+            present_set = {
+                str(row[0]).strip().upper()
+                for row in rows
+                if row and str(row[0]).strip()
+            }
+            present = sorted(expected_set.intersection(present_set))
+            missing = sorted(expected_set.difference(present_set))
+            families[family] = {
+                "present_tickers": present,
+                "missing_tickers": missing,
+                "present_count": int(len(present)),
+                "expected_count": int(len(expected_set)),
+                "complete": len(missing) == 0,
+            }
+    finally:
+        conn.close()
+
+    out["families"] = families
+    out["complete"] = bool(
+        families and all(bool(item.get("complete")) for item in families.values())
+    )
+    return out
+
+
 __all__ = [
     "ANN_FEATURE_STORE_SCHEMA_VERSION",
     "FAMILY_TABLES",
@@ -317,4 +374,5 @@ __all__ = [
     "upsert_ann_feature_records",
     "record_ingest_file",
     "load_ann_feature_store_summary",
+    "load_ann_feature_date_coverage",
 ]

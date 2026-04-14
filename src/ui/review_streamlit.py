@@ -17,6 +17,7 @@ from src.ui.services.ann_epoch_config import (
 from src.config import paths
 from src.ui.services.ann_ops import (
     extract_ann_train_run_dir,
+    load_ann_store_date_coverage,
     load_ann_store_summary,
     load_ann_train_artifacts,
     run_ann_feature_stores_ingest,
@@ -1278,6 +1279,15 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.caption(
                 f"Compute SGN completed in {elapsed:.2f}s for {len(details)} tickers."
             )
+            fallback_count = 0
+            for item in details:
+                reason_text = str((item or {}).get("Reason") or "")
+                if "fallback_trend_sign" in reason_text:
+                    fallback_count += 1
+            if fallback_count > 0:
+                st.warning(
+                    f"{int(fallback_count)} ticker(s) used trend-sign fallback because SGN map context was unavailable for selected date."
+                )
 
         store_path = paths.OUT_I_CALC_DIR / "stores" / "ann_input_features.sqlite"
         summary = load_ann_store_summary(store_path)
@@ -1314,6 +1324,41 @@ def run_review_console(db_path: Path | None = None) -> None:
                     if isinstance(payload, dict)
                 ],
             )
+
+        coverage = load_ann_store_date_coverage(
+            store_path,
+            as_of_date=str(selected_date or "").strip(),
+            tickers=list(TICKER_ORDER),
+        )
+        coverage_families = dict(coverage.get("families") or {})
+        if coverage_families:
+            if not bool(coverage.get("complete")):
+                st.warning(
+                    "ANN feature store coverage is incomplete for selected date; Compute SGN will use trend-sign fallback for missing ticker contexts."
+                )
+            coverage_rows = []
+            for family_name, payload in coverage_families.items():
+                if not isinstance(payload, dict):
+                    continue
+                coverage_rows.append(
+                    {
+                        "family": str(family_name),
+                        "present": int(payload.get("present_count") or 0),
+                        "expected": int(payload.get("expected_count") or 0),
+                        "missing_tickers": ", ".join(
+                            [str(x) for x in list(payload.get("missing_tickers") or [])]
+                        )
+                        or "-",
+                    }
+                )
+            if coverage_rows:
+                st.caption(
+                    "Coverage date: "
+                    + str(
+                        coverage.get("as_of_date") or str(selected_date or "").strip()
+                    )
+                )
+                _render_aligned_table(st, coverage_rows)
 
         info_col, compare_col = st.columns(2)
         if info_col.button("Info", key="show_ann_info"):
@@ -1393,7 +1438,7 @@ def run_review_console(db_path: Path | None = None) -> None:
             st.caption(
                 f"computed in {float(overall.get('elapsed_seconds') or 0.0):.2f}s across {int(overall.get('dates_count') or 0)} dates"
             )
-            st.markdown("**Avg |Delta - Magnitude| and % Delta > Magnitude**")
+            st.markdown("**Gap (D>M%)**")
             gap_rows = list(
                 overall.get("magnitude_gap_rows")
                 or overall.get("magnitude_ratio_rows")

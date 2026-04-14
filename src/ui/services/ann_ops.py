@@ -8,6 +8,7 @@ from typing import Any
 
 from src.config import paths
 from src.ui.services.ann_feature_store import load_ann_feature_store_summary
+from src.ui.services.ann_feature_store import load_ann_feature_date_coverage
 
 
 def extract_ann_train_run_dir(stdout: str) -> Path | None:
@@ -47,6 +48,19 @@ def load_ann_train_artifacts(run_dir: Path) -> dict[str, Any]:
 
 def load_ann_store_summary(store_path: Path) -> dict[str, Any]:
     return load_ann_feature_store_summary(store_path)
+
+
+def load_ann_store_date_coverage(
+    store_path: Path,
+    *,
+    as_of_date: str,
+    tickers: list[str],
+) -> dict[str, Any]:
+    return load_ann_feature_date_coverage(
+        store_path,
+        as_of_date=as_of_date,
+        tickers=list(tickers),
+    )
 
 
 def run_ann_feature_stores_ingest(

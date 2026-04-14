@@ -63,10 +63,18 @@ def predict_ann_computed_sgn_overrides(
         suggestion = suggestion_raw if isinstance(suggestion_raw, dict) else {}
         value = str(suggestion.get("value") or "").strip()
         predicted_real_sign = "+" if value == "+1" else "-" if value == "-1" else ""
-        computed_sgn = continuation_sgn(
-            trend_sign=trend_sign,
-            realized_or_predicted_sign=predicted_real_sign,
-        )
+        reason_text = str(suggestion.get("reason") or "").strip()
+        if predicted_real_sign in {"+", "-"}:
+            computed_sgn = continuation_sgn(
+                trend_sign=trend_sign,
+                realized_or_predicted_sign=predicted_real_sign,
+            )
+            detail_reason = reason_text
+        else:
+            computed_sgn = trend_sign
+            base_reason = reason_text or "selected_point_unavailable"
+            detail_reason = f"{base_reason}|fallback_trend_sign"
+
         out[ticker] = computed_sgn
         details.append(
             {
@@ -75,7 +83,7 @@ def predict_ann_computed_sgn_overrides(
                 "Predicted Real Sign": predicted_real_sign or "N/A",
                 "Computed SGN": computed_sgn or "N/A",
                 "Confidence": f"{float(suggestion.get('confidence') or 0.0):.3f}",
-                "Reason": str(suggestion.get("reason") or ""),
+                "Reason": detail_reason,
             }
         )
 
