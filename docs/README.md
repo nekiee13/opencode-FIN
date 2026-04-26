@@ -37,3 +37,5 @@ This index is the primary entry point for all documentation in this repository.
   - source commit/hash reference where applicable
   - status classification (`Current`, `Historical evidence`, `Generated snapshot`)
 - PR checklist requirement: update docs whenever interfaces, schemas, runbooks, or operator workflows change.
+
+- Canonical FIN runtime open/close runbook: `docs/opencode-runtime-safe-open-close.md`

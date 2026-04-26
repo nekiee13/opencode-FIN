@@ -201,3 +201,14 @@ Environment guardrail: use the intended interpreter and virtual environment (ven
 Governance transition note: docs/governance-transition.md
 Documentation index: docs/README.md
 
+
+## Canonical OpenCode Runtime Scripts
+
+- Canonical runbook: `docs/opencode-runtime-safe-open-close.md`
+- FIN open: `scripts/runtime/safe-open-fin.ps1`
+- FIN close: `scripts/runtime/safe-close-fin.ps1`
+- Shared helper: `scripts/runtime/_runtime_common.ps1`
+
+Canonical host-port contract:
+
+- FIN runtime: `127.0.0.1:5096->4096`
