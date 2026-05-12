@@ -94,16 +94,37 @@ def _load_t0_map(
 
 def _load_weighted_p_map(*, round_dir: Path) -> dict[str, float]:
     out: dict[str, float] = {}
-    path = round_dir / "t0_day1_weighted_ensemble.csv"
-    if not path.exists():
+
+    candidates = [
+        round_dir / "t0_day1_weighted_ensemble.csv",
+        round_dir / "t0_day3_weighted_ensemble.csv",
+    ]
+    # Generic fallback for other horizon naming
+    candidates.extend(sorted(round_dir.glob("t0_day*_weighted_ensemble.csv")))
+
+    csv_path = None
+    for c in candidates:
+        if c.exists():
+            csv_path = c
+            break
+
+    if csv_path is None:
         return out
+
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
-                ticker = str(row.get("ticker") or "").strip().upper()
-                raw = str(row.get("weighted_ensemble") or "").strip().replace(",", "")
+                ticker = str(row.get("Ticker") or row.get("ticker") or "").strip().upper()
                 if not ticker:
+                    continue
+                raw = str(
+                    row.get("P")
+                    or row.get("p")
+                    or row.get("weighted_ensemble")
+                    or ""
+                ).strip().replace(",", "")
+                if not raw:
                     continue
                 try:
                     out[ticker] = float(raw)
@@ -123,8 +144,13 @@ def _load_future_close_map(*, round_dir: Path) -> dict[str, float]:
         with path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
-                ticker = str(row.get("ticker") or "").strip().upper()
-                raw = str(row.get("actual_close") or "").strip().replace(",", "")
+                ticker = str(row.get("ticker") or row.get("Ticker") or "").strip().upper()
+                raw = str(
+                    row.get("actual_close")
+                    or row.get("+3-day")
+                    or row.get("future_close")
+                    or ""
+                ).strip().replace(",", "")
                 if not ticker:
                     continue
                 try:
@@ -170,7 +196,6 @@ def _load_markers_three_day_map(
     except OSError:
         return {}
     return out
-
 
 def _load_future_close_map_with_fallback(
     *,
@@ -257,6 +282,9 @@ def build_ann_t0_p_sgn_rows(
             candidate = str(overrides.get(ticker) or "").strip()
             if candidate in {"+", "-"}:
                 computed_sgn = candidate
+            else:
+                # Forecast-phase fallback: derive computed SGN from weighted trend.
+                computed_sgn = "+" if trend > 0 else "-"
 
         final_forecast: float | None = None
         if (
