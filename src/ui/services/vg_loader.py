@@ -17,6 +17,17 @@ def next_business_day(iso_date: str) -> str:
         cur += timedelta(days=1)
     return cur.isoformat()
 
+def add_business_days(iso_date: str, days: int) -> str:
+    cur = datetime.strptime(iso_date, "%Y-%m-%d").date()
+    step = 1 if int(days) >= 0 else -1
+    remaining = abs(int(days))
+    while remaining > 0:
+        cur += timedelta(days=step)
+        if cur.weekday() < 5:
+            remaining -= 1
+    return cur.isoformat()
+
+
 
 def _parse_iso_date(value: str) -> date | None:
     text = str(value or "").strip()
@@ -377,48 +388,9 @@ def resolve_target_forecast_date(
     if selected is None:
         return selected_text
 
-    use_fh3 = (fh3_dir or paths.OUT_I_CALC_FH3_DIR).resolve()
-    if not use_fh3.exists():
-        return selected_text
-
-    matched_dates: list[str] = []
-    fallback_fh1_dates: set[str] = set()
-    for csv_path in sorted(use_fh3.glob("FH3_TABLE_FULL_*.csv"), reverse=True):
-        try:
-            with csv_path.open("r", encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader(handle)
-                file_hits: set[str] = set()
-                for row in reader:
-                    asof = str(row.get("AsOf_Cutoff") or "").strip()
-                    fh1 = str(row.get("FH_Date1") or "").strip()
-                    if _parse_iso_date(fh1) is not None:
-                        fallback_fh1_dates.add(fh1)
-                    if asof != selected_text:
-                        continue
-                    if _parse_iso_date(fh1) is not None:
-                        file_hits.add(fh1)
-                if file_hits:
-                    matched_dates.extend(sorted(file_hits))
-                    break
-        except OSError:
-            continue
-
-    if matched_dates:
-        return sorted(matched_dates)[0]
-
-    if fallback_fh1_dates:
-        next_biz = next_business_day(selected_text)
-        if next_biz in fallback_fh1_dates:
-            return next_biz
-        candidates = sorted(
-            x
-            for x in fallback_fh1_dates
-            if _parse_iso_date(x) is not None and x >= selected_text
-        )
-        if candidates:
-            return candidates[0]
-
-    return selected_text
+    # Canonical contract:
+    # target forecast date is selected round date + 3 business days.
+    return add_business_days(selected.isoformat(), 3)
 
 
 def pick_anchored_violet_date(
@@ -494,9 +466,9 @@ def suggest_forecast_date(
     if selected_text in normalized:
         return selected_text
 
-    next_biz_text = next_business_day(selected_text)
-    if next_biz_text in normalized:
-        return next_biz_text
+    target_text = add_business_days(selected_text, 3)
+    if target_text in normalized:
+        return target_text
 
     parsed = [(_parse_iso_date(x), x) for x in normalized]
     prior = [x for d, x in parsed if d is not None and d <= selected]

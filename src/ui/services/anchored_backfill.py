@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.config import paths
+from src.ui.services.vg_loader import resolve_target_forecast_date
 
 _FORECAST_RE = re.compile(r"forecast_date\s*=\s*(\d{4}-\d{2}-\d{2})")
 
@@ -85,7 +86,7 @@ def run_anchored_backfill(
         "--round-id",
         round_id,
         "--fh",
-        "1",
+        "3",
         "--history-mode",
         "replay",
         "--as-of-date",
@@ -135,16 +136,15 @@ def run_anchored_backfill(
                 "stages": stage_results,
             }
 
-    forecast_date = _extract_forecast_date(
-        str(stage_results[-1].get("stdout") or "")
-        + "\n"
-        + str(stage_results[-1].get("stderr") or "")
+    forecast_date = resolve_target_forecast_date(
+        selected_date=date_text,
+        fh3_dir=paths.OUT_I_CALC_FH3_DIR,
     )
     if not forecast_date:
         return {
             "status": "error",
             "index_code": "BACKFILL_FORECAST_DATE_MISSING",
-            "summary": "Ingest completed but forecast_date could not be parsed from output.",
+            "summary": "Anchored backfill could not resolve canonical forecast_date.",
             "selected_date": date_text,
             "round_id": round_id,
             "stages": stage_results,
@@ -188,3 +188,6 @@ def run_anchored_backfill(
         "forecast_date": forecast_date,
         "stages": stage_results,
     }
+
+
+
