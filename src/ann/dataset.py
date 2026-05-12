@@ -238,7 +238,12 @@ def build_training_dataset(
             )
             target = np.where((trend != 0.0) & (trend == realized), 1.0, -1.0)
             target = pd.Series(target, index=merged.index, dtype=float)
-            target = target.where(pd.notna(future_close), np.nan)
+
+            # Active-round fallback:
+            # when realized +FH close is unavailable, use forecast-derived direction.
+            # This preserves historical real-label behavior and unlocks sgn training pre-realization.
+            forecast_sgn = pd.Series(trend, index=merged.index, dtype=float)
+            target = target.where(pd.notna(future_close), forecast_sgn)
         merged["target"] = target
         ticker_frames.append(merged)
 
@@ -276,3 +281,4 @@ def build_training_dataset(
     X = full[feature_cols].to_numpy(dtype=float)
     y = full["target"].to_numpy(dtype=float)
     return TrainingDataset(X=X, y=y, feature_columns=feature_cols, frame=full)
+
