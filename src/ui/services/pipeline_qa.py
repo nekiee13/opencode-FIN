@@ -199,6 +199,13 @@ def evaluate_pipeline_state(
         return report
 
     if not bool(report["fh3_exists"]):
+        if bool(report["violet_for_target_forecast_date"]) and bool(report["materialized_has_target_forecast_date"]):
+            report["index_code"] = "QA_FH3_MISSING_BYPASSED"
+            report["summary"] = (
+                "FH3 table artifact is missing, but Violet rows and materialized snapshots exist for target forecast date. "
+                "Pipeline is accepted via VG/materialization evidence."
+            )
+            return report
         report["index_code"] = "QA_FH3_MISSING"
         report["summary"] = (
             "FH3 table artifact is missing for target forecast date. "
@@ -262,3 +269,4 @@ def write_pipeline_qa_log(
     out_path = base / f"{stamp}_{selected}_{index_code}.json"
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return out_path
+
