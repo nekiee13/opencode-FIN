@@ -28,10 +28,10 @@ logger = structlog.get_logger()
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-# TICKERS = ["^TNX", "^DJI", "^GSPC", "^VIX", "AAPL", "QQQ"]
+TICKERS = ["^TNX", "^DJI", "^GSPC", "^VIX", "AAPL", "QQQ"]
 
-START_DATE = "2026-04-10"
-END_DATE = "2026-04-15"  # inclusive user end date
+START_DATE = "2026-05-06"
+END_DATE = "2026-05-12"  # inclusive user end date
 
 OUTPUT_DIR = "./CSV_OUTPUT"
 SAVE_INDIVIDUAL_FILES = True
