@@ -12,6 +12,7 @@ htmlcov/
 # Virtualenvs / tooling
 .venv/
 venv/
+vEnv/
 ENV/
 .env
 
