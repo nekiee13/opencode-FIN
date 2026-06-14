@@ -254,6 +254,65 @@ def test_lstm_quantiles_smoke_skips_if_missing_torch() -> None:
     assert "Close" in res.cols_used
 
 
+def test_lstm_quantiles_returns_space_contract(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    """Epic 3: returns-space path preserves the contract and reconstructs sane prices.
+
+    Exercises the full LSTM_TARGET_SPACE=returns pipeline (log-return transform,
+    z-score scaling, exp-compounding reconstruction) and asserts the column contract,
+    monotonicity (Lower <= Pred <= Upper), positivity/finiteness of reconstructed
+    prices, and the target_space provenance in meta.
+    """
+    has_flag = _has_fin_compat_flag("HAS_TORCH")
+    has_torch = bool(has_flag) if has_flag is not None else _has_module("torch")
+    if not has_torch:
+        pytest.skip("torch not available; LSTM returns-space test skipped.")
+
+    monkeypatch.setenv("LSTM_TARGET_SPACE", "returns")
+
+    from src.models.lstm import predict_lstm_quantiles
+
+    df = _make_bday_ohlcv(n=320)
+    fh = 3
+
+    res = predict_lstm_quantiles(
+        df,
+        ticker="TEST",
+        fh=fh,
+        lookback=30,
+        epochs=2,
+        batch_size=32,
+        lstm_units=16,
+        dense_units=8,
+        dropout=0.0,
+        verbose=0,
+        min_samples=120,
+        seed=7,
+    )
+
+    assert res is not None
+    assert res.pred_df is not None
+    assert res.meta.get("target_space") == "log_returns"
+
+    df_b = cast(pd.DataFrame, df.asfreq("B").ffill())
+    _assert_forecast_df(
+        res.pred_df,
+        fh=fh,
+        cols=("LSTM_Pred", "LSTM_Lower", "LSTM_Upper"),
+        last_dt=_ts(df_b.index[-1]),
+    )
+
+    pred = res.pred_df["LSTM_Pred"].to_numpy(dtype=float)
+    lower = res.pred_df["LSTM_Lower"].to_numpy(dtype=float)
+    upper = res.pred_df["LSTM_Upper"].to_numpy(dtype=float)
+
+    assert np.all(np.isfinite(pred)) and np.all(np.isfinite(lower)) and np.all(np.isfinite(upper))
+    assert np.all(pred > 0.0), "reconstructed prices must be positive"
+    assert np.all(lower <= pred + 1e-9), "Lower must not exceed Pred"
+    assert np.all(pred <= upper + 1e-9), "Pred must not exceed Upper"
+
+
 # ---------------------------------------------------------------------
 # Package-level: import smoke for model modules
 # ---------------------------------------------------------------------
