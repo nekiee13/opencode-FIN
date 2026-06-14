@@ -748,31 +748,105 @@ current code, both fixable without touching the column contract:
 
 ---
 
-# EPIC 3 — Phase B: returns-space modeling  `[PLANNED]`
+# EPIC 3 — Phase B: returns-space modeling  `[SCOPED — go/no-go spike gates the full build]`
 
-**Outcome:** Model **log-returns** instead of raw price levels to kill the recursive
-mean-reversion drift that grows with horizon.
+**Outcome:** Model **log-returns** `r_t = ln(P_t / P_{t-1})` instead of raw price
+**levels**, so the network predicts the *increment* directly. Reconstruct the price path
+by compounding. Targets the two defects Epic 2 left on the table.
 
-**Explanation of changes (in `src/models/lstm.py`):**
-- Target transform: `r_t = log(P_t / P_{t-1})`; build windows on returns.
-- Scaling: standardize (z-score) returns instead of min-max on price levels; relax
-  the `LSTM_SCALED_CLIP` `[-0.2, 1.2]` guard (semantics don't apply to returns).
-- Recursion: forecast returns step-by-step; reconstruct price by cumulative product;
-  map quantile heads back to price space for `Lower/Upper`.
+### Why this is the candidate fix (from the Epic 2 measurement, `20260614T083727Z`)
+Epic 2 eliminated the *level bias* (|MBE| −95%) but two residuals remain, and both are
+structural to **price-level** modeling:
+1. **Direction is still a coin-flip — dir-hit 50.3%.** A level model anchored to the
+   recent price band `[y_min, y_max]` has no incentive to call the *sign* of the next
+   move; it minimizes pinball loss by parking near the band. Predicting a **return**
+   makes the sign of the point estimate the directional call — the only structural lever
+   we have for dir-hit.
+2. **Per-horizon error still grows** (Epic 2 MAE h1 117.1 → h2 125.8 → h3 151.2, +29%;
+   MAPE 3.12% → 4.24%). Some growth is irreducible (further-out = harder), but the
+   recursive feedback `next_row[0] = y_pred` in **price space** (`lstm.py:611`) re-injects
+   a level that the min-max scaler (`:313-319`) keeps pulling toward the band mean →
+   horizon-compounding mean-reversion drift. Returns are ~stationary/mean-zero, so the
+   z-scored recursion has no band to revert to.
 
-### Tasks (outline)
-- 3.1 Returns transform + window builder. **AC:** exact round-trip reconstruction on
-  a known series.
-- 3.2 Standardization + clip relaxation. **AC:** no boundary flattening; determinism
-  preserved.
-- 3.3 Recursive forecast + price reconstruction. **AC:** `fh`-step output preserves
-  column contract.
-- 3.4 Re-run Epic 1 harness. **AC:** **per-horizon error curve flattens** vs both the
-  baseline and Epic 2; overall MAE/RMSE improve.
+### ⚠️ Honest payoff risk (read before committing)
+Unlike Epic 2 (which fixed two *clear bugs* — in-sample calibration + midpoint point
+estimate — with a near-guaranteed win), Epic 3 attacks an **intrinsic-predictability**
+limit. Daily equity/index returns are close to a random walk; a returns model may leave
+**dir-hit at ~50%** and can even *raise* short-horizon price MAE (the level anchor that
+Epic 2 exploits genuinely helps when the series sits inside its recent range). So Epic 3
+is higher-risk / uncertain-payoff. → **Gate it with a spike (3.0) before the full build.**
 
-### Epic 3 — Definition of Done
-- [ ] Per-horizon error decay reduced and overall point error improved vs Epic 2,
-      contract & determinism intact, guardrail tests green.
+### Verified AS-IS anchors (read 2026-06-14, post-Epic-2 `c46c860`)
+| Concern | Where | Current behavior (price-level) |
+|---|---|---|
+| Target series | `lstm.py:309-311` | `y_raw` = raw price levels; `X_raw` = `[price] + exog` |
+| Target scaler | `lstm.py:313-319` | **min-max** on price: `y_scaled=(y_raw−y_min)/y_range` |
+| Feature scaler | `lstm.py:321-322` | `_scale_minmax_fit(X_raw)` → `[0,1]` per column (`:129`) |
+| Windows | `lstm.py:324-325` | `_build_supervised_windows(X_scaled, y_scaled, lookback)` |
+| Heads | `_LSTMQuantileNet` | `q_lo / q_med / q_hi` (Epic 2) — predict scaled **price** quantiles |
+| Recursion init | `lstm.py:535-536` | `last_hist_raw = X_raw[-lookback:]` (raw price window) |
+| Clip guard | `lstm.py:579-588` | `LSTM_SCALED_CLIP [-0.2,1.2]` — **assumes `[0,1]` price-scaling** |
+| Reconstruct | `lstm.py:593-603` | `y_X = y_min + y_X_s·y_range + point_bias`; `y_pred = y_med`; widen-only edges |
+| Feedback | `lstm.py:610-617` | `next_row[0] = y_pred` (raw **price**), vstack |
+| Output | `out_df` / `LSTMResult` | `LSTM_Pred/Lower/Upper` — **contract to preserve** |
+
+### 3.0 — Go/no-go spike (do this FIRST; ~30 min, no committed src)
+On a worktree/branch, wire the minimal returns path (3.1–3.3) and run the harness on a
+**2-ticker, 6-month** slice (e.g. AAPL + GSPC, 2025-09→2026-03, step 5). **Decision rule:**
+proceed to the full epic only if **dir-hit improves by ≥ ~2pp on at least one ticker**
+*or* the **h3/h1 MAE ratio drops** meaningfully, with no catastrophic h1 MAE blow-up
+(> ~1.5× Epic 2). Otherwise stop and report — the level model (Epic 2) is the keeper.
+
+### Tasks (concrete — only if the spike passes)
+
+**3.1 — Returns transform + window builder.**
+- Build the target as `r_t = ln(P_t / P_{t-1})` (one row drops). Guard `P_{t-1} > 0`
+  (all 6 current tickers are positive incl. TNX/VIX; if any ≤ 0, fall back to price-level
+  / return `None` with a logged reason). Target-feature column 0 becomes the return; exog
+  columns 1+ unchanged in value (re-scaled in 3.2).
+- **AC:** exact round-trip — compounding the return series off the first price reproduces
+  the original price series to fp tolerance on a known fixture.
+
+**3.2 — Standardize (z-score) + retire the `[0,1]` clip semantics.**
+- Replace min-max with per-column **z-score** (`_standardize_fit` → `mu, sigma`; store for
+  inverse) so there is no `[y_min,y_max]` band to revert to. Apply to the whole feature
+  matrix (returns + exog).
+- Replace the `LSTM_SCALED_CLIP [-0.2,1.2]` guard (`:579-588`) with a **return-magnitude
+  cap** (e.g. clip raw `|r|` to a sane daily bound like 0.25 log ≈ ±28%) to stop recursive
+  explosion without the price-band assumption. Keep it a discovered config knob.
+- **AC:** no boundary flattening; determinism preserved under fixed seed (note: changing
+  the target distribution changes learned weights → outputs legitimately differ from Epic 2,
+  which is the immutable "before").
+
+**3.3 — Recursive forecast + price reconstruction (the heart).**
+- Per step: predict scaled **return** quantiles → inverse z-score → raw returns
+  `r_lo/r_med/r_hi`; apply the Epic 2 OOS de-bias as a **return-space** `point_bias` on the
+  median (re-derive in 3.x: `median(r_va − r̂_med_va)`).
+- Reconstruct price off a **running last price** `P_prev`: `P_pred = P_prev·exp(r_med)`,
+  `Lower = P_prev·exp(r_lo)`, `Upper = P_prev·exp(r_hi)`. `exp` is monotone so ordered
+  returns give ordered prices; keep the widen-only guard for safety.
+- **Two state variables now**: feed the predicted **return** into `next_row[0]` for the
+  input window (replacing the price feedback at `:611`), *and* advance `P_prev = P_pred`
+  for the next reconstruction.
+- **AC:** `LSTM_Pred/Lower/Upper` columns + `ForecastArtifact` boundary unchanged;
+  `Lower ≤ Pred ≤ Upper` every row; `test_interval_harmonization` (`PYTHONPATH=compat`) +
+  harness tests green; `meta` gains `target_space="log_returns"`, `ret_mu`, `ret_sigma`.
+
+**3.4 — Re-run the Epic 1/2 harness; compare to BOTH baselines.**
+- Same args as Task 1.4/2.4 (6 tickers, 2024-09-23→2026-05-07, step 5, fh 3, seed 42,
+  replay) → new dir under `CSV_OUTPUT/lstm_baseline/`. Write a 3-way delta
+  (baseline `20260613T073854Z` / Epic 2 `20260614T083727Z` / Epic 3) into this doc.
+
+### Epic 3 — Definition of Done (realistic AC)
+- [ ] **Primary:** per-horizon error curve **flattens** (h3/h1 MAE ratio drops vs Epic 2)
+      **and/or** dir-hit **improves** (≥ ~2pp overall) — direction/drift is the goal, not
+      necessarily beating Epic 2 on overall MAE.
+- [ ] **Guard:** overall MAE not materially worse than Epic 2 (within ~10%); coverage no
+      worse than Epic 2 (55.5%); contract & determinism intact; guardrail tests green;
+      `compat/` untouched.
+- [ ] If 3.0 spike fails the decision rule, Epic 3 is **closed as not-worthwhile** with the
+      spike numbers recorded here — Epic 2 (`c46c860`) stays the production calibration.
 
 ---
 
