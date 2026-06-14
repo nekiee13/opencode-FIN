@@ -22,9 +22,11 @@
   |MBE| −95.2%** (`20260614T083727Z`).
 - **Epic 3** (returns-space, hardened) — log-returns + z-score + compounding reconstruction.
   Task 3.4 vs Epic 2: **MAE −35.8%, |MBE| −86.5%, coverage 55.5%→86.1%** (dead-on nominal),
-  every per-horizon & per-ticker MAE down (`20260614T145759Z`). Default stays `level`;
-  returns is opt-in via `LSTM_TARGET_SPACE`. **dir-hit unchanged ~49.5% — direction is not
-  extractable from this near-random-walk data; retired as a goal.**
+  every per-horizon & per-ticker MAE down (`20260614T145759Z`). **Returns is now the
+  DEFAULT** (`LSTM_TARGET_SPACE` default flipped to `returns`, 2026-06-14, backtest evidence
+  accepted without a separate prod smoke per user); `level` remains available as an override.
+  **dir-hit unchanged ~49.5% — direction is not extractable from this near-random-walk
+  data; retired as a goal.**
 
 The cumulative point-accuracy gain baseline→Epic 3 is **MAE 298.9→84.0 (−72%)**,
 **|MBE| 211.9→1.4**, with coverage now calibrated to the 86% target.
@@ -44,11 +46,11 @@ The cumulative point-accuracy gain baseline→Epic 3 is **MAE 298.9→84.0 (−7
   13/13; AAPL direct call → `split=validation`, `point_bias=+2.02` (correct sign),
   `pred≠midpoint`, `Lower≤Pred≤Upper`. Per-task STATUS notes in the Epic 2 section below.
 
-**▶️ NEXT ACTION (resume here): nothing required — the calibration arc is complete.**
-Optional future work, none blocking:
-- **Promote returns to default / production wiring:** returns-space is opt-in
-  (`LSTM_TARGET_SPACE=returns`). If adopting it as the default, flip the default in
-  `_discover_str` (or set `Constants.LSTM_TARGET_SPACE`) and re-run the guardrail suite.
+**▶️ NEXT ACTION (resume here): nothing required — the calibration arc is complete and
+returns-space is live as the default.** Optional future work, none blocking:
+- **Production smoke (deferred by user):** the win is validated in the backtest harness
+  only, not the real forecast pipeline. If anything downstream relied on the old narrower
+  intervals (coverage 55%→86%), watch for it; revert is one line (`LSTM_TARGET_SPACE=level`).
 - **Tune `LSTM_RET_PI_WIDTH_MULT`** (default 1.0) only if you want coverage somewhere other
   than the ~86% it now hits.
 - **Harness `model_meta_json`** empty (compat_api drops `LSTMResult.meta`) — cosmetic, logged.
@@ -56,8 +58,9 @@ Optional future work, none blocking:
   future attempt would need exogenous/cross-asset signal, not a different target transform.
 
 **Decisions locked (don't relitigate):** direction is retired as a goal (near-random-walk
-data); returns-space default is `level` (returns opt-in) until a production wiring decision;
-coverage is a guardrail, now calibrated to ~86% in returns mode via √horizon-scaled qhat.
+data); **returns-space is the default** (`level` available as override), adopted on backtest
+evidence (prod smoke deferred by user); coverage is a guardrail, now calibrated to ~86% in
+returns mode via √horizon-scaled qhat.
 **Known harness gap (logged, out of scope):** `report.csv` `model_meta_json` is empty
 because the harness goes through `compat_api.predict_lstm` (returns DataFrame, drops
 `LSTMResult.meta`); 2.4 uses aggregate metrics so this doesn't block it. Epic 3 not started.

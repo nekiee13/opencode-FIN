@@ -206,9 +206,9 @@ def predict_lstm_quantiles(
     - Exogenous regressors are optional. If provided, they are concatenated as extra features.
     - Forecast is recursive: predicted point estimate feeds into the next step.
     - Target space (Epic 3) is configurable via ``LSTM_TARGET_SPACE`` (Constants or env):
-      ``"level"`` (default) models price levels with min-max scaling; ``"returns"`` models
-      next-step log-returns with z-score scaling and reconstructs the price path by
-      compounding off the last observed price. In returns mode the interval radius is
+      ``"returns"`` (default) models next-step log-returns with z-score scaling and
+      reconstructs the price path by compounding off the last observed price; ``"level"``
+      is the legacy price-level path with min-max scaling. In returns mode the interval radius is
       scaled by ``sqrt(horizon)`` (random-walk variance growth) and ``LSTM_RET_PI_WIDTH_MULT``
       replaces the level-mode ``LSTM_PI_WIDTH_MULT`` shrink.
     """
@@ -340,10 +340,11 @@ def predict_lstm_quantiles(
     X_raw = X_df.to_numpy(dtype=float)
     y_raw = y_ser.to_numpy(dtype=float)
 
-    # Epic 3: target space is configurable. "returns" models next-step log-returns with
-    # z-score scaling and reconstructs price by compounding; "level" (default) is the
-    # Epic 2 price-level path. Set via Constants.LSTM_TARGET_SPACE or the env override.
-    returns_mode = _discover_str("LSTM_TARGET_SPACE", "level").strip().lower() == "returns"
+    # Epic 3: target space is configurable. "returns" (default) models next-step
+    # log-returns with z-score scaling and reconstructs price by compounding — it beat the
+    # price-level path by MAE -36% with calibrated 86% coverage (Task 3.4). "level" is the
+    # legacy Epic 2 price path, still available via Constants.LSTM_TARGET_SPACE or the env.
+    returns_mode = _discover_str("LSTM_TARGET_SPACE", "returns").strip().lower() == "returns"
     ret_clip = float(_discover_num("LSTM_RET_CLIP", 0.25))  # raw |log-return| cap
     if not np.isfinite(ret_clip) or ret_clip <= 0.0:
         ret_clip = 0.25
