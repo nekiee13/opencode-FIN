@@ -177,9 +177,9 @@ def predict_lstm_quantiles(
     Output
     ------
     DataFrame indexed by future business dates with columns:
-      - LSTM_Pred  (midpoint of quantile heads)
-      - LSTM_Lower (q_lo)
-      - LSTM_Upper (q_hi)
+      - LSTM_Pred  (directly-optimized median head, q=0.5, + OOS bias correction)
+      - LSTM_Lower (q_lo, expanded if needed to contain LSTM_Pred)
+      - LSTM_Upper (q_hi, expanded if needed to contain LSTM_Pred)
 
     Notes
     -----
@@ -353,14 +353,15 @@ def predict_lstm_quantiles(
             self.dense = nn.Linear(int(lstm_units), int(dense_units))
             self.relu = nn.ReLU()
             self.q_lo = nn.Linear(int(dense_units), 1)
+            self.q_med = nn.Linear(int(dense_units), 1)
             self.q_hi = nn.Linear(int(dense_units), 1)
 
-        def forward(self, x: Any) -> Tuple[Any, Any]:
+        def forward(self, x: Any) -> Tuple[Any, Any, Any]:
             out, _ = self.lstm(x)
             h = out[:, -1, :]
             h = self.dropout(h)
             h = self.relu(self.dense(h))
-            return self.q_lo(h), self.q_hi(h)
+            return self.q_lo(h), self.q_med(h), self.q_hi(h)
 
     model = _LSTMQuantileNet().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=float(learning_rate))
@@ -395,9 +396,11 @@ def predict_lstm_quantiles(
                 yb = y_tr_t.index_select(0, idx)
 
                 optimizer.zero_grad()
-                lo_hat, hi_hat = model(xb)
-                loss = _pinball_loss(yb, lo_hat, q_lo, torch) + _pinball_loss(
-                    yb, hi_hat, q_hi, torch
+                lo_hat, med_hat, hi_hat = model(xb)
+                loss = (
+                    _pinball_loss(yb, lo_hat, q_lo, torch)
+                    + _pinball_loss(yb, med_hat, 0.5, torch)
+                    + _pinball_loss(yb, hi_hat, q_hi, torch)
                 )
                 loss.backward()
                 optimizer.step()
@@ -410,10 +413,12 @@ def predict_lstm_quantiles(
             if has_val and x_va_t is not None and y_va_t is not None:
                 model.eval()
                 with torch.no_grad():
-                    lo_v, hi_v = model(x_va_t)
-                    val_loss_t = _pinball_loss(
-                        y_va_t, lo_v, q_lo, torch
-                    ) + _pinball_loss(y_va_t, hi_v, q_hi, torch)
+                    lo_v, med_v, hi_v = model(x_va_t)
+                    val_loss_t = (
+                        _pinball_loss(y_va_t, lo_v, q_lo, torch)
+                        + _pinball_loss(y_va_t, med_v, 0.5, torch)
+                        + _pinball_loss(y_va_t, hi_v, q_hi, torch)
+                    )
                     monitor = float(val_loss_t.detach().cpu().item())
             else:
                 monitor = train_loss
@@ -455,25 +460,41 @@ def predict_lstm_quantiles(
         return None
 
     qhat = 0.0
+    point_bias = 0.0
+    calibration_split = "none"
     if bool(pi.calibration_enabled):
         try:
+            # Out-of-sample calibration (Epic 2.3): residuals are taken on the
+            # validation holdout and centered on the MEDIAN head, so neither the point
+            # bias nor qhat is estimated in-sample. Fall back to train only when the
+            # (replay) split produced no validation rows.
+            if has_val and x_va_t is not None and y_va_t is not None:
+                x_cal_t, y_cal_t = x_va_t, y_va_t
+                calibration_split = "validation"
+            else:
+                x_cal_t, y_cal_t = x_tr_t, y_tr_t
+                calibration_split = "train_fallback"
+
             model.eval()
             with torch.no_grad():
-                lo_cal, hi_cal = model(x_tr_t)
+                _lo_cal, med_cal, _hi_cal = model(x_cal_t)
 
-            lo_np = lo_cal.detach().cpu().numpy().reshape(-1)
-            hi_np = hi_cal.detach().cpu().numpy().reshape(-1)
-            mid_np = 0.5 * (lo_np + hi_np)
-            y_np = y_tr_t.detach().cpu().numpy().reshape(-1)
-            resid = np.abs(y_np - mid_np)
+            med_np = med_cal.detach().cpu().numpy().reshape(-1)
+            y_np = y_cal_t.detach().cpu().numpy().reshape(-1)
+            resid_scaled = y_np - med_np  # signed; > 0 when the model under-predicts
 
+            # qhat stays in SCALED space (it is subtracted/added to the scaled edges in
+            # the recursion); point_bias maps to RAW price space (it shifts the raw
+            # output band). Both are now out-of-sample and median-centered.
             qhat = residual_quantile_expansion(
-                resid,
+                np.abs(resid_scaled),
                 alpha=float(pi.alpha),
                 min_samples=int(pi.calibration_min_samples),
             )
+            point_bias = float(np.median(resid_scaled)) * float(y_range)
         except Exception:
             qhat = 0.0
+            point_bias = 0.0
 
     # Future index: avoid pd.Timestamp(Index) patterns (Pylance + runtime safety)
     last_dt = cast(pd.Timestamp, pd.Timestamp(cast(Any, X_df.index.max())))
@@ -529,7 +550,7 @@ def predict_lstm_quantiles(
 
         try:
             with torch.no_grad():
-                qlo_hat, qhi_hat = model(x_in)
+                qlo_hat, qmed_hat, qhi_hat = model(x_in)
         except Exception as e:
             log.warning(
                 "LSTM: predict failed for %s at step %d: %s",
@@ -541,6 +562,7 @@ def predict_lstm_quantiles(
             return None
 
         y_lo_s = float(qlo_hat.detach().cpu().numpy().reshape(-1)[0])
+        y_med_s = float(qmed_hat.detach().cpu().numpy().reshape(-1)[0])
         y_hi_s = float(qhi_hat.detach().cpu().numpy().reshape(-1)[0])
         if y_lo_s > y_hi_s:
             y_lo_s, y_hi_s = y_hi_s, y_lo_s
@@ -554,18 +576,31 @@ def predict_lstm_quantiles(
             y_lo_s = mid_s - half_width_s
             y_hi_s = mid_s + half_width_s
 
-        # Guardrail: avoid runaway recursive collapse/explosion from unconstrained heads.
+        # Guardrail: avoid runaway recursive collapse/explosion from unconstrained
+        # heads. The median head (the point estimate) gets the same clip as the edges
+        # but not qhat/width_mult, which are interval-shape ops, not point ops.
         clip_lo = -float(lstm_scaled_clip)
         clip_hi = 1.0 + float(lstm_scaled_clip)
         y_lo_s = float(np.clip(y_lo_s, clip_lo, clip_hi))
+        y_med_s = float(np.clip(y_med_s, clip_lo, clip_hi))
         y_hi_s = float(np.clip(y_hi_s, clip_lo, clip_hi))
         if y_lo_s > y_hi_s:
             y_lo_s, y_hi_s = y_hi_s, y_lo_s
 
-        y_lo = y_min + y_lo_s * y_range
-        y_hi = y_min + y_hi_s * y_range
+        # Raw price space. point_bias is a level correction applied to the whole
+        # predictive band (preserves interval width; 0.0 until Epic 2.3 estimates it
+        # out-of-sample).
+        y_lo = y_min + y_lo_s * y_range + float(point_bias)
+        y_med = y_min + y_med_s * y_range + float(point_bias)
+        y_hi = y_min + y_hi_s * y_range + float(point_bias)
 
-        y_pred = 0.5 * (y_lo + y_hi)
+        # Point = directly-optimized median head (Epic 2.2), replacing the old
+        # midpoint-of-edges. Independent heads can cross under width_mult shrinkage, so
+        # enforce Lower <= Pred <= Upper by expanding the edge to contain the point
+        # (widen-only: never distorts the point estimate, never narrows coverage).
+        y_pred = y_med
+        y_lo = min(y_lo, y_pred)
+        y_hi = max(y_hi, y_pred)
 
         lowers.append(y_lo)
         uppers.append(y_hi)
@@ -607,6 +642,8 @@ def predict_lstm_quantiles(
         "lstm_pi_width_mult": float(lstm_pi_width_mult),
         "lstm_scaled_clip": float(lstm_scaled_clip),
         "pi_qhat": float(qhat),
+        "point_bias": float(point_bias),
+        "calibration_split": calibration_split,
         "n_features": int(X_raw.shape[1]),
         "n_samples": int(len(X_df)),
         "has_exog": bool(ex_train_aligned is not None),
