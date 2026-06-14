@@ -31,6 +31,21 @@
 The cumulative point-accuracy gain baseline→Epic 3 is **MAE 298.9→84.0 (−72%)**,
 **|MBE| 211.9→1.4**, with coverage now calibrated to the 86% target.
 
+**📦 DELIVERY / TRANSFER STATUS (session close 2026-06-14):** all work is committed to
+local `main` — **9 commits, ahead of `origin/main` by 9, NOT pushed.** Tree clean except
+untracked throwaway spike dirs (`CSV_OUTPUT/spike_*`, `lstm_baseline_smoke/`).
+- **Push to GitHub blocked from inside the env:** remote is HTTPS
+  (`github.com/nekiee13/opencode-FIN`) with no cached creds; `gh` not installed; SSH key
+  present but not authorized. → **Push from an interactive terminal:** `git push origin main`.
+- **USB transfer not possible from inside the env:** host uses **Hyper-V**, which has no
+  plug-and-play USB passthrough. Options recorded: (A) host Disk Management → set USB
+  *Offline* → Hyper-V VM Settings → SCSI Controller → Add → *Physical hard disk* → the disk
+  appears as `/dev/sdb` and can be mounted/copied; (B) just `git push` (env has working
+  internet, only login is missing). **Recommended: push.**
+- **Commit ledger (oldest→newest):** `7b22304` E1 harness+baseline · `c46c860` E2 code ·
+  `d76776b` E2 2.4 delta · `052ab04` E2 artifact · `954d425` E3 scope · `0172eee` E3 code ·
+  `2408f3a` E3 3.4 delta · `5d7b724` E3 artifact · `d114d00` returns default flip.
+
 **What's done in Epic 2 (`src/models/lstm.py`, committed `c46c860`):**
 - 2.1 — `q_med` head (`:356`), 3-tuple `forward` (`:358-363`), 3-term train+val pinball
   (median uses pinball@0.5). DONE.
@@ -46,8 +61,10 @@ The cumulative point-accuracy gain baseline→Epic 3 is **MAE 298.9→84.0 (−7
   13/13; AAPL direct call → `split=validation`, `point_bias=+2.02` (correct sign),
   `pred≠midpoint`, `Lower≤Pred≤Upper`. Per-task STATUS notes in the Epic 2 section below.
 
-**▶️ NEXT ACTION (resume here): nothing required — the calibration arc is complete and
-returns-space is live as the default.** Optional future work, none blocking:
+**▶️ NEXT ACTION (resume here): the calibration arc is complete — only DELIVERY is
+outstanding.** Get the 9 local commits off-box: run `git push origin main` from an
+interactive terminal (or the Hyper-V physical-disk route, see DELIVERY status above).
+Then, optional future work, none blocking:
 - **Production smoke (deferred by user):** the win is validated in the backtest harness
   only, not the real forecast pipeline. If anything downstream relied on the old narrower
   intervals (coverage 55%→86%), watch for it; revert is one line (`LSTM_TARGET_SPACE=level`).
